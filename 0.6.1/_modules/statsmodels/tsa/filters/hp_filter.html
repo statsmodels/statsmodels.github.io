@@ -1,0 +1,214 @@
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>statsmodels.tsa.filters.hp_filter &mdash; statsmodels 0.6.1 documentation</title>
+    
+    <link rel="stylesheet" href="../../../../_static/nature.css" type="text/css" />
+    <link rel="stylesheet" href="../../../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../../../',
+        VERSION:     '0.6.1',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../../_static/doctools.js"></script>
+    <link rel="shortcut icon" href="../../../../_static/statsmodels_hybi_favico.ico"/>
+    <link rel="author" title="About these documents" href="../../../../about.html" />
+    <link rel="top" title="statsmodels 0.6.1 documentation" href="../../../../index.html" />
+    <link rel="up" title="Module code" href="../../../index.html" />
+<link rel="stylesheet" href="../../_static/facebox.css" type="text/css" />
+<link rel="stylesheet" href="../_static/examples.css" type="text/css" />
+<script type="text/javascript" src="../../../../_static/scripts.js">
+</script>
+<script type="text/javascript" src="../../../../_static/facebox.js">
+</script>
+
+  </head>
+  <body role="document">
+<div class="headerwrap">
+    <div class = "header">
+        
+        <a href = "../../../../index.html">
+<img src="../../../../_static/statsmodels_hybi_banner.png" alt="Logo"
+    style="padding-left: 15px"/></a>
+        
+    </div>
+</div>
+
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+<li><a href ="../../../../install.html">Install</a></li> &nbsp;|&nbsp;
+<li><a href="https://groups.google.com/group/pystatsmodels?hl=en">Support</a></li> &nbsp;|&nbsp;
+<li><a href="https://github.com/statsmodels/statsmodels/issues">Bugs</a></li> &nbsp;|&nbsp;
+<li><a href="../../../../dev/index.html">Develop</a></li> &nbsp;|&nbsp;
+<li><a href="../../../../examples/index.html">Examples</a></li> &nbsp;|&nbsp;
+<li><a href="../../../../faq.html">FAQ</a></li> &nbsp;|&nbsp;
+
+          <li class="nav-item nav-item-1"><a href="../../../index.html" accesskey="U">Module code</a> |</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+
+
+
+
+  <h1>Source code for statsmodels.tsa.filters.hp_filter</h1><div class="highlight"><pre>
+<span class="kn">from</span> <span class="nn">__future__</span> <span class="kn">import</span> <span class="n">absolute_import</span>
+
+<span class="kn">from</span> <span class="nn">scipy</span> <span class="kn">import</span> <span class="n">sparse</span>
+<span class="kn">from</span> <span class="nn">scipy.sparse</span> <span class="kn">import</span> <span class="n">dia_matrix</span><span class="p">,</span> <span class="n">eye</span> <span class="k">as</span> <span class="n">speye</span>
+<span class="kn">from</span> <span class="nn">scipy.sparse.linalg</span> <span class="kn">import</span> <span class="n">spsolve</span>
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="kn">as</span> <span class="nn">np</span>
+<span class="kn">from</span> <span class="nn">._utils</span> <span class="kn">import</span> <span class="n">_maybe_get_pandas_wrapper</span>
+
+<div class="viewcode-block" id="hpfilter"><a class="viewcode-back" href="../../../../generated/statsmodels.tsa.filters.hp_filter.hpfilter.html#statsmodels.tsa.filters.hp_filter.hpfilter">[docs]</a><span class="k">def</span> <span class="nf">hpfilter</span><span class="p">(</span><span class="n">X</span><span class="p">,</span> <span class="n">lamb</span><span class="o">=</span><span class="mi">1600</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Hodrick-Prescott filter</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    X : array-like</span>
+<span class="sd">        The 1d ndarray timeseries to filter of length (nobs,) or (nobs,1)</span>
+<span class="sd">    lamb : float</span>
+<span class="sd">        The Hodrick-Prescott smoothing parameter. A value of 1600 is</span>
+<span class="sd">        suggested for quarterly data. Ravn and Uhlig suggest using a value</span>
+<span class="sd">        of 6.25 (1600/4**4) for annual data and 129600 (1600*3**4) for monthly</span>
+<span class="sd">        data.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    cycle : array</span>
+<span class="sd">        The estimated cycle in the data given lamb.</span>
+<span class="sd">    trend : array</span>
+<span class="sd">        The estimated trend in the data given lamb.</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    ---------</span>
+<span class="sd">    &gt;&gt;&gt; import statsmodels.api as sm</span>
+<span class="sd">    &gt;&gt;&gt; import pandas as pd</span>
+<span class="sd">    &gt;&gt;&gt; dta = sm.datasets.macrodata.load_pandas().data</span>
+<span class="sd">    &gt;&gt;&gt; dates = sm.tsa.datetools.dates_from_range(&#39;1959Q1&#39;, &#39;2009Q3&#39;)</span>
+<span class="sd">    &gt;&gt;&gt; index = pd.DatetimeIndex(dates)</span>
+<span class="sd">    &gt;&gt;&gt; dta.set_index(index, inplace=True)</span>
+
+<span class="sd">    &gt;&gt;&gt; cycle, trend = sm.tsa.filters.hpfilter(dta.realgdp, 1600)</span>
+<span class="sd">    &gt;&gt;&gt; dta[&quot;cycle&quot;] = cycle</span>
+<span class="sd">    &gt;&gt;&gt; dta[&quot;trend&quot;] = trend</span>
+
+<span class="sd">    &gt;&gt;&gt; import matplotlib.pyplot as plt</span>
+<span class="sd">    &gt;&gt;&gt; fig, ax = plt.subplots()</span>
+<span class="sd">    &gt;&gt;&gt; dta.ix[&quot;2003-03-31&quot;:, [&quot;realgdp&quot;, &quot;trend&quot;]].plot(ax=ax, fontsize=16);</span>
+<span class="sd">    &gt;&gt;&gt; plt.show()</span>
+
+<span class="sd">    .. plot:: plots/hpf_plot.py</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    The HP filter removes a smooth trend, `T`, from the data `X`. by solving</span>
+
+<span class="sd">    min sum((X[t] - T[t])**2 + lamb*((T[t+1] - T[t]) - (T[t] - T[t-1]))**2)</span>
+<span class="sd">     T   t</span>
+
+<span class="sd">    Here we implemented the HP filter as a ridge-regression rule using</span>
+<span class="sd">    scipy.sparse. In this sense, the solution can be written as</span>
+
+<span class="sd">    T = inv(I - lamb*K&#39;K)X</span>
+
+<span class="sd">    where I is a nobs x nobs identity matrix, and K is a (nobs-2) x nobs matrix</span>
+<span class="sd">    such that</span>
+
+<span class="sd">    K[i,j] = 1 if i == j or i == j + 2</span>
+<span class="sd">    K[i,j] = -2 if i == j + 1</span>
+<span class="sd">    K[i,j] = 0 otherwise</span>
+
+<span class="sd">    References</span>
+<span class="sd">    ----------</span>
+<span class="sd">    Hodrick, R.J, and E. C. Prescott. 1980. &quot;Postwar U.S. Business Cycles: An</span>
+<span class="sd">        Empricial Investigation.&quot; `Carnegie Mellon University discussion</span>
+<span class="sd">        paper no. 451`.</span>
+<span class="sd">    Ravn, M.O and H. Uhlig. 2002. &quot;Notes On Adjusted the Hodrick-Prescott</span>
+<span class="sd">        Filter for the Frequency of Observations.&quot; `The Review of Economics and</span>
+<span class="sd">        Statistics`, 84(2), 371-80.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">_pandas_wrapper</span> <span class="o">=</span> <span class="n">_maybe_get_pandas_wrapper</span><span class="p">(</span><span class="n">X</span><span class="p">)</span>
+    <span class="n">X</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">X</span><span class="p">,</span> <span class="nb">float</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">X</span><span class="o">.</span><span class="n">ndim</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="n">X</span> <span class="o">=</span> <span class="n">X</span><span class="o">.</span><span class="n">squeeze</span><span class="p">()</span>
+    <span class="n">nobs</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">X</span><span class="p">)</span>
+    <span class="n">I</span> <span class="o">=</span> <span class="n">speye</span><span class="p">(</span><span class="n">nobs</span><span class="p">,</span><span class="n">nobs</span><span class="p">)</span>
+    <span class="n">offsets</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">0</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">2</span><span class="p">])</span>
+    <span class="n">data</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">repeat</span><span class="p">([[</span><span class="mf">1.</span><span class="p">],[</span><span class="o">-</span><span class="mf">2.</span><span class="p">],[</span><span class="mf">1.</span><span class="p">]],</span> <span class="n">nobs</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+    <span class="n">K</span> <span class="o">=</span> <span class="n">dia_matrix</span><span class="p">((</span><span class="n">data</span><span class="p">,</span> <span class="n">offsets</span><span class="p">),</span> <span class="n">shape</span><span class="o">=</span><span class="p">(</span><span class="n">nobs</span><span class="o">-</span><span class="mi">2</span><span class="p">,</span><span class="n">nobs</span><span class="p">))</span>
+
+    <span class="kn">import</span> <span class="nn">scipy</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">X</span><span class="o">.</span><span class="n">dtype</span> <span class="o">!=</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">(</span><span class="s">&#39;&lt;f8&#39;</span><span class="p">)</span> <span class="ow">and</span>
+            <span class="nb">int</span><span class="p">(</span><span class="n">scipy</span><span class="o">.</span><span class="n">__version__</span><span class="p">[:</span><span class="mi">3</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;.&#39;</span><span class="p">)[</span><span class="mi">1</span><span class="p">])</span> <span class="o">&lt;</span> <span class="mi">11</span><span class="p">):</span>
+        <span class="c">#scipy umfpack bug on Big Endian machines, will be fixed in 0.11</span>
+        <span class="n">use_umfpack</span> <span class="o">=</span> <span class="bp">False</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">use_umfpack</span> <span class="o">=</span> <span class="bp">True</span>
+
+    <span class="k">if</span> <span class="n">scipy</span><span class="o">.</span><span class="n">__version__</span><span class="p">[:</span><span class="mi">3</span><span class="p">]</span> <span class="o">==</span> <span class="s">&#39;0.7&#39;</span><span class="p">:</span>
+        <span class="c">#doesn&#39;t have use_umfpack option</span>
+        <span class="c">#will be broken on big-endian machines with scipy 0.7 and umfpack</span>
+        <span class="n">trend</span> <span class="o">=</span> <span class="n">spsolve</span><span class="p">(</span><span class="n">I</span><span class="o">+</span><span class="n">lamb</span><span class="o">*</span><span class="n">K</span><span class="o">.</span><span class="n">T</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">K</span><span class="p">),</span> <span class="n">X</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">trend</span> <span class="o">=</span> <span class="n">spsolve</span><span class="p">(</span><span class="n">I</span><span class="o">+</span><span class="n">lamb</span><span class="o">*</span><span class="n">K</span><span class="o">.</span><span class="n">T</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">K</span><span class="p">),</span> <span class="n">X</span><span class="p">,</span> <span class="n">use_umfpack</span><span class="o">=</span><span class="n">use_umfpack</span><span class="p">)</span>
+    <span class="n">cycle</span> <span class="o">=</span> <span class="n">X</span><span class="o">-</span><span class="n">trend</span>
+    <span class="k">if</span> <span class="n">_pandas_wrapper</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">_pandas_wrapper</span><span class="p">(</span><span class="n">cycle</span><span class="p">),</span> <span class="n">_pandas_wrapper</span><span class="p">(</span><span class="n">trend</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">cycle</span><span class="p">,</span> <span class="n">trend</span></div>
+</pre></div>
+
+
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <form class="search" action="../../../../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer" role="contentinfo">
+        &copy; Copyright 2009-2013, Josef Perktold, Skipper Seabold, Jonathan Taylor, statsmodels-developers.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.3.1.
+    </div>
+  </body>
+</html>

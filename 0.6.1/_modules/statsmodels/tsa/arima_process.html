@@ -1,0 +1,1137 @@
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>statsmodels.tsa.arima_process &mdash; statsmodels 0.6.1 documentation</title>
+    
+    <link rel="stylesheet" href="../../../_static/nature.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../../',
+        VERSION:     '0.6.1',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <link rel="shortcut icon" href="../../../_static/statsmodels_hybi_favico.ico"/>
+    <link rel="author" title="About these documents" href="../../../about.html" />
+    <link rel="top" title="statsmodels 0.6.1 documentation" href="../../../index.html" />
+    <link rel="up" title="Module code" href="../../index.html" />
+<link rel="stylesheet" href="../../_static/facebox.css" type="text/css" />
+<link rel="stylesheet" href="../_static/examples.css" type="text/css" />
+<script type="text/javascript" src="../../../_static/scripts.js">
+</script>
+<script type="text/javascript" src="../../../_static/facebox.js">
+</script>
+
+  </head>
+  <body role="document">
+<div class="headerwrap">
+    <div class = "header">
+        
+        <a href = "../../../index.html">
+<img src="../../../_static/statsmodels_hybi_banner.png" alt="Logo"
+    style="padding-left: 15px"/></a>
+        
+    </div>
+</div>
+
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+<li><a href ="../../../install.html">Install</a></li> &nbsp;|&nbsp;
+<li><a href="https://groups.google.com/group/pystatsmodels?hl=en">Support</a></li> &nbsp;|&nbsp;
+<li><a href="https://github.com/statsmodels/statsmodels/issues">Bugs</a></li> &nbsp;|&nbsp;
+<li><a href="../../../dev/index.html">Develop</a></li> &nbsp;|&nbsp;
+<li><a href="../../../examples/index.html">Examples</a></li> &nbsp;|&nbsp;
+<li><a href="../../../faq.html">FAQ</a></li> &nbsp;|&nbsp;
+
+          <li class="nav-item nav-item-1"><a href="../../index.html" accesskey="U">Module code</a> |</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+
+
+
+
+  <h1>Source code for statsmodels.tsa.arima_process</h1><div class="highlight"><pre>
+<span class="sd">&#39;&#39;&#39;ARMA process and estimation with scipy.signal.lfilter</span>
+
+<span class="sd">2009-09-06: copied from try_signal.py</span>
+<span class="sd">    reparameterized same as signal.lfilter (positive coefficients)</span>
+
+
+<span class="sd">Notes</span>
+<span class="sd">-----</span>
+<span class="sd">* pretty fast</span>
+<span class="sd">* checked with Monte Carlo and cross comparison with statsmodels yule_walker</span>
+<span class="sd">  for AR numbers are close but not identical to yule_walker</span>
+<span class="sd">  not compared to other statistics packages, no degrees of freedom correction</span>
+<span class="sd">* ARMA(2,2) estimation (in Monte Carlo) requires longer time series to estimate parameters</span>
+<span class="sd">  without large variance. There might be different ARMA parameters</span>
+<span class="sd">  with similar impulse response function that cannot be well</span>
+<span class="sd">  distinguished with small samples (e.g. 100 observations)</span>
+<span class="sd">* good for one time calculations for entire time series, not for recursive</span>
+<span class="sd">  prediction</span>
+<span class="sd">* class structure not very clean yet</span>
+<span class="sd">* many one-liners with scipy.signal, but takes time to figure out usage</span>
+<span class="sd">* missing result statistics, e.g. t-values, but standard errors in examples</span>
+<span class="sd">* no criteria for choice of number of lags</span>
+<span class="sd">* no constant term in ARMA process</span>
+<span class="sd">* no integration, differencing for ARIMA</span>
+<span class="sd">* written without textbook, works but not sure about everything</span>
+<span class="sd">  briefly checked and it looks to be standard least squares, see below</span>
+
+<span class="sd">* theoretical autocorrelation function of general ARMA</span>
+<span class="sd">  Done, relatively easy to guess solution, time consuming to get</span>
+<span class="sd">  theoretical test cases,</span>
+<span class="sd">  example file contains explicit formulas for acovf of MA(1), MA(2) and ARMA(1,1)</span>
+
+<span class="sd">* two names for lag polynomials ar = rhoy, ma = rhoe ?</span>
+
+
+<span class="sd">Properties:</span>
+<span class="sd">Judge, ... (1985): The Theory and Practise of Econometrics</span>
+
+<span class="sd">BigJudge p. 237ff:</span>
+<span class="sd">If the time series process is a stationary ARMA(p,q), then</span>
+<span class="sd">minimizing the sum of squares is asymptoticaly (as T-&gt; inf)</span>
+<span class="sd">equivalent to the exact Maximum Likelihood Estimator</span>
+
+<span class="sd">Because Least Squares conditional on the initial information</span>
+<span class="sd">does not use all information, in small samples exact MLE can</span>
+<span class="sd">be better.</span>
+
+<span class="sd">Without the normality assumption, the least squares estimator</span>
+<span class="sd">is still consistent under suitable conditions, however not</span>
+<span class="sd">efficient</span>
+
+<span class="sd">Author: josefpktd</span>
+<span class="sd">License: BSD</span>
+<span class="sd">&#39;&#39;&#39;</span>
+<span class="kn">from</span> <span class="nn">__future__</span> <span class="kn">import</span> <span class="n">print_function</span>
+<span class="kn">from</span> <span class="nn">statsmodels.compat.python</span> <span class="kn">import</span> <span class="nb">range</span>
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="kn">as</span> <span class="nn">np</span>
+<span class="kn">from</span> <span class="nn">scipy</span> <span class="kn">import</span> <span class="n">signal</span><span class="p">,</span> <span class="n">optimize</span><span class="p">,</span> <span class="n">linalg</span>
+
+
+<div class="viewcode-block" id="arma_generate_sample"><a class="viewcode-back" href="../../../generated/statsmodels.tsa.arima_process.arma_generate_sample.html#statsmodels.sandbox.tsa.fftarma.arma_generate_sample">[docs]</a><span class="k">def</span> <span class="nf">arma_generate_sample</span><span class="p">(</span><span class="n">ar</span><span class="p">,</span> <span class="n">ma</span><span class="p">,</span> <span class="n">nsample</span><span class="p">,</span> <span class="n">sigma</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">distrvs</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randn</span><span class="p">,</span>
+                         <span class="n">burnin</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Generate a random sample of an ARMA process</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    ar : array_like, 1d</span>
+<span class="sd">        coefficient for autoregressive lag polynomial, including zero lag</span>
+<span class="sd">    ma : array_like, 1d</span>
+<span class="sd">        coefficient for moving-average lag polynomial, including zero lag</span>
+<span class="sd">    nsample : int</span>
+<span class="sd">        length of simulated time series</span>
+<span class="sd">    sigma : float</span>
+<span class="sd">        standard deviation of noise</span>
+<span class="sd">    distrvs : function, random number generator</span>
+<span class="sd">        function that generates the random numbers, and takes sample size</span>
+<span class="sd">        as argument</span>
+<span class="sd">        default: np.random.randn</span>
+<span class="sd">        TODO: change to size argument</span>
+<span class="sd">    burnin : integer (default: 0)</span>
+<span class="sd">        to reduce the effect of initial conditions, burnin observations at the</span>
+<span class="sd">        beginning of the sample are dropped</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    sample : array</span>
+<span class="sd">        sample of ARMA process given by ar, ma of length nsample</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    As mentioned above, both the AR and MA components should include the</span>
+<span class="sd">    coefficient on the zero-lag. This is typically 1. Further, due to the</span>
+<span class="sd">    conventions used in signal processing used in signal.lfilter vs.</span>
+<span class="sd">    conventions in statistics for ARMA processes, the AR paramters should</span>
+<span class="sd">    have the opposite sign of what you might expect. See the examples below.</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    &gt;&gt;&gt; import numpy as np</span>
+<span class="sd">    &gt;&gt;&gt; np.random.seed(12345)</span>
+<span class="sd">    &gt;&gt;&gt; arparams = np.array([.75, -.25])</span>
+<span class="sd">    &gt;&gt;&gt; maparams = np.array([.65, .35])</span>
+<span class="sd">    &gt;&gt;&gt; ar = np.r_[1, -arparams] # add zero-lag and negate</span>
+<span class="sd">    &gt;&gt;&gt; ma = np.r_[1, maparams] # add zero-lag</span>
+<span class="sd">    &gt;&gt;&gt; y = sm.tsa.arma_generate_sample(ar, ma, 250)</span>
+<span class="sd">    &gt;&gt;&gt; model = sm.tsa.ARMA(y, (2, 2)).fit(trend=&#39;nc&#39;, disp=0)</span>
+<span class="sd">    &gt;&gt;&gt; model.params</span>
+<span class="sd">    array([ 0.79044189, -0.23140636,  0.70072904,  0.40608028])</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c">#TODO: unify with ArmaProcess method</span>
+    <span class="n">eta</span> <span class="o">=</span> <span class="n">sigma</span> <span class="o">*</span> <span class="n">distrvs</span><span class="p">(</span><span class="n">nsample</span><span class="o">+</span><span class="n">burnin</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">signal</span><span class="o">.</span><span class="n">lfilter</span><span class="p">(</span><span class="n">ma</span><span class="p">,</span> <span class="n">ar</span><span class="p">,</span> <span class="n">eta</span><span class="p">)[</span><span class="n">burnin</span><span class="p">:]</span>
+
+</div>
+<div class="viewcode-block" id="arma_acovf"><a class="viewcode-back" href="../../../generated/statsmodels.tsa.arima_process.arma_acovf.html#statsmodels.sandbox.tsa.fftarma.arma_acovf">[docs]</a><span class="k">def</span> <span class="nf">arma_acovf</span><span class="p">(</span><span class="n">ar</span><span class="p">,</span> <span class="n">ma</span><span class="p">,</span> <span class="n">nobs</span><span class="o">=</span><span class="mi">10</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;theoretical autocovariance function of ARMA process</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    ar : array_like, 1d</span>
+<span class="sd">        coefficient for autoregressive lag polynomial, including zero lag</span>
+<span class="sd">    ma : array_like, 1d</span>
+<span class="sd">        coefficient for moving-average lag polynomial, including zero lag</span>
+<span class="sd">    nobs : int</span>
+<span class="sd">        number of terms (lags plus zero lag) to include in returned acovf</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    acovf : array</span>
+<span class="sd">        autocovariance of ARMA process given by ar, ma</span>
+
+<span class="sd">    See Also</span>
+<span class="sd">    --------</span>
+<span class="sd">    arma_acf</span>
+<span class="sd">    acovf</span>
+
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    Tries to do some crude numerical speed improvements for cases</span>
+<span class="sd">    with high persistance. However, this algorithm is slow if the process is</span>
+<span class="sd">    highly persistent and only a few autocovariances are desired.</span>
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="c">#increase length of impulse response for AR closer to 1</span>
+    <span class="c">#maybe cheap/fast enough to always keep nobs for ir large</span>
+    <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">ar</span><span class="p">)</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mf">0.9</span><span class="p">:</span>
+        <span class="n">nobs_ir</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">1000</span><span class="p">,</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">nobs</span><span class="p">)</span>  <span class="c"># no idea right now how large is needed</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">nobs_ir</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">100</span><span class="p">,</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">nobs</span><span class="p">)</span>   <span class="c"># no idea right now</span>
+    <span class="n">ir</span> <span class="o">=</span> <span class="n">arma_impulse_response</span><span class="p">(</span><span class="n">ar</span><span class="p">,</span> <span class="n">ma</span><span class="p">,</span> <span class="n">nobs</span><span class="o">=</span><span class="n">nobs_ir</span><span class="p">)</span>
+    <span class="c">#better save than sorry (?), I have no idea about the required precision</span>
+    <span class="c">#only checked for AR(1)</span>
+    <span class="k">while</span> <span class="n">ir</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mi">5</span><span class="o">*</span><span class="mf">1e-5</span><span class="p">:</span>
+        <span class="n">nobs_ir</span> <span class="o">*=</span> <span class="mi">10</span>
+        <span class="n">ir</span> <span class="o">=</span> <span class="n">arma_impulse_response</span><span class="p">(</span><span class="n">ar</span><span class="p">,</span> <span class="n">ma</span><span class="p">,</span> <span class="n">nobs</span><span class="o">=</span><span class="n">nobs_ir</span><span class="p">)</span>
+    <span class="c">#again no idea where the speed break points are:</span>
+    <span class="k">if</span> <span class="n">nobs_ir</span> <span class="o">&gt;</span> <span class="mi">50000</span> <span class="ow">and</span> <span class="n">nobs</span> <span class="o">&lt;</span> <span class="mi">1001</span><span class="p">:</span>
+        <span class="n">acovf</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">ir</span><span class="p">[:</span><span class="n">nobs</span><span class="o">-</span><span class="n">t</span><span class="p">],</span> <span class="n">ir</span><span class="p">[</span><span class="n">t</span><span class="p">:</span><span class="n">nobs</span><span class="p">])</span>
+                          <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nobs</span><span class="p">)])</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">acovf</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">correlate</span><span class="p">(</span><span class="n">ir</span><span class="p">,</span> <span class="n">ir</span><span class="p">,</span> <span class="s">&#39;full&#39;</span><span class="p">)[</span><span class="nb">len</span><span class="p">(</span><span class="n">ir</span><span class="p">)</span><span class="o">-</span><span class="mi">1</span><span class="p">:]</span>
+    <span class="k">return</span> <span class="n">acovf</span><span class="p">[:</span><span class="n">nobs</span><span class="p">]</span>
+
+</div>
+<div class="viewcode-block" id="arma_acf"><a class="viewcode-back" href="../../../generated/statsmodels.tsa.arima_process.arma_acf.html#statsmodels.sandbox.tsa.fftarma.arma_acf">[docs]</a><span class="k">def</span> <span class="nf">arma_acf</span><span class="p">(</span><span class="n">ar</span><span class="p">,</span> <span class="n">ma</span><span class="p">,</span> <span class="n">nobs</span><span class="o">=</span><span class="mi">10</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;theoretical autocorrelation function of an ARMA process</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    ar : array_like, 1d</span>
+<span class="sd">        coefficient for autoregressive lag polynomial, including zero lag</span>
+<span class="sd">    ma : array_like, 1d</span>
+<span class="sd">        coefficient for moving-average lag polynomial, including zero lag</span>
+<span class="sd">    nobs : int</span>
+<span class="sd">        number of terms (lags plus zero lag) to include in returned acf</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    acf : array</span>
+<span class="sd">        autocorrelation of ARMA process given by ar, ma</span>
+
+
+<span class="sd">    See Also</span>
+<span class="sd">    --------</span>
+<span class="sd">    arma_acovf</span>
+<span class="sd">    acf</span>
+<span class="sd">    acovf</span>
+
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="n">acovf</span> <span class="o">=</span> <span class="n">arma_acovf</span><span class="p">(</span><span class="n">ar</span><span class="p">,</span> <span class="n">ma</span><span class="p">,</span> <span class="n">nobs</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">acovf</span><span class="o">/</span><span class="n">acovf</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+</div>
+<div class="viewcode-block" id="arma_pacf"><a class="viewcode-back" href="../../../generated/statsmodels.tsa.arima_process.arma_pacf.html#statsmodels.sandbox.tsa.fftarma.arma_pacf">[docs]</a><span class="k">def</span> <span class="nf">arma_pacf</span><span class="p">(</span><span class="n">ar</span><span class="p">,</span> <span class="n">ma</span><span class="p">,</span> <span class="n">nobs</span><span class="o">=</span><span class="mi">10</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;partial autocorrelation function of an ARMA process</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    ar : array_like, 1d</span>
+<span class="sd">        coefficient for autoregressive lag polynomial, including zero lag</span>
+<span class="sd">    ma : array_like, 1d</span>
+<span class="sd">        coefficient for moving-average lag polynomial, including zero lag</span>
+<span class="sd">    nobs : int</span>
+<span class="sd">        number of terms (lags plus zero lag) to include in returned pacf</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    pacf : array</span>
+<span class="sd">        partial autocorrelation of ARMA process given by ar, ma</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    solves yule-walker equation for each lag order up to nobs lags</span>
+
+<span class="sd">    not tested/checked yet</span>
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="n">apacf</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">nobs</span><span class="p">)</span>
+    <span class="n">acov</span> <span class="o">=</span> <span class="n">arma_acf</span><span class="p">(</span><span class="n">ar</span><span class="p">,</span> <span class="n">ma</span><span class="p">,</span> <span class="n">nobs</span><span class="o">=</span><span class="n">nobs</span><span class="o">+</span><span class="mi">1</span><span class="p">)</span>
+
+    <span class="n">apacf</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="mf">1.</span>
+    <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="n">nobs</span><span class="o">+</span><span class="mi">1</span><span class="p">):</span>
+        <span class="n">r</span> <span class="o">=</span> <span class="n">acov</span><span class="p">[:</span><span class="n">k</span><span class="p">]</span>
+        <span class="n">apacf</span><span class="p">[</span><span class="n">k</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">linalg</span><span class="o">.</span><span class="n">solve</span><span class="p">(</span><span class="n">linalg</span><span class="o">.</span><span class="n">toeplitz</span><span class="p">(</span><span class="n">r</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]),</span> <span class="n">r</span><span class="p">[</span><span class="mi">1</span><span class="p">:])[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+    <span class="k">return</span> <span class="n">apacf</span>
+
+</div>
+<div class="viewcode-block" id="arma_periodogram"><a class="viewcode-back" href="../../../generated/statsmodels.tsa.arima_process.arma_periodogram.html#statsmodels.sandbox.tsa.fftarma.arma_periodogram">[docs]</a><span class="k">def</span> <span class="nf">arma_periodogram</span><span class="p">(</span><span class="n">ar</span><span class="p">,</span> <span class="n">ma</span><span class="p">,</span> <span class="n">worN</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">whole</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;periodogram for ARMA process given by lag-polynomials ar and ma</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    ar : array_like</span>
+<span class="sd">        autoregressive lag-polynomial with leading 1 and lhs sign</span>
+<span class="sd">    ma : array_like</span>
+<span class="sd">        moving average lag-polynomial with leading 1</span>
+<span class="sd">    worN : {None, int}, optional</span>
+<span class="sd">        option for scipy.signal.freqz   (read &quot;w or N&quot;)</span>
+<span class="sd">        If None, then compute at 512 frequencies around the unit circle.</span>
+<span class="sd">        If a single integer, the compute at that many frequencies.</span>
+<span class="sd">        Otherwise, compute the response at frequencies given in worN</span>
+<span class="sd">    whole : {0,1}, optional</span>
+<span class="sd">        options for scipy.signal.freqz</span>
+<span class="sd">        Normally, frequencies are computed from 0 to pi (upper-half of</span>
+<span class="sd">        unit-circle.  If whole is non-zero compute frequencies from 0 to 2*pi.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    w : array</span>
+<span class="sd">        frequencies</span>
+<span class="sd">    sd : array</span>
+<span class="sd">        periodogram, spectral density</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    Normalization ?</span>
+
+<span class="sd">    This uses signal.freqz, which does not use fft. There is a fft version</span>
+<span class="sd">    somewhere.</span>
+
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="n">w</span><span class="p">,</span> <span class="n">h</span> <span class="o">=</span> <span class="n">signal</span><span class="o">.</span><span class="n">freqz</span><span class="p">(</span><span class="n">ma</span><span class="p">,</span> <span class="n">ar</span><span class="p">,</span> <span class="n">worN</span><span class="o">=</span><span class="n">worN</span><span class="p">,</span> <span class="n">whole</span><span class="o">=</span><span class="n">whole</span><span class="p">)</span>
+    <span class="n">sd</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">h</span><span class="p">)</span><span class="o">**</span><span class="mi">2</span><span class="o">/</span><span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="mi">2</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">pi</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">h</span><span class="p">))</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="c"># this happens with unit root or seasonal unit root&#39;</span>
+        <span class="k">print</span><span class="p">(</span><span class="s">&#39;Warning: nan in frequency response h, maybe a unit root&#39;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">w</span><span class="p">,</span> <span class="n">sd</span>
+
+</div>
+<div class="viewcode-block" id="arma_impulse_response"><a class="viewcode-back" href="../../../generated/statsmodels.tsa.arima_process.arma_impulse_response.html#statsmodels.sandbox.tsa.fftarma.arma_impulse_response">[docs]</a><span class="k">def</span> <span class="nf">arma_impulse_response</span><span class="p">(</span><span class="n">ar</span><span class="p">,</span> <span class="n">ma</span><span class="p">,</span> <span class="n">nobs</span><span class="o">=</span><span class="mi">100</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;get the impulse response function (MA representation) for ARMA process</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    ma : array_like, 1d</span>
+<span class="sd">        moving average lag polynomial</span>
+<span class="sd">    ar : array_like, 1d</span>
+<span class="sd">        auto regressive lag polynomial</span>
+<span class="sd">    nobs : int</span>
+<span class="sd">        number of observations to calculate</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    ir : array, 1d</span>
+<span class="sd">        impulse response function with nobs elements</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    This is the same as finding the MA representation of an ARMA(p,q).</span>
+<span class="sd">    By reversing the role of ar and ma in the function arguments, the</span>
+<span class="sd">    returned result is the AR representation of an ARMA(p,q), i.e</span>
+
+<span class="sd">    ma_representation = arma_impulse_response(ar, ma, nobs=100)</span>
+<span class="sd">    ar_representation = arma_impulse_response(ma, ar, nobs=100)</span>
+
+<span class="sd">    fully tested against matlab</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    AR(1)</span>
+
+<span class="sd">    &gt;&gt;&gt; arma_impulse_response([1.0, -0.8], [1.], nobs=10)</span>
+<span class="sd">    array([ 1.        ,  0.8       ,  0.64      ,  0.512     ,  0.4096    ,</span>
+<span class="sd">            0.32768   ,  0.262144  ,  0.2097152 ,  0.16777216,  0.13421773])</span>
+
+<span class="sd">    this is the same as</span>
+
+<span class="sd">    &gt;&gt;&gt; 0.8**np.arange(10)</span>
+<span class="sd">    array([ 1.        ,  0.8       ,  0.64      ,  0.512     ,  0.4096    ,</span>
+<span class="sd">            0.32768   ,  0.262144  ,  0.2097152 ,  0.16777216,  0.13421773])</span>
+
+<span class="sd">    MA(2)</span>
+
+<span class="sd">    &gt;&gt;&gt; arma_impulse_response([1.0], [1., 0.5, 0.2], nobs=10)</span>
+<span class="sd">    array([ 1. ,  0.5,  0.2,  0. ,  0. ,  0. ,  0. ,  0. ,  0. ,  0. ])</span>
+
+<span class="sd">    ARMA(1,2)</span>
+
+<span class="sd">    &gt;&gt;&gt; arma_impulse_response([1.0, -0.8], [1., 0.5, 0.2], nobs=10)</span>
+<span class="sd">    array([ 1.        ,  1.3       ,  1.24      ,  0.992     ,  0.7936    ,</span>
+<span class="sd">            0.63488   ,  0.507904  ,  0.4063232 ,  0.32505856,  0.26004685])</span>
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="n">impulse</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">nobs</span><span class="p">)</span>
+    <span class="n">impulse</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="mf">1.</span>
+    <span class="k">return</span> <span class="n">signal</span><span class="o">.</span><span class="n">lfilter</span><span class="p">(</span><span class="n">ma</span><span class="p">,</span> <span class="n">ar</span><span class="p">,</span> <span class="n">impulse</span><span class="p">)</span>
+
+
+<span class="c">#alias, easier to remember</span></div>
+<span class="n">arma2ma</span> <span class="o">=</span> <span class="n">arma_impulse_response</span>
+
+
+<span class="c">#alias, easier to remember</span>
+<div class="viewcode-block" id="arma2ar"><a class="viewcode-back" href="../../../generated/statsmodels.tsa.arima_process.arma2ar.html#statsmodels.sandbox.tsa.fftarma.arma2ar">[docs]</a><span class="k">def</span> <span class="nf">arma2ar</span><span class="p">(</span><span class="n">ar</span><span class="p">,</span> <span class="n">ma</span><span class="p">,</span> <span class="n">nobs</span><span class="o">=</span><span class="mi">100</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get the AR representation of an ARMA process</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    ar : array_like, 1d</span>
+<span class="sd">        auto regressive lag polynomial</span>
+<span class="sd">    ma : array_like, 1d</span>
+<span class="sd">        moving average lag polynomial</span>
+<span class="sd">    nobs : int</span>
+<span class="sd">        number of observations to calculate</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    ar : array, 1d</span>
+<span class="sd">        coefficients of AR lag polynomial with nobs elements</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    This is just an alias for</span>
+
+<span class="sd">    ``ar_representation = arma_impulse_response(ma, ar, nobs=100)``</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c"># tested against matlab</span>
+    <span class="k">return</span> <span class="n">arma_impulse_response</span><span class="p">(</span><span class="n">ma</span><span class="p">,</span> <span class="n">ar</span><span class="p">,</span> <span class="n">nobs</span><span class="o">=</span><span class="n">nobs</span><span class="p">)</span>
+
+
+<span class="c">#moved from sandbox.tsa.try_fi</span></div>
+<div class="viewcode-block" id="ar2arma"><a class="viewcode-back" href="../../../generated/statsmodels.tsa.arima_process.ar2arma.html#statsmodels.sandbox.tsa.fftarma.ar2arma">[docs]</a><span class="k">def</span> <span class="nf">ar2arma</span><span class="p">(</span><span class="n">ar_des</span><span class="p">,</span> <span class="n">p</span><span class="p">,</span> <span class="n">q</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="mi">20</span><span class="p">,</span> <span class="n">mse</span><span class="o">=</span><span class="s">&#39;ar&#39;</span><span class="p">,</span> <span class="n">start</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;find arma approximation to ar process</span>
+
+<span class="sd">    This finds the ARMA(p,q) coefficients that minimize the integrated</span>
+<span class="sd">    squared difference between the impulse_response functions</span>
+<span class="sd">    (MA representation) of the AR and the ARMA process. This does</span>
+<span class="sd">    currently not check whether the MA lagpolynomial of the ARMA</span>
+<span class="sd">    process is invertible, neither does it check the roots of the AR</span>
+<span class="sd">    lagpolynomial.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    ar_des : array_like</span>
+<span class="sd">        coefficients of original AR lag polynomial, including lag zero</span>
+<span class="sd">    p, q : int</span>
+<span class="sd">        length of desired ARMA lag polynomials</span>
+<span class="sd">    n : int</span>
+<span class="sd">        number of terms of the impuls_response function to include in the</span>
+<span class="sd">        objective function for the approximation</span>
+<span class="sd">    mse : string, &#39;ar&#39;</span>
+<span class="sd">        not used yet,</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    ar_app, ma_app : arrays</span>
+<span class="sd">        coefficients of the AR and MA lag polynomials of the approximation</span>
+<span class="sd">    res : tuple</span>
+<span class="sd">        result of optimize.leastsq</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    Extension is possible if we want to match autocovariance instead</span>
+<span class="sd">    of impulse response function.</span>
+
+<span class="sd">    TODO: convert MA lag polynomial, ma_app, to be invertible, by mirroring</span>
+<span class="sd">    roots outside the unit intervall to ones that are inside. How do we do</span>
+<span class="sd">    this?</span>
+
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="c">#p,q = pq</span>
+    <span class="k">def</span> <span class="nf">msear_err</span><span class="p">(</span><span class="n">arma</span><span class="p">,</span> <span class="n">ar_des</span><span class="p">):</span>
+        <span class="n">ar</span><span class="p">,</span> <span class="n">ma</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">r_</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="n">arma</span><span class="p">[:</span><span class="n">p</span><span class="o">-</span><span class="mi">1</span><span class="p">]],</span> <span class="n">np</span><span class="o">.</span><span class="n">r_</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="n">arma</span><span class="p">[</span><span class="n">p</span><span class="o">-</span><span class="mi">1</span><span class="p">:]]</span>
+        <span class="n">ar_approx</span> <span class="o">=</span> <span class="n">arma_impulse_response</span><span class="p">(</span><span class="n">ma</span><span class="p">,</span> <span class="n">ar</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span>
+<span class="c">##        print(ar,ma)</span>
+<span class="c">##        print(ar_des.shape, ar_approx.shape)</span>
+<span class="c">##        print(ar_des)</span>
+<span class="c">##        print(ar_approx)</span>
+        <span class="k">return</span> <span class="p">(</span><span class="n">ar_des</span> <span class="o">-</span> <span class="n">ar_approx</span><span class="p">)</span>  <span class="c"># ((ar - ar_approx)**2).sum()</span>
+    <span class="k">if</span> <span class="n">start</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+        <span class="n">arma0</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">r_</span><span class="p">[</span><span class="o">-</span><span class="mf">0.9</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">p</span><span class="o">-</span><span class="mi">1</span><span class="p">),</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">q</span><span class="o">-</span><span class="mi">1</span><span class="p">)]</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">arma0</span> <span class="o">=</span> <span class="n">start</span>
+    <span class="n">res</span> <span class="o">=</span> <span class="n">optimize</span><span class="o">.</span><span class="n">leastsq</span><span class="p">(</span><span class="n">msear_err</span><span class="p">,</span> <span class="n">arma0</span><span class="p">,</span> <span class="n">ar_des</span><span class="p">,</span> <span class="n">maxfev</span><span class="o">=</span><span class="mi">5000</span><span class="p">)</span>
+    <span class="c">#print(res)</span>
+    <span class="n">arma_app</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">atleast_1d</span><span class="p">(</span><span class="n">res</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+    <span class="n">ar_app</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">r_</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="n">arma_app</span><span class="p">[:</span><span class="n">p</span><span class="o">-</span><span class="mi">1</span><span class="p">]],</span>
+    <span class="n">ma_app</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">r_</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="n">arma_app</span><span class="p">[</span><span class="n">p</span><span class="o">-</span><span class="mi">1</span><span class="p">:]]</span>
+    <span class="k">return</span> <span class="n">ar_app</span><span class="p">,</span> <span class="n">ma_app</span><span class="p">,</span> <span class="n">res</span>
+
+</div>
+<div class="viewcode-block" id="lpol2index"><a class="viewcode-back" href="../../../generated/statsmodels.tsa.arima_process.lpol2index.html#statsmodels.sandbox.tsa.fftarma.lpol2index">[docs]</a><span class="k">def</span> <span class="nf">lpol2index</span><span class="p">(</span><span class="n">ar</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;remove zeros from lagpolynomial, squeezed representation with index</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    ar : array_like</span>
+<span class="sd">        coefficients of lag polynomial</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    coeffs : array</span>
+<span class="sd">        non-zero coefficients of lag polynomial</span>
+<span class="sd">    index : array</span>
+<span class="sd">        index (lags) of lagpolynomial with non-zero elements</span>
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="n">ar</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">ar</span><span class="p">)</span>
+    <span class="n">index</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nonzero</span><span class="p">(</span><span class="n">ar</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">coeffs</span> <span class="o">=</span> <span class="n">ar</span><span class="p">[</span><span class="n">index</span><span class="p">]</span>
+    <span class="k">return</span> <span class="n">coeffs</span><span class="p">,</span> <span class="n">index</span>
+
+</div>
+<div class="viewcode-block" id="index2lpol"><a class="viewcode-back" href="../../../generated/statsmodels.tsa.arima_process.index2lpol.html#statsmodels.sandbox.tsa.fftarma.index2lpol">[docs]</a><span class="k">def</span> <span class="nf">index2lpol</span><span class="p">(</span><span class="n">coeffs</span><span class="p">,</span> <span class="n">index</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;expand coefficients to lag poly</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    coeffs : array</span>
+<span class="sd">        non-zero coefficients of lag polynomial</span>
+<span class="sd">    index : array</span>
+<span class="sd">        index (lags) of lagpolynomial with non-zero elements</span>
+<span class="sd">    ar : array_like</span>
+<span class="sd">        coefficients of lag polynomial</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    ar : array_like</span>
+<span class="sd">        coefficients of lag polynomial</span>
+
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="n">n</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">index</span><span class="p">)</span>
+    <span class="n">ar</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">n</span><span class="p">)</span>
+    <span class="n">ar</span><span class="p">[</span><span class="n">index</span><span class="p">]</span> <span class="o">=</span> <span class="n">coeffs</span>
+    <span class="k">return</span> <span class="n">ar</span>
+
+
+<span class="c">#moved from sandbox.tsa.try_fi</span></div>
+<div class="viewcode-block" id="lpol_fima"><a class="viewcode-back" href="../../../generated/statsmodels.tsa.arima_process.lpol_fima.html#statsmodels.sandbox.tsa.fftarma.lpol_fima">[docs]</a><span class="k">def</span> <span class="nf">lpol_fima</span><span class="p">(</span><span class="n">d</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="mi">20</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;MA representation of fractional integration</span>
+
+<span class="sd">    .. math:: (1-L)^{-d} for |d|&lt;0.5  or |d|&lt;1 (?)</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    d : float</span>
+<span class="sd">        fractional power</span>
+<span class="sd">    n : int</span>
+<span class="sd">        number of terms to calculate, including lag zero</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    ma : array</span>
+<span class="sd">        coefficients of lag polynomial</span>
+
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="c">#hide import inside function until we use this heavily</span>
+    <span class="kn">from</span> <span class="nn">scipy.special</span> <span class="kn">import</span> <span class="n">gammaln</span>
+    <span class="n">j</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">n</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">gammaln</span><span class="p">(</span><span class="n">d</span><span class="o">+</span><span class="n">j</span><span class="p">)</span> <span class="o">-</span> <span class="n">gammaln</span><span class="p">(</span><span class="n">j</span><span class="o">+</span><span class="mi">1</span><span class="p">)</span> <span class="o">-</span> <span class="n">gammaln</span><span class="p">(</span><span class="n">d</span><span class="p">))</span>
+
+
+<span class="c">#moved from sandbox.tsa.try_fi</span></div>
+<div class="viewcode-block" id="lpol_fiar"><a class="viewcode-back" href="../../../generated/statsmodels.tsa.arima_process.lpol_fiar.html#statsmodels.sandbox.tsa.fftarma.lpol_fiar">[docs]</a><span class="k">def</span> <span class="nf">lpol_fiar</span><span class="p">(</span><span class="n">d</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="mi">20</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;AR representation of fractional integration</span>
+
+<span class="sd">    .. math:: (1-L)^{d} for |d|&lt;0.5  or |d|&lt;1 (?)</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    d : float</span>
+<span class="sd">        fractional power</span>
+<span class="sd">    n : int</span>
+<span class="sd">        number of terms to calculate, including lag zero</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    ar : array</span>
+<span class="sd">        coefficients of lag polynomial</span>
+
+<span class="sd">    Notes:</span>
+<span class="sd">    first coefficient is 1, negative signs except for first term,</span>
+<span class="sd">    ar(L)*x_t</span>
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="c">#hide import inside function until we use this heavily</span>
+    <span class="kn">from</span> <span class="nn">scipy.special</span> <span class="kn">import</span> <span class="n">gammaln</span>
+    <span class="n">j</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">n</span><span class="p">)</span>
+    <span class="n">ar</span> <span class="o">=</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">gammaln</span><span class="p">(</span><span class="o">-</span><span class="n">d</span><span class="o">+</span><span class="n">j</span><span class="p">)</span> <span class="o">-</span> <span class="n">gammaln</span><span class="p">(</span><span class="n">j</span><span class="o">+</span><span class="mi">1</span><span class="p">)</span> <span class="o">-</span> <span class="n">gammaln</span><span class="p">(</span><span class="o">-</span><span class="n">d</span><span class="p">))</span>
+    <span class="n">ar</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span>
+    <span class="k">return</span> <span class="n">ar</span>
+
+
+<span class="c">#moved from sandbox.tsa.try_fi</span></div>
+<div class="viewcode-block" id="lpol_sdiff"><a class="viewcode-back" href="../../../generated/statsmodels.tsa.arima_process.lpol_sdiff.html#statsmodels.sandbox.tsa.fftarma.lpol_sdiff">[docs]</a><span class="k">def</span> <span class="nf">lpol_sdiff</span><span class="p">(</span><span class="n">s</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;return coefficients for seasonal difference (1-L^s)</span>
+
+<span class="sd">    just a trivial convenience function</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    s : int</span>
+<span class="sd">        number of periods in season</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    sdiff : list, length s+1</span>
+
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="k">return</span> <span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">*</span><span class="p">(</span><span class="n">s</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span> <span class="o">+</span> <span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+
+</div>
+<div class="viewcode-block" id="deconvolve"><a class="viewcode-back" href="../../../generated/statsmodels.tsa.arima_process.deconvolve.html#statsmodels.sandbox.tsa.fftarma.deconvolve">[docs]</a><span class="k">def</span> <span class="nf">deconvolve</span><span class="p">(</span><span class="n">num</span><span class="p">,</span> <span class="n">den</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Deconvolves divisor out of signal, division of polynomials for n terms</span>
+
+<span class="sd">    calculates den^{-1} * num</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    num : array_like</span>
+<span class="sd">        signal or lag polynomial</span>
+<span class="sd">    denom : array_like</span>
+<span class="sd">        coefficients of lag polynomial (linear filter)</span>
+<span class="sd">    n : None or int</span>
+<span class="sd">        number of terms of quotient</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    quot : array</span>
+<span class="sd">        quotient or filtered series</span>
+<span class="sd">    rem : array</span>
+<span class="sd">        remainder</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    If num is a time series, then this applies the linear filter den^{-1}.</span>
+<span class="sd">    If both num and den are both lagpolynomials, then this calculates the</span>
+<span class="sd">    quotient polynomial for n terms and also returns the remainder.</span>
+
+<span class="sd">    This is copied from scipy.signal.signaltools and added n as optional</span>
+<span class="sd">    parameter.</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">num</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">atleast_1d</span><span class="p">(</span><span class="n">num</span><span class="p">)</span>
+    <span class="n">den</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">atleast_1d</span><span class="p">(</span><span class="n">den</span><span class="p">)</span>
+    <span class="n">N</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">num</span><span class="p">)</span>
+    <span class="n">D</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">den</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">D</span> <span class="o">&gt;</span> <span class="n">N</span> <span class="ow">and</span> <span class="n">n</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+        <span class="n">quot</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">rem</span> <span class="o">=</span> <span class="n">num</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">n</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">n</span> <span class="o">=</span> <span class="n">N</span><span class="o">-</span><span class="n">D</span><span class="o">+</span><span class="mi">1</span>
+        <span class="nb">input</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="nb">float</span><span class="p">)</span>
+        <span class="nb">input</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span>
+        <span class="n">quot</span> <span class="o">=</span> <span class="n">signal</span><span class="o">.</span><span class="n">lfilter</span><span class="p">(</span><span class="n">num</span><span class="p">,</span> <span class="n">den</span><span class="p">,</span> <span class="nb">input</span><span class="p">)</span>
+        <span class="n">num_approx</span> <span class="o">=</span> <span class="n">signal</span><span class="o">.</span><span class="n">convolve</span><span class="p">(</span><span class="n">den</span><span class="p">,</span> <span class="n">quot</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s">&#39;full&#39;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">num</span><span class="p">)</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="n">num_approx</span><span class="p">):</span>  <span class="c"># 1d only ?</span>
+            <span class="n">num</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">((</span><span class="n">num</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">num_approx</span><span class="p">)</span><span class="o">-</span><span class="nb">len</span><span class="p">(</span><span class="n">num</span><span class="p">))))</span>
+        <span class="n">rem</span> <span class="o">=</span> <span class="n">num</span> <span class="o">-</span> <span class="n">num_approx</span>
+    <span class="k">return</span> <span class="n">quot</span><span class="p">,</span> <span class="n">rem</span>
+
+</div>
+<div class="viewcode-block" id="ArmaProcess"><a class="viewcode-back" href="../../../generated/statsmodels.tsa.arima_process.ArmaProcess.html#statsmodels.sandbox.tsa.fftarma.ArmaProcess">[docs]</a><span class="k">class</span> <span class="nc">ArmaProcess</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Represent an ARMA process for given lag-polynomials</span>
+
+<span class="sd">    This is a class to bring together properties of the process.</span>
+<span class="sd">    It does not do any estimation or statistical analysis.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    ar : array_like, 1d</span>
+<span class="sd">        Coefficient for autoregressive lag polynomial, including zero lag.</span>
+<span class="sd">        See the notes for some information about the sign.</span>
+<span class="sd">    ma : array_like, 1d</span>
+<span class="sd">        Coefficient for moving-average lag polynomial, including zero lag</span>
+<span class="sd">    nobs : int, optional</span>
+<span class="sd">        Length of simulated time series. Used, for example, if a sample is</span>
+<span class="sd">        generated. See example.</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    As mentioned above, both the AR and MA components should include the</span>
+<span class="sd">    coefficient on the zero-lag. This is typically 1. Further, due to the</span>
+<span class="sd">    conventions used in signal processing used in signal.lfilter vs.</span>
+<span class="sd">    conventions in statistics for ARMA processes, the AR paramters should</span>
+<span class="sd">    have the opposite sign of what you might expect. See the examples below.</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    &gt;&gt;&gt; import numpy as np</span>
+<span class="sd">    &gt;&gt;&gt; np.random.seed(12345)</span>
+<span class="sd">    &gt;&gt;&gt; arparams = np.array([.75, -.25])</span>
+<span class="sd">    &gt;&gt;&gt; maparams = np.array([.65, .35])</span>
+<span class="sd">    &gt;&gt;&gt; ar = np.r_[1, -ar] # add zero-lag and negate</span>
+<span class="sd">    &gt;&gt;&gt; ma = np.r_[1, ma] # add zero-lag</span>
+<span class="sd">    &gt;&gt;&gt; arma_process = sm.tsa.ArmaProcess(ar, ma)</span>
+<span class="sd">    &gt;&gt;&gt; arma_process.isstationary</span>
+<span class="sd">    True</span>
+<span class="sd">    &gt;&gt;&gt; arma_process.isinvertible</span>
+<span class="sd">    True</span>
+<span class="sd">    &gt;&gt;&gt; y = arma_process.generate_sample(250)</span>
+<span class="sd">    &gt;&gt;&gt; model = sm.tsa.ARMA(y, (2, 2)).fit(trend=&#39;nc&#39;, disp=0)</span>
+<span class="sd">    &gt;&gt;&gt; model.params</span>
+<span class="sd">    array([ 0.79044189, -0.23140636,  0.70072904,  0.40608028])</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c"># maybe needs special handling for unit roots</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ar</span><span class="p">,</span> <span class="n">ma</span><span class="p">,</span> <span class="n">nobs</span><span class="o">=</span><span class="mi">100</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">ar</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">ar</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">ma</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">ma</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">arcoefs</span> <span class="o">=</span> <span class="o">-</span><span class="bp">self</span><span class="o">.</span><span class="n">ar</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">macoefs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ma</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">arpoly</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">polynomial</span><span class="o">.</span><span class="n">Polynomial</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ar</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">mapoly</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">polynomial</span><span class="o">.</span><span class="n">Polynomial</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ma</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span> <span class="o">=</span> <span class="n">nobs</span>
+
+    <span class="nd">@classmethod</span>
+<div class="viewcode-block" id="ArmaProcess.from_coeffs"><a class="viewcode-back" href="../../../generated/statsmodels.tsa.arima_process.ArmaProcess.from_coeffs.html#statsmodels.sandbox.tsa.fftarma.ArmaProcess.from_coeffs">[docs]</a>    <span class="k">def</span> <span class="nf">from_coeffs</span><span class="p">(</span><span class="n">cls</span><span class="p">,</span> <span class="n">arcoefs</span><span class="p">,</span> <span class="n">macoefs</span><span class="p">,</span> <span class="n">nobs</span><span class="o">=</span><span class="mi">100</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Create ArmaProcess instance from coefficients of the lag-polynomials</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        arcoefs : array-like</span>
+<span class="sd">            Coefficient for autoregressive lag polynomial, not including zero</span>
+<span class="sd">            lag. The sign is inverted to conform to the usual time series</span>
+<span class="sd">            representation of an ARMA process in statistics. See the class</span>
+<span class="sd">            docstring for more information.</span>
+<span class="sd">        macoefs : array-like</span>
+<span class="sd">            Coefficient for moving-average lag polynomial, including zero lag</span>
+<span class="sd">        nobs : int, optional</span>
+<span class="sd">            Length of simulated time series. Used, for example, if a sample</span>
+<span class="sd">            is generated.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">cls</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">r_</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="n">arcoefs</span><span class="p">],</span> <span class="n">np</span><span class="o">.</span><span class="n">r_</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="n">macoefs</span><span class="p">],</span> <span class="n">nobs</span><span class="o">=</span><span class="n">nobs</span><span class="p">)</span>
+</div>
+    <span class="nd">@classmethod</span>
+<div class="viewcode-block" id="ArmaProcess.from_estimation"><a class="viewcode-back" href="../../../generated/statsmodels.tsa.arima_process.ArmaProcess.from_estimation.html#statsmodels.sandbox.tsa.fftarma.ArmaProcess.from_estimation">[docs]</a>    <span class="k">def</span> <span class="nf">from_estimation</span><span class="p">(</span><span class="n">cls</span><span class="p">,</span> <span class="n">model_results</span><span class="p">,</span> <span class="n">nobs</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Create ArmaProcess instance from ARMA estimation results</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        model_results : ARMAResults instance</span>
+<span class="sd">            A fitted model</span>
+<span class="sd">        nobs : int, optional</span>
+<span class="sd">            If None, nobs is taken from the results</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">arcoefs</span> <span class="o">=</span> <span class="n">model_results</span><span class="o">.</span><span class="n">arparams</span>
+        <span class="n">macoefs</span> <span class="o">=</span> <span class="n">model_results</span><span class="o">.</span><span class="n">maparams</span>
+        <span class="n">nobs</span> <span class="o">=</span> <span class="n">nobs</span> <span class="ow">or</span> <span class="n">model_results</span><span class="o">.</span><span class="n">nobs</span>
+        <span class="k">return</span> <span class="n">cls</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">r_</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="n">arcoefs</span><span class="p">],</span> <span class="n">np</span><span class="o">.</span><span class="n">r_</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="n">macoefs</span><span class="p">],</span> <span class="n">nobs</span><span class="o">=</span><span class="n">nobs</span><span class="p">)</span>
+</div>
+    <span class="k">def</span> <span class="nf">__mul__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">oth</span><span class="p">):</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">oth</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">__class__</span><span class="p">):</span>
+            <span class="n">ar</span> <span class="o">=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">arpoly</span> <span class="o">*</span> <span class="n">oth</span><span class="o">.</span><span class="n">arpoly</span><span class="p">)</span><span class="o">.</span><span class="n">coef</span>
+            <span class="n">ma</span> <span class="o">=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">mapoly</span> <span class="o">*</span> <span class="n">oth</span><span class="o">.</span><span class="n">mapoly</span><span class="p">)</span><span class="o">.</span><span class="n">coef</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">aroth</span><span class="p">,</span> <span class="n">maoth</span> <span class="o">=</span> <span class="n">oth</span>
+                <span class="n">arpolyoth</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">polynomial</span><span class="o">.</span><span class="n">Polynomial</span><span class="p">(</span><span class="n">aroth</span><span class="p">)</span>
+                <span class="n">mapolyoth</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">polynomial</span><span class="o">.</span><span class="n">Polynomial</span><span class="p">(</span><span class="n">maoth</span><span class="p">)</span>
+                <span class="n">ar</span> <span class="o">=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">arpoly</span> <span class="o">*</span> <span class="n">arpolyoth</span><span class="p">)</span><span class="o">.</span><span class="n">coef</span>
+                <span class="n">ma</span> <span class="o">=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">mapoly</span> <span class="o">*</span> <span class="n">mapolyoth</span><span class="p">)</span><span class="o">.</span><span class="n">coef</span>
+            <span class="k">except</span><span class="p">:</span>
+                <span class="k">print</span><span class="p">(</span><span class="s">&#39;other is not a valid type&#39;</span><span class="p">)</span>
+                <span class="k">raise</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">__class__</span><span class="p">(</span><span class="n">ar</span><span class="p">,</span> <span class="n">ma</span><span class="p">,</span> <span class="n">nobs</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">nobs</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s">&#39;ArmaProcess(</span><span class="si">%r</span><span class="s">, </span><span class="si">%r</span><span class="s">, nobs=</span><span class="si">%d</span><span class="s">)&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ar</span><span class="o">.</span><span class="n">tolist</span><span class="p">(),</span>
+                                                 <span class="bp">self</span><span class="o">.</span><span class="n">ma</span><span class="o">.</span><span class="n">tolist</span><span class="p">(),</span>
+                                                 <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s">&#39;ArmaProcess</span><span class="se">\n</span><span class="s">AR: </span><span class="si">%r</span><span class="se">\n</span><span class="s">MA: </span><span class="si">%r</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ar</span><span class="o">.</span><span class="n">tolist</span><span class="p">(),</span>
+                                                <span class="bp">self</span><span class="o">.</span><span class="n">ma</span><span class="o">.</span><span class="n">tolist</span><span class="p">())</span>
+
+<div class="viewcode-block" id="ArmaProcess.acovf"><a class="viewcode-back" href="../../../generated/statsmodels.tsa.arima_process.ArmaProcess.acovf.html#statsmodels.sandbox.tsa.fftarma.ArmaProcess.acovf">[docs]</a>    <span class="k">def</span> <span class="nf">acovf</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">nobs</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="n">nobs</span> <span class="o">=</span> <span class="n">nobs</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span>
+        <span class="k">return</span> <span class="n">arma_acovf</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ar</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">ma</span><span class="p">,</span> <span class="n">nobs</span><span class="o">=</span><span class="n">nobs</span><span class="p">)</span>
+</div>
+    <span class="n">acovf</span><span class="o">.</span><span class="n">__doc__</span> <span class="o">=</span> <span class="n">arma_acovf</span><span class="o">.</span><span class="n">__doc__</span>
+
+<div class="viewcode-block" id="ArmaProcess.acf"><a class="viewcode-back" href="../../../generated/statsmodels.tsa.arima_process.ArmaProcess.acf.html#statsmodels.sandbox.tsa.fftarma.ArmaProcess.acf">[docs]</a>    <span class="k">def</span> <span class="nf">acf</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">nobs</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="n">nobs</span> <span class="o">=</span> <span class="n">nobs</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span>
+        <span class="k">return</span> <span class="n">arma_acf</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ar</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">ma</span><span class="p">,</span> <span class="n">nobs</span><span class="o">=</span><span class="n">nobs</span><span class="p">)</span>
+</div>
+    <span class="n">acf</span><span class="o">.</span><span class="n">__doc__</span> <span class="o">=</span> <span class="n">arma_acf</span><span class="o">.</span><span class="n">__doc__</span>
+
+<div class="viewcode-block" id="ArmaProcess.pacf"><a class="viewcode-back" href="../../../generated/statsmodels.tsa.arima_process.ArmaProcess.pacf.html#statsmodels.sandbox.tsa.fftarma.ArmaProcess.pacf">[docs]</a>    <span class="k">def</span> <span class="nf">pacf</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">nobs</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="n">nobs</span> <span class="o">=</span> <span class="n">nobs</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span>
+        <span class="k">return</span> <span class="n">arma_pacf</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ar</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">ma</span><span class="p">,</span> <span class="n">nobs</span><span class="o">=</span><span class="n">nobs</span><span class="p">)</span>
+</div>
+    <span class="n">pacf</span><span class="o">.</span><span class="n">__doc__</span> <span class="o">=</span> <span class="n">arma_pacf</span><span class="o">.</span><span class="n">__doc__</span>
+
+<div class="viewcode-block" id="ArmaProcess.periodogram"><a class="viewcode-back" href="../../../generated/statsmodels.tsa.arima_process.ArmaProcess.periodogram.html#statsmodels.sandbox.tsa.fftarma.ArmaProcess.periodogram">[docs]</a>    <span class="k">def</span> <span class="nf">periodogram</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">nobs</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="n">nobs</span> <span class="o">=</span> <span class="n">nobs</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span>
+        <span class="k">return</span> <span class="n">arma_periodogram</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ar</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">ma</span><span class="p">,</span> <span class="n">worN</span><span class="o">=</span><span class="n">nobs</span><span class="p">)</span>
+</div>
+    <span class="n">periodogram</span><span class="o">.</span><span class="n">__doc__</span> <span class="o">=</span> <span class="n">arma_periodogram</span><span class="o">.</span><span class="n">__doc__</span>
+
+<div class="viewcode-block" id="ArmaProcess.impulse_response"><a class="viewcode-back" href="../../../generated/statsmodels.tsa.arima_process.ArmaProcess.impulse_response.html#statsmodels.sandbox.tsa.fftarma.ArmaProcess.impulse_response">[docs]</a>    <span class="k">def</span> <span class="nf">impulse_response</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">nobs</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="n">nobs</span> <span class="o">=</span> <span class="n">nobs</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span>
+        <span class="k">return</span> <span class="n">arma_impulse_response</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ar</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">ma</span><span class="p">,</span> <span class="n">worN</span><span class="o">=</span><span class="n">nobs</span><span class="p">)</span>
+</div>
+    <span class="n">impulse_response</span><span class="o">.</span><span class="n">__doc__</span> <span class="o">=</span> <span class="n">arma_impulse_response</span><span class="o">.</span><span class="n">__doc__</span>
+
+<div class="viewcode-block" id="ArmaProcess.arma2ma"><a class="viewcode-back" href="../../../generated/statsmodels.tsa.arima_process.ArmaProcess.arma2ma.html#statsmodels.sandbox.tsa.fftarma.ArmaProcess.arma2ma">[docs]</a>    <span class="k">def</span> <span class="nf">arma2ma</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">nobs</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="n">nobs</span> <span class="o">=</span> <span class="n">nobs</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span>
+        <span class="k">return</span> <span class="n">arma2ma</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ar</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">ma</span><span class="p">,</span> <span class="n">nobs</span><span class="o">=</span><span class="n">nobs</span><span class="p">)</span>
+</div>
+    <span class="n">arma2ma</span><span class="o">.</span><span class="n">__doc__</span> <span class="o">=</span> <span class="n">arma2ma</span><span class="o">.</span><span class="n">__doc__</span>
+
+<div class="viewcode-block" id="ArmaProcess.arma2ar"><a class="viewcode-back" href="../../../generated/statsmodels.tsa.arima_process.ArmaProcess.arma2ar.html#statsmodels.sandbox.tsa.fftarma.ArmaProcess.arma2ar">[docs]</a>    <span class="k">def</span> <span class="nf">arma2ar</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">nobs</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="n">nobs</span> <span class="o">=</span> <span class="n">nobs</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span>
+        <span class="k">return</span> <span class="n">arma2ar</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ar</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">ma</span><span class="p">,</span> <span class="n">nobs</span><span class="o">=</span><span class="n">nobs</span><span class="p">)</span>
+</div>
+    <span class="n">arma2ar</span><span class="o">.</span><span class="n">__doc__</span> <span class="o">=</span> <span class="n">arma2ar</span><span class="o">.</span><span class="n">__doc__</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">arroots</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Roots of autoregressive lag-polynomial</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">arpoly</span><span class="o">.</span><span class="n">roots</span><span class="p">()</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">maroots</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Roots of moving average lag-polynomial</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">mapoly</span><span class="o">.</span><span class="n">roots</span><span class="p">()</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">isstationary</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;Arma process is stationary if AR roots are outside unit circle</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        isstationary : boolean</span>
+<span class="sd">             True if autoregressive roots are outside unit circle</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">arroots</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">):</span>
+            <span class="k">return</span> <span class="bp">True</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">False</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">isinvertible</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;Arma process is invertible if MA roots are outside unit circle</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        isinvertible : boolean</span>
+<span class="sd">             True if moving average roots are outside unit circle</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">maroots</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">):</span>
+            <span class="k">return</span> <span class="bp">True</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">False</span>
+
+<div class="viewcode-block" id="ArmaProcess.invertroots"><a class="viewcode-back" href="../../../generated/statsmodels.tsa.arima_process.ArmaProcess.invertroots.html#statsmodels.sandbox.tsa.fftarma.ArmaProcess.invertroots">[docs]</a>    <span class="k">def</span> <span class="nf">invertroots</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">retnew</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;make MA polynomial invertible by inverting roots inside unit circle</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        retnew : boolean</span>
+<span class="sd">            If False (default), then return the lag-polynomial as array.</span>
+<span class="sd">            If True, then return a new instance with invertible MA-polynomial</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        manew : array</span>
+<span class="sd">           new invertible MA lag-polynomial, returned if retnew is false.</span>
+<span class="sd">        wasinvertible : boolean</span>
+<span class="sd">           True if the MA lag-polynomial was already invertible, returned if</span>
+<span class="sd">           retnew is false.</span>
+<span class="sd">        armaprocess : new instance of class</span>
+<span class="sd">           If retnew is true, then return a new instance with invertible</span>
+<span class="sd">           MA-polynomial</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="c">#TODO: variable returns like this?</span>
+        <span class="n">pr</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ma_roots</span><span class="p">()</span>
+        <span class="n">insideroots</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">pr</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mi">1</span>
+        <span class="k">if</span> <span class="n">insideroots</span><span class="o">.</span><span class="n">any</span><span class="p">():</span>
+            <span class="n">pr</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">pr</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="mf">1.</span><span class="o">/</span><span class="n">pr</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">pr</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mi">1</span><span class="p">]</span>
+            <span class="n">pnew</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">polynomial</span><span class="o">.</span><span class="n">Polynomial</span><span class="o">.</span><span class="n">fromroots</span><span class="p">(</span><span class="n">pr</span><span class="p">)</span>
+            <span class="n">mainv</span> <span class="o">=</span> <span class="n">pnew</span><span class="o">.</span><span class="n">coef</span><span class="o">/</span><span class="n">pnew</span><span class="o">.</span><span class="n">coef</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="n">wasinvertible</span> <span class="o">=</span> <span class="bp">False</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">mainv</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ma</span>
+            <span class="n">wasinvertible</span> <span class="o">=</span> <span class="bp">True</span>
+        <span class="k">if</span> <span class="n">retnew</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">__class__</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ar</span><span class="p">,</span> <span class="n">mainv</span><span class="p">,</span> <span class="n">nobs</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">nobs</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">mainv</span><span class="p">,</span> <span class="n">wasinvertible</span>
+</div>
+<div class="viewcode-block" id="ArmaProcess.generate_sample"><a class="viewcode-back" href="../../../generated/statsmodels.tsa.arima_process.ArmaProcess.generate_sample.html#statsmodels.sandbox.tsa.fftarma.ArmaProcess.generate_sample">[docs]</a>    <span class="k">def</span> <span class="nf">generate_sample</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">nsample</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="n">scale</span><span class="o">=</span><span class="mf">1.</span><span class="p">,</span> <span class="n">distrvs</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+                        <span class="n">burnin</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;generate ARMA samples</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        nsample : int or tuple of ints</span>
+<span class="sd">            If nsample is an integer, then this creates a 1d timeseries of</span>
+<span class="sd">            length size. If nsample is a tuple, then the timeseries is along</span>
+<span class="sd">            axis. All other axis have independent arma samples.</span>
+<span class="sd">        scale : float</span>
+<span class="sd">            standard deviation of noise</span>
+<span class="sd">        distrvs : function, random number generator</span>
+<span class="sd">            function that generates the random numbers, and takes sample size</span>
+<span class="sd">            as argument</span>
+<span class="sd">            default: np.random.randn</span>
+<span class="sd">            TODO: change to size argument</span>
+<span class="sd">        burnin : integer (default: 0)</span>
+<span class="sd">            to reduce the effect of initial conditions, burnin observations</span>
+<span class="sd">            at the beginning of the sample are dropped</span>
+<span class="sd">        axis : int</span>
+<span class="sd">            See nsample.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        rvs : ndarray</span>
+<span class="sd">            random sample(s) of arma process</span>
+
+<span class="sd">        Notes</span>
+<span class="sd">        -----</span>
+<span class="sd">        Should work for n-dimensional with time series along axis, but not</span>
+<span class="sd">        tested yet. Processes are sampled independently.</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">if</span> <span class="n">distrvs</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">distrvs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">normal</span>
+        <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">ndim</span><span class="p">(</span><span class="n">nsample</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="n">nsample</span> <span class="o">=</span> <span class="p">[</span><span class="n">nsample</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">burnin</span><span class="p">:</span>
+            <span class="c">#handle burin time for nd arrays</span>
+            <span class="c">#maybe there is a better trick in scipy.fft code</span>
+            <span class="n">newsize</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">nsample</span><span class="p">)</span>
+            <span class="n">newsize</span><span class="p">[</span><span class="n">axis</span><span class="p">]</span> <span class="o">+=</span> <span class="n">burnin</span>
+            <span class="n">newsize</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">newsize</span><span class="p">)</span>
+            <span class="n">fslice</span> <span class="o">=</span> <span class="p">[</span><span class="nb">slice</span><span class="p">(</span><span class="bp">None</span><span class="p">)]</span><span class="o">*</span><span class="nb">len</span><span class="p">(</span><span class="n">newsize</span><span class="p">)</span>
+            <span class="n">fslice</span><span class="p">[</span><span class="n">axis</span><span class="p">]</span> <span class="o">=</span> <span class="nb">slice</span><span class="p">(</span><span class="n">burnin</span><span class="p">,</span> <span class="bp">None</span><span class="p">,</span> <span class="bp">None</span><span class="p">)</span>
+            <span class="n">fslice</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">fslice</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">newsize</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">nsample</span><span class="p">)</span>
+            <span class="n">fslice</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">([</span><span class="nb">slice</span><span class="p">(</span><span class="bp">None</span><span class="p">)]</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">ndim</span><span class="p">(</span><span class="n">newsize</span><span class="p">))</span>
+
+        <span class="n">eta</span> <span class="o">=</span> <span class="n">scale</span> <span class="o">*</span> <span class="n">distrvs</span><span class="p">(</span><span class="n">size</span><span class="o">=</span><span class="n">newsize</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">signal</span><span class="o">.</span><span class="n">lfilter</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ma</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">ar</span><span class="p">,</span> <span class="n">eta</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="n">axis</span><span class="p">)[</span><span class="n">fslice</span><span class="p">]</span>
+
+</div></div>
+<span class="n">__all__</span> <span class="o">=</span> <span class="p">[</span><span class="s">&#39;arma_acf&#39;</span><span class="p">,</span> <span class="s">&#39;arma_acovf&#39;</span><span class="p">,</span> <span class="s">&#39;arma_generate_sample&#39;</span><span class="p">,</span>
+           <span class="s">&#39;arma_impulse_response&#39;</span><span class="p">,</span> <span class="s">&#39;arma2ar&#39;</span><span class="p">,</span> <span class="s">&#39;arma2ma&#39;</span><span class="p">,</span> <span class="s">&#39;deconvolve&#39;</span><span class="p">,</span>
+           <span class="s">&#39;lpol2index&#39;</span><span class="p">,</span> <span class="s">&#39;index2lpol&#39;</span><span class="p">]</span>
+
+
+<span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s">&#39;__main__&#39;</span><span class="p">:</span>
+
+
+    <span class="c"># Simulate AR(1)</span>
+    <span class="c">#--------------</span>
+    <span class="c"># ar * y = ma * eta</span>
+    <span class="n">ar</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mf">0.8</span><span class="p">]</span>
+    <span class="n">ma</span> <span class="o">=</span> <span class="p">[</span><span class="mf">1.0</span><span class="p">]</span>
+
+    <span class="c"># generate AR data</span>
+    <span class="n">eta</span> <span class="o">=</span> <span class="mf">0.1</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randn</span><span class="p">(</span><span class="mi">1000</span><span class="p">)</span>
+    <span class="n">yar1</span> <span class="o">=</span> <span class="n">signal</span><span class="o">.</span><span class="n">lfilter</span><span class="p">(</span><span class="n">ar</span><span class="p">,</span> <span class="n">ma</span><span class="p">,</span> <span class="n">eta</span><span class="p">)</span>
+
+    <span class="k">print</span><span class="p">(</span><span class="s">&quot;</span><span class="se">\n</span><span class="s">Example 0&quot;</span><span class="p">)</span>
+    <span class="n">arest</span> <span class="o">=</span> <span class="n">ARIMAProcess</span><span class="p">(</span><span class="n">yar1</span><span class="p">)</span>
+    <span class="n">rhohat</span><span class="p">,</span> <span class="n">cov_x</span><span class="p">,</span> <span class="n">infodict</span><span class="p">,</span> <span class="n">mesg</span><span class="p">,</span> <span class="n">ier</span> <span class="o">=</span> <span class="n">arest</span><span class="o">.</span><span class="n">fit</span><span class="p">((</span><span class="mi">1</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">1</span><span class="p">))</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">rhohat</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">cov_x</span><span class="p">)</span>
+
+    <span class="k">print</span><span class="p">(</span><span class="s">&quot;</span><span class="se">\n</span><span class="s">Example 1&quot;</span><span class="p">)</span>
+    <span class="n">ar</span> <span class="o">=</span> <span class="p">[</span><span class="mf">1.0</span><span class="p">,</span>  <span class="o">-</span><span class="mf">0.8</span><span class="p">]</span>
+    <span class="n">ma</span> <span class="o">=</span> <span class="p">[</span><span class="mf">1.0</span><span class="p">,</span>  <span class="mf">0.5</span><span class="p">]</span>
+    <span class="n">y1</span> <span class="o">=</span> <span class="n">arest</span><span class="o">.</span><span class="n">generate_sample</span><span class="p">(</span><span class="n">ar</span><span class="p">,</span><span class="n">ma</span><span class="p">,</span><span class="mi">1000</span><span class="p">,</span><span class="mf">0.1</span><span class="p">)</span>
+    <span class="n">arest</span> <span class="o">=</span> <span class="n">ARIMAProcess</span><span class="p">(</span><span class="n">y1</span><span class="p">)</span>
+    <span class="n">rhohat1</span><span class="p">,</span> <span class="n">cov_x1</span><span class="p">,</span> <span class="n">infodict</span><span class="p">,</span> <span class="n">mesg</span><span class="p">,</span> <span class="n">ier</span> <span class="o">=</span> <span class="n">arest</span><span class="o">.</span><span class="n">fit</span><span class="p">((</span><span class="mi">1</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">1</span><span class="p">))</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">rhohat1</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">cov_x1</span><span class="p">)</span>
+    <span class="n">err1</span> <span class="o">=</span> <span class="n">arest</span><span class="o">.</span><span class="n">errfn</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="n">y1</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">var</span><span class="p">(</span><span class="n">err1</span><span class="p">))</span>
+    <span class="kn">import</span> <span class="nn">statsmodels.api</span> <span class="kn">as</span> <span class="nn">sm</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">sm</span><span class="o">.</span><span class="n">regression</span><span class="o">.</span><span class="n">yule_walker</span><span class="p">(</span><span class="n">y1</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">inv</span><span class="o">=</span><span class="bp">True</span><span class="p">))</span>
+
+    <span class="k">print</span><span class="p">(</span><span class="s">&quot;</span><span class="se">\n</span><span class="s">Example 2&quot;</span><span class="p">)</span>
+    <span class="n">nsample</span> <span class="o">=</span> <span class="mi">1000</span>
+    <span class="n">ar</span> <span class="o">=</span> <span class="p">[</span><span class="mf">1.0</span><span class="p">,</span> <span class="o">-</span><span class="mf">0.6</span><span class="p">,</span> <span class="o">-</span><span class="mf">0.1</span><span class="p">]</span>
+    <span class="n">ma</span> <span class="o">=</span> <span class="p">[</span><span class="mf">1.0</span><span class="p">,</span>  <span class="mf">0.3</span><span class="p">,</span>  <span class="mf">0.2</span><span class="p">]</span>
+    <span class="n">y2</span> <span class="o">=</span> <span class="n">ARIMA</span><span class="o">.</span><span class="n">generate_sample</span><span class="p">(</span><span class="n">ar</span><span class="p">,</span><span class="n">ma</span><span class="p">,</span><span class="n">nsample</span><span class="p">,</span><span class="mf">0.1</span><span class="p">)</span>
+    <span class="n">arest2</span> <span class="o">=</span> <span class="n">ARIMAProcess</span><span class="p">(</span><span class="n">y2</span><span class="p">)</span>
+    <span class="n">rhohat2</span><span class="p">,</span> <span class="n">cov_x2</span><span class="p">,</span> <span class="n">infodict</span><span class="p">,</span> <span class="n">mesg</span><span class="p">,</span> <span class="n">ier</span> <span class="o">=</span> <span class="n">arest2</span><span class="o">.</span><span class="n">fit</span><span class="p">((</span><span class="mi">1</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">2</span><span class="p">))</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">rhohat2</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">cov_x2</span><span class="p">)</span>
+    <span class="n">err2</span> <span class="o">=</span> <span class="n">arest</span><span class="o">.</span><span class="n">errfn</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="n">y2</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">var</span><span class="p">(</span><span class="n">err2</span><span class="p">))</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">arest2</span><span class="o">.</span><span class="n">rhoy</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">arest2</span><span class="o">.</span><span class="n">rhoe</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="s">&quot;true&quot;</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">ar</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">ma</span><span class="p">)</span>
+    <span class="n">rhohat2a</span><span class="p">,</span> <span class="n">cov_x2a</span><span class="p">,</span> <span class="n">infodict</span><span class="p">,</span> <span class="n">mesg</span><span class="p">,</span> <span class="n">ier</span> <span class="o">=</span> <span class="n">arest2</span><span class="o">.</span><span class="n">fit</span><span class="p">((</span><span class="mi">2</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">2</span><span class="p">))</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">rhohat2a</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">cov_x2a</span><span class="p">)</span>
+    <span class="n">err2a</span> <span class="o">=</span> <span class="n">arest</span><span class="o">.</span><span class="n">errfn</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="n">y2</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">var</span><span class="p">(</span><span class="n">err2a</span><span class="p">))</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">arest2</span><span class="o">.</span><span class="n">rhoy</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">arest2</span><span class="o">.</span><span class="n">rhoe</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="s">&quot;true&quot;</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">ar</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">ma</span><span class="p">)</span>
+
+    <span class="k">print</span><span class="p">(</span><span class="n">sm</span><span class="o">.</span><span class="n">regression</span><span class="o">.</span><span class="n">yule_walker</span><span class="p">(</span><span class="n">y2</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">inv</span><span class="o">=</span><span class="bp">True</span><span class="p">))</span>
+
+    <span class="k">print</span><span class="p">(</span><span class="s">&quot;</span><span class="se">\n</span><span class="s">Example 20&quot;</span><span class="p">)</span>
+    <span class="n">nsample</span> <span class="o">=</span> <span class="mi">1000</span>
+    <span class="n">ar</span> <span class="o">=</span> <span class="p">[</span><span class="mf">1.0</span><span class="p">]</span><span class="c">#, -0.8, -0.4]</span>
+    <span class="n">ma</span> <span class="o">=</span> <span class="p">[</span><span class="mf">1.0</span><span class="p">,</span>  <span class="mf">0.5</span><span class="p">,</span>  <span class="mf">0.2</span><span class="p">]</span>
+    <span class="n">y3</span> <span class="o">=</span> <span class="n">ARIMA</span><span class="o">.</span><span class="n">generate_sample</span><span class="p">(</span><span class="n">ar</span><span class="p">,</span><span class="n">ma</span><span class="p">,</span><span class="n">nsample</span><span class="p">,</span><span class="mf">0.01</span><span class="p">)</span>
+    <span class="n">arest20</span> <span class="o">=</span> <span class="n">ARIMAProcess</span><span class="p">(</span><span class="n">y3</span><span class="p">)</span>
+    <span class="n">rhohat3</span><span class="p">,</span> <span class="n">cov_x3</span><span class="p">,</span> <span class="n">infodict</span><span class="p">,</span> <span class="n">mesg</span><span class="p">,</span> <span class="n">ier</span> <span class="o">=</span> <span class="n">arest20</span><span class="o">.</span><span class="n">fit</span><span class="p">((</span><span class="mi">2</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">))</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">rhohat3</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">cov_x3</span><span class="p">)</span>
+    <span class="n">err3</span> <span class="o">=</span> <span class="n">arest20</span><span class="o">.</span><span class="n">errfn</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="n">y3</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">var</span><span class="p">(</span><span class="n">err3</span><span class="p">))</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">err3</span><span class="p">,</span><span class="n">err3</span><span class="p">)</span><span class="o">/</span><span class="n">nsample</span><span class="p">))</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">arest20</span><span class="o">.</span><span class="n">rhoy</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">arest20</span><span class="o">.</span><span class="n">rhoe</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="s">&quot;true&quot;</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">ar</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">ma</span><span class="p">)</span>
+
+    <span class="n">rhohat3a</span><span class="p">,</span> <span class="n">cov_x3a</span><span class="p">,</span> <span class="n">infodict</span><span class="p">,</span> <span class="n">mesg</span><span class="p">,</span> <span class="n">ier</span> <span class="o">=</span> <span class="n">arest20</span><span class="o">.</span><span class="n">fit</span><span class="p">((</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">2</span><span class="p">))</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">rhohat3a</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">cov_x3a</span><span class="p">)</span>
+    <span class="n">err3a</span> <span class="o">=</span> <span class="n">arest20</span><span class="o">.</span><span class="n">errfn</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="n">y3</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">var</span><span class="p">(</span><span class="n">err3a</span><span class="p">))</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">err3a</span><span class="p">,</span><span class="n">err3a</span><span class="p">)</span><span class="o">/</span><span class="n">nsample</span><span class="p">))</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">arest20</span><span class="o">.</span><span class="n">rhoy</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">arest20</span><span class="o">.</span><span class="n">rhoe</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="s">&quot;true&quot;</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">ar</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">ma</span><span class="p">)</span>
+
+    <span class="k">print</span><span class="p">(</span><span class="n">sm</span><span class="o">.</span><span class="n">regression</span><span class="o">.</span><span class="n">yule_walker</span><span class="p">(</span><span class="n">y3</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">inv</span><span class="o">=</span><span class="bp">True</span><span class="p">))</span>
+
+    <span class="k">print</span><span class="p">(</span><span class="s">&quot;</span><span class="se">\n</span><span class="s">Example 02&quot;</span><span class="p">)</span>
+    <span class="n">nsample</span> <span class="o">=</span> <span class="mi">1000</span>
+    <span class="n">ar</span> <span class="o">=</span> <span class="p">[</span><span class="mf">1.0</span><span class="p">,</span> <span class="o">-</span><span class="mf">0.8</span><span class="p">,</span> <span class="mf">0.4</span><span class="p">]</span> <span class="c">#-0.8, -0.4]</span>
+    <span class="n">ma</span> <span class="o">=</span> <span class="p">[</span><span class="mf">1.0</span><span class="p">]</span><span class="c">#,  0.8,  0.4]</span>
+    <span class="n">y4</span> <span class="o">=</span> <span class="n">ARIMA</span><span class="o">.</span><span class="n">generate_sample</span><span class="p">(</span><span class="n">ar</span><span class="p">,</span><span class="n">ma</span><span class="p">,</span><span class="n">nsample</span><span class="p">)</span>
+    <span class="n">arest02</span> <span class="o">=</span> <span class="n">ARIMAProcess</span><span class="p">(</span><span class="n">y4</span><span class="p">)</span>
+    <span class="n">rhohat4</span><span class="p">,</span> <span class="n">cov_x4</span><span class="p">,</span> <span class="n">infodict</span><span class="p">,</span> <span class="n">mesg</span><span class="p">,</span> <span class="n">ier</span> <span class="o">=</span> <span class="n">arest02</span><span class="o">.</span><span class="n">fit</span><span class="p">((</span><span class="mi">2</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">))</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">rhohat4</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">cov_x4</span><span class="p">)</span>
+    <span class="n">err4</span> <span class="o">=</span> <span class="n">arest02</span><span class="o">.</span><span class="n">errfn</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="n">y4</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">var</span><span class="p">(</span><span class="n">err4</span><span class="p">))</span>
+    <span class="n">sige</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">err4</span><span class="p">,</span><span class="n">err4</span><span class="p">)</span><span class="o">/</span><span class="n">nsample</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">sige</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">sige</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">diag</span><span class="p">(</span><span class="n">cov_x4</span><span class="p">)))</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">diag</span><span class="p">(</span><span class="n">cov_x4</span><span class="p">)))</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">arest02</span><span class="o">.</span><span class="n">rhoy</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">arest02</span><span class="o">.</span><span class="n">rhoe</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="s">&quot;true&quot;</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">ar</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">ma</span><span class="p">)</span>
+
+    <span class="n">rhohat4a</span><span class="p">,</span> <span class="n">cov_x4a</span><span class="p">,</span> <span class="n">infodict</span><span class="p">,</span> <span class="n">mesg</span><span class="p">,</span> <span class="n">ier</span> <span class="o">=</span> <span class="n">arest02</span><span class="o">.</span><span class="n">fit</span><span class="p">((</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">2</span><span class="p">))</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">rhohat4a</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">cov_x4a</span><span class="p">)</span>
+    <span class="n">err4a</span> <span class="o">=</span> <span class="n">arest02</span><span class="o">.</span><span class="n">errfn</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="n">y4</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">var</span><span class="p">(</span><span class="n">err4a</span><span class="p">))</span>
+    <span class="n">sige</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">err4a</span><span class="p">,</span><span class="n">err4a</span><span class="p">)</span><span class="o">/</span><span class="n">nsample</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">sige</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">sige</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">diag</span><span class="p">(</span><span class="n">cov_x4a</span><span class="p">)))</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">diag</span><span class="p">(</span><span class="n">cov_x4a</span><span class="p">)))</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">arest02</span><span class="o">.</span><span class="n">rhoy</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">arest02</span><span class="o">.</span><span class="n">rhoe</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="s">&quot;true&quot;</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">ar</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">ma</span><span class="p">)</span>
+    <span class="kn">import</span> <span class="nn">statsmodels.api</span> <span class="kn">as</span> <span class="nn">sm</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">sm</span><span class="o">.</span><span class="n">regression</span><span class="o">.</span><span class="n">yule_walker</span><span class="p">(</span><span class="n">y4</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s">&#39;mle&#39;</span><span class="p">,</span> <span class="n">inv</span><span class="o">=</span><span class="bp">True</span><span class="p">))</span>
+
+
+    <span class="kn">import</span> <span class="nn">matplotlib.pyplot</span> <span class="kn">as</span> <span class="nn">plt</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">arest2</span><span class="o">.</span><span class="n">forecast</span><span class="p">()[</span><span class="o">-</span><span class="mi">100</span><span class="p">:])</span>
+    <span class="c">#plt.show()</span>
+
+    <span class="n">ar1</span><span class="p">,</span> <span class="n">ar2</span> <span class="o">=</span> <span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mf">0.4</span><span class="p">],</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">])</span>
+    <span class="n">ar2</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+    <span class="n">lagpolyproduct</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">convolve</span><span class="p">(</span><span class="n">ar1</span><span class="p">,</span> <span class="n">ar2</span><span class="p">)</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">deconvolve</span><span class="p">(</span><span class="n">lagpolyproduct</span><span class="p">,</span> <span class="n">ar2</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="bp">None</span><span class="p">))</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">signal</span><span class="o">.</span><span class="n">deconvolve</span><span class="p">(</span><span class="n">lagpolyproduct</span><span class="p">,</span> <span class="n">ar2</span><span class="p">))</span>
+    <span class="k">print</span><span class="p">(</span><span class="n">deconvolve</span><span class="p">(</span><span class="n">lagpolyproduct</span><span class="p">,</span> <span class="n">ar2</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="mi">10</span><span class="p">))</span>
+</pre></div>
+
+
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <form class="search" action="../../../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer" role="contentinfo">
+        &copy; Copyright 2009-2013, Josef Perktold, Skipper Seabold, Jonathan Taylor, statsmodels-developers.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.3.1.
+    </div>
+  </body>
+</html>

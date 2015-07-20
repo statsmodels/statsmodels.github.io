@@ -1,0 +1,976 @@
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>Maximum Likelihood Estimation (Generic models) &mdash; statsmodels 0.6.1 documentation</title>
+    
+    <link rel="stylesheet" href="../../../_static/nature.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../../',
+        VERSION:     '0.6.1',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <link rel="shortcut icon" href="../../../_static/statsmodels_hybi_favico.ico"/>
+    <link rel="author" title="About these documents" href="../../../about.html" />
+    <link rel="top" title="statsmodels 0.6.1 documentation" href="../../../index.html" />
+<link rel="stylesheet" href="../../_static/facebox.css" type="text/css" />
+<link rel="stylesheet" href="../_static/examples.css" type="text/css" />
+<script type="text/javascript" src="../../../_static/scripts.js">
+</script>
+<script type="text/javascript" src="../../../_static/facebox.js">
+</script>
+
+  </head>
+  <body role="document">
+<div class="headerwrap">
+    <div class = "header">
+        
+        <a href = "../../../index.html">
+<img src="../../../_static/statsmodels_hybi_banner.png" alt="Logo"
+    style="padding-left: 15px"/></a>
+        
+    </div>
+</div>
+
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+<li><a href ="../../../install.html">Install</a></li> &nbsp;|&nbsp;
+<li><a href="https://groups.google.com/group/pystatsmodels?hl=en">Support</a></li> &nbsp;|&nbsp;
+<li><a href="https://github.com/statsmodels/statsmodels/issues">Bugs</a></li> &nbsp;|&nbsp;
+<li><a href="../../../dev/index.html">Develop</a></li> &nbsp;|&nbsp;
+<li><a href="../../index.html">Examples</a></li> &nbsp;|&nbsp;
+<li><a href="../../../faq.html">FAQ</a></li> &nbsp;|&nbsp;
+ 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+
+
+
+
+  <div class="section" id="maximum-likelihood-estimation-generic-models">
+<h1>Maximum Likelihood Estimation (Generic models)<a class="headerlink" href="#maximum-likelihood-estimation-generic-models" title="Permalink to this headline">¶</a></h1>
+<p id="generic-mle-notebook"><a class="reference external" href="https://github.com/statsmodels/statsmodels/blob/master/examples/notebooks/generic_mle.ipynb">Link to Notebook GitHub</a></p>
+<div class="cell border-box-sizing text_cell rendered">
+<div class="prompt input_prompt">
+</div>
+<div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>This tutorial explains how to quickly implement new maximum likelihood models in <code>statsmodels</code>. We give two examples:</p>
+<ol>
+<li>Probit model for binary dependent variables</li>
+<li>Negative binomial model for count data</li>
+</ol>
+<p>The <code>GenericLikelihoodModel</code> class eases the process by providing tools such as automatic numeric differentiation and a unified interface to <code>scipy</code> optimization functions. Using <code>statsmodels</code>, users can fit new MLE models simply by "plugging-in" a log-likelihood function.</p>
+
+</div>
+</div>
+</div>
+<div class="cell border-box-sizing text_cell rendered">
+<div class="prompt input_prompt">
+</div>
+<div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<h2 id="Example-1:-Probit-model">Example 1: Probit model<a class="anchor-link" href="#Example-1:-Probit-model">&#182;</a></h2>
+</div>
+</div>
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+<div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span class="kn">from</span> <span class="nn">__future__</span> <span class="k">import</span> <span class="n">print_function</span>
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+<span class="kn">from</span> <span class="nn">scipy</span> <span class="k">import</span> <span class="n">stats</span>
+<span class="kn">import</span> <span class="nn">statsmodels.api</span> <span class="k">as</span> <span class="nn">sm</span>
+<span class="kn">from</span> <span class="nn">statsmodels.base.model</span> <span class="k">import</span> <span class="n">GenericLikelihoodModel</span>
+</pre></div>
+
+</div>
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing text_cell rendered">
+<div class="prompt input_prompt">
+</div>
+<div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>The <code>Spector</code> dataset is distributed with <code>statsmodels</code>. You can access a vector of values for the dependent variable (<code>endog</code>) and a matrix of regressors (<code>exog</code>) like this:</p>
+
+</div>
+</div>
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+<div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span class="n">data</span> <span class="o">=</span> <span class="n">sm</span><span class="o">.</span><span class="n">datasets</span><span class="o">.</span><span class="n">spector</span><span class="o">.</span><span class="n">load_pandas</span><span class="p">()</span>
+<span class="n">exog</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">exog</span>
+<span class="n">endog</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">endog</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">sm</span><span class="o">.</span><span class="n">datasets</span><span class="o">.</span><span class="n">spector</span><span class="o">.</span><span class="n">NOTE</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">data</span><span class="o">.</span><span class="n">exog</span><span class="o">.</span><span class="n">head</span><span class="p">())</span>
+</pre></div>
+
+</div>
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing text_cell rendered">
+<div class="prompt input_prompt">
+</div>
+<div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>Them, we add a constant to the matrix of regressors:</p>
+
+</div>
+</div>
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+<div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span class="n">exog</span> <span class="o">=</span> <span class="n">sm</span><span class="o">.</span><span class="n">add_constant</span><span class="p">(</span><span class="n">exog</span><span class="p">,</span> <span class="n">prepend</span><span class="o">=</span><span class="k">True</span><span class="p">)</span>
+</pre></div>
+
+</div>
+</div>
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+
+<div class="output_area"><div class="prompt"></div>
+<div class="output_subarea output_stream output_stdout output_text">
+<pre>::
+
+    Number of Observations - 32
+
+    Number of Variables - 4
+
+    Variable name definitions::
+
+        Grade - binary variable indicating whether or not a student&apos;s grade
+                improved.  1 indicates an improvement.
+        TUCE  - Test score on economics test
+        PSI   - participation in program
+        GPA   - Student&apos;s grade point average
+
+    GPA  TUCE  PSI
+0  2.66    20    0
+1  2.89    22    0
+2  3.28    24    0
+3  2.92    12    0
+4  4.00    21    0
+</pre>
+</div>
+</div>
+
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing text_cell rendered">
+<div class="prompt input_prompt">
+</div>
+<div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>To create your own Likelihood Model, you simply need to overwrite the loglike method.</p>
+
+</div>
+</div>
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+<div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span class="k">class</span> <span class="nc">MyProbit</span><span class="p">(</span><span class="n">GenericLikelihoodModel</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">loglike</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">):</span>
+        <span class="n">exog</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">exog</span>
+        <span class="n">endog</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">endog</span>
+        <span class="n">q</span> <span class="o">=</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">endog</span> <span class="o">-</span> <span class="mi">1</span>
+        <span class="k">return</span> <span class="n">stats</span><span class="o">.</span><span class="n">norm</span><span class="o">.</span><span class="n">logcdf</span><span class="p">(</span><span class="n">q</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">exog</span><span class="p">,</span> <span class="n">params</span><span class="p">))</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
+</pre></div>
+
+</div>
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing text_cell rendered">
+<div class="prompt input_prompt">
+</div>
+<div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>Estimate the model and print a summary:</p>
+
+</div>
+</div>
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+<div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span class="n">sm_probit_manual</span> <span class="o">=</span> <span class="n">MyProbit</span><span class="p">(</span><span class="n">endog</span><span class="p">,</span> <span class="n">exog</span><span class="p">)</span><span class="o">.</span><span class="n">fit</span><span class="p">()</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">sm_probit_manual</span><span class="o">.</span><span class="n">summary</span><span class="p">())</span>
+</pre></div>
+
+</div>
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing text_cell rendered">
+<div class="prompt input_prompt">
+</div>
+<div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>Compare your Probit implementation to <code>statsmodels</code>' "canned" implementation:</p>
+
+</div>
+</div>
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+<div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span class="n">sm_probit_canned</span> <span class="o">=</span> <span class="n">sm</span><span class="o">.</span><span class="n">Probit</span><span class="p">(</span><span class="n">endog</span><span class="p">,</span> <span class="n">exog</span><span class="p">)</span><span class="o">.</span><span class="n">fit</span><span class="p">()</span>
+</pre></div>
+
+</div>
+</div>
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+
+<div class="output_area"><div class="prompt"></div>
+<div class="output_subarea output_stream output_stdout output_text">
+<pre>Optimization terminated successfully.
+         Current function value: 0.400588
+         Iterations: 292
+         Function evaluations: 494
+                               MyProbit Results
+==============================================================================
+Dep. Variable:                  GRADE   Log-Likelihood:                -12.819
+Model:                       MyProbit   AIC:                             33.64
+Method:            Maximum Likelihood   BIC:                             39.50
+Date:                Mon, 20 Jul 2015
+Time:                        17:43:29
+No. Observations:                  32
+Df Residuals:                      28
+Df Model:                           3
+==============================================================================
+                 coef    std err          z      P&gt;|z|      [95.0% Conf. Int.]
+------------------------------------------------------------------------------
+const         -7.4523      2.542     -2.931      0.003       -12.435    -2.469
+GPA            1.6258      0.694      2.343      0.019         0.266     2.986
+TUCE           0.0517      0.084      0.617      0.537        -0.113     0.216
+PSI            1.4263      0.595      2.397      0.017         0.260     2.593
+==============================================================================
+</pre>
+</div>
+</div>
+
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+<div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span class="nb">print</span><span class="p">(</span><span class="n">sm_probit_canned</span><span class="o">.</span><span class="n">params</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">sm_probit_manual</span><span class="o">.</span><span class="n">params</span><span class="p">)</span>
+</pre></div>
+
+</div>
+</div>
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+
+<div class="output_area"><div class="prompt"></div>
+<div class="output_subarea output_stream output_stdout output_text">
+<pre>Optimization terminated successfully.
+         Current function value: 0.400588
+         Iterations 6
+</pre>
+</div>
+</div>
+
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+<div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span class="nb">print</span><span class="p">(</span><span class="n">sm_probit_canned</span><span class="o">.</span><span class="n">cov_params</span><span class="p">())</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">sm_probit_manual</span><span class="o">.</span><span class="n">cov_params</span><span class="p">())</span>
+</pre></div>
+
+</div>
+</div>
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+
+<div class="output_area"><div class="prompt"></div>
+<div class="output_subarea output_stream output_stdout output_text">
+<pre>const   -7.452320
+GPA      1.625810
+TUCE     0.051729
+PSI      1.426332
+dtype: float64
+[-7.45233176  1.62580888  0.05172971  1.42631954]
+</pre>
+</div>
+</div>
+
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing text_cell rendered">
+<div class="prompt input_prompt">
+</div>
+<div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>Notice that the <code>GenericMaximumLikelihood</code> class provides automatic differentiation, so we didn't have to provide Hessian or Score functions in order to calculate the covariance estimates.</p>
+
+</div>
+</div>
+</div>
+<div class="cell border-box-sizing text_cell rendered">
+<div class="prompt input_prompt">
+</div>
+<div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<h2 id="Example-2:-Negative-Binomial-Regression-for-Count-Data">Example 2: Negative Binomial Regression for Count Data<a class="anchor-link" href="#Example-2:-Negative-Binomial-Regression-for-Count-Data">&#182;</a></h2><p>Consider a negative binomial regression model for count data with
+log-likelihood (type NB-2) function expressed as:</p>
+$$
+    \mathcal{L}(\beta_j; y, \alpha) = \sum_{i=1}^n y_i ln
+    \left ( \frac{\alpha exp(X_i'\beta)}{1+\alpha exp(X_i'\beta)} \right ) -
+    \frac{1}{\alpha} ln(1+\alpha exp(X_i'\beta)) + ln \Gamma (y_i + 1/\alpha) - ln \Gamma (y_i+1) - ln \Gamma (1/\alpha)
+$$<p>with a matrix of regressors $X$, a vector of coefficients $\beta$,
+and the negative binomial heterogeneity parameter $\alpha$.</p>
+<p>Using the <code>nbinom</code> distribution from <code>scipy</code>, we can write this likelihood
+simply as:</p>
+
+</div>
+</div>
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+<div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+<span class="kn">from</span> <span class="nn">scipy.stats</span> <span class="k">import</span> <span class="n">nbinom</span>
+</pre></div>
+
+</div>
+</div>
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+
+<div class="output_area"><div class="prompt"></div>
+<div class="output_subarea output_stream output_stdout output_text">
+<pre>          const       GPA      TUCE       PSI
+const  6.464166 -1.169668 -0.101173 -0.594792
+GPA   -1.169668  0.481473 -0.018914  0.105439
+TUCE  -0.101173 -0.018914  0.007038  0.002472
+PSI   -0.594792  0.105439  0.002472  0.354070
+[[  6.46416770e+00  -1.16966617e+00  -1.01173180e-01  -5.94788993e-01]
+ [ -1.16966617e+00   4.81472116e-01  -1.89134586e-02   1.05438227e-01]
+ [ -1.01173180e-01  -1.89134586e-02   7.03758392e-03   2.47189191e-03]
+ [ -5.94788993e-01   1.05438227e-01   2.47189191e-03   3.54069512e-01]]
+</pre>
+</div>
+</div>
+
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+<div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span class="k">def</span> <span class="nf">_ll_nb2</span><span class="p">(</span><span class="n">y</span><span class="p">,</span> <span class="n">X</span><span class="p">,</span> <span class="n">beta</span><span class="p">,</span> <span class="n">alph</span><span class="p">):</span>
+    <span class="n">mu</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">X</span><span class="p">,</span> <span class="n">beta</span><span class="p">))</span>
+    <span class="n">size</span> <span class="o">=</span> <span class="mi">1</span><span class="o">/</span><span class="n">alph</span>
+    <span class="n">prob</span> <span class="o">=</span> <span class="n">size</span><span class="o">/</span><span class="p">(</span><span class="n">size</span><span class="o">+</span><span class="n">mu</span><span class="p">)</span>
+    <span class="n">ll</span> <span class="o">=</span> <span class="n">nbinom</span><span class="o">.</span><span class="n">logpmf</span><span class="p">(</span><span class="n">y</span><span class="p">,</span> <span class="n">size</span><span class="p">,</span> <span class="n">prob</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">ll</span>
+</pre></div>
+
+</div>
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing text_cell rendered">
+<div class="prompt input_prompt">
+</div>
+<div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<h3 id="New-Model-Class">New Model Class<a class="anchor-link" href="#New-Model-Class">&#182;</a></h3><p>We create a new model class which inherits from <code>GenericLikelihoodModel</code>:</p>
+
+</div>
+</div>
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+<div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span class="kn">from</span> <span class="nn">statsmodels.base.model</span> <span class="k">import</span> <span class="n">GenericLikelihoodModel</span>
+</pre></div>
+
+</div>
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+<div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span class="k">class</span> <span class="nc">NBin</span><span class="p">(</span><span class="n">GenericLikelihoodModel</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">endog</span><span class="p">,</span> <span class="n">exog</span><span class="p">,</span> <span class="o">**</span><span class="n">kwds</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">NBin</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="n">endog</span><span class="p">,</span> <span class="n">exog</span><span class="p">,</span> <span class="o">**</span><span class="n">kwds</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">nloglikeobs</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">):</span>
+        <span class="n">alph</span> <span class="o">=</span> <span class="n">params</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+        <span class="n">beta</span> <span class="o">=</span> <span class="n">params</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+        <span class="n">ll</span> <span class="o">=</span> <span class="n">_ll_nb2</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">endog</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">exog</span><span class="p">,</span> <span class="n">beta</span><span class="p">,</span> <span class="n">alph</span><span class="p">)</span>
+        <span class="k">return</span> <span class="o">-</span><span class="n">ll</span>
+
+    <span class="k">def</span> <span class="nf">fit</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">start_params</span><span class="o">=</span><span class="k">None</span><span class="p">,</span> <span class="n">maxiter</span><span class="o">=</span><span class="mi">10000</span><span class="p">,</span> <span class="n">maxfun</span><span class="o">=</span><span class="mi">5000</span><span class="p">,</span> <span class="o">**</span><span class="n">kwds</span><span class="p">):</span>
+        <span class="c"># we have one additional parameter and we need to add it for summary</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">exog_names</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s">&#39;alpha&#39;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">start_params</span> <span class="o">==</span> <span class="k">None</span><span class="p">:</span>
+            <span class="c"># Reasonable starting values</span>
+            <span class="n">start_params</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">exog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]),</span> <span class="o">.</span><span class="mi">5</span><span class="p">)</span>
+            <span class="c"># intercept</span>
+            <span class="n">start_params</span><span class="p">[</span><span class="o">-</span><span class="mi">2</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">endog</span><span class="o">.</span><span class="n">mean</span><span class="p">())</span>
+        <span class="k">return</span> <span class="nb">super</span><span class="p">(</span><span class="n">NBin</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">start_params</span><span class="o">=</span><span class="n">start_params</span><span class="p">,</span>
+                                     <span class="n">maxiter</span><span class="o">=</span><span class="n">maxiter</span><span class="p">,</span> <span class="n">maxfun</span><span class="o">=</span><span class="n">maxfun</span><span class="p">,</span>
+                                     <span class="o">**</span><span class="n">kwds</span><span class="p">)</span>
+</pre></div>
+
+</div>
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing text_cell rendered">
+<div class="prompt input_prompt">
+</div>
+<div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>Two important things to notice:</p>
+<ul>
+<li><code>nloglikeobs</code>: This function should return one evaluation of the negative log-likelihood function per observation in your dataset (i.e. rows of the endog/X matrix). </li>
+<li><code>start_params</code>: A one-dimensional array of starting values needs to be provided. The size of this array determines the number of parameters that will be used in optimization.</li>
+</ul>
+<p>That's it! You're done!</p>
+<h3 id="Usage-Example">Usage Example<a class="anchor-link" href="#Usage-Example">&#182;</a></h3><p>The <a href="http://vincentarelbundock.github.com/Rdatasets/doc/COUNT/medpar.html">Medpar</a>
+dataset is hosted in CSV format at the <a href="http://vincentarelbundock.github.com/Rdatasets">Rdatasets repository</a>. We use the <code>read_csv</code>
+function from the <a href="http://pandas.pydata.org">Pandas library</a> to load the data
+in memory. We then print the first few columns:</p>
+
+</div>
+</div>
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+<div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span class="kn">import</span> <span class="nn">statsmodels.api</span> <span class="k">as</span> <span class="nn">sm</span>
+</pre></div>
+
+</div>
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+<div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span class="n">medpar</span> <span class="o">=</span> <span class="n">sm</span><span class="o">.</span><span class="n">datasets</span><span class="o">.</span><span class="n">get_rdataset</span><span class="p">(</span><span class="s">&quot;medpar&quot;</span><span class="p">,</span> <span class="s">&quot;COUNT&quot;</span><span class="p">,</span> <span class="n">cache</span><span class="o">=</span><span class="k">True</span><span class="p">)</span><span class="o">.</span><span class="n">data</span>
+
+<span class="n">medpar</span><span class="o">.</span><span class="n">head</span><span class="p">()</span>
+</pre></div>
+
+</div>
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing text_cell rendered">
+<div class="prompt input_prompt">
+</div>
+<div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>The model we are interested in has a vector of non-negative integers as
+dependent variable (<code>los</code>), and 5 regressors: <code>Intercept</code>, <code>type2</code>,
+<code>type3</code>, <code>hmo</code>, <code>white</code>.</p>
+<p>For estimation, we need to create two variables to hold our regressors and the outcome variable. These can be ndarrays or pandas objects.</p>
+
+</div>
+</div>
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+<div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span class="n">y</span> <span class="o">=</span> <span class="n">medpar</span><span class="o">.</span><span class="n">los</span>
+<span class="n">X</span> <span class="o">=</span> <span class="n">medpar</span><span class="p">[[</span><span class="s">&quot;type2&quot;</span><span class="p">,</span> <span class="s">&quot;type3&quot;</span><span class="p">,</span> <span class="s">&quot;hmo&quot;</span><span class="p">,</span> <span class="s">&quot;white&quot;</span><span class="p">]]</span>
+<span class="n">X</span><span class="p">[</span><span class="s">&quot;constant&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span>
+</pre></div>
+
+</div>
+</div>
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+
+<div class="output_area"><div class="prompt"></div>
+
+</div>
+
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing text_cell rendered">
+<div class="prompt input_prompt">
+</div>
+<div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>Then, we fit the model and extract some information:</p>
+
+</div>
+</div>
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+<div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span class="n">mod</span> <span class="o">=</span> <span class="n">NBin</span><span class="p">(</span><span class="n">y</span><span class="p">,</span> <span class="n">X</span><span class="p">)</span>
+<span class="n">res</span> <span class="o">=</span> <span class="n">mod</span><span class="o">.</span><span class="n">fit</span><span class="p">()</span>
+</pre></div>
+
+</div>
+</div>
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+
+<div class="output_area"><div class="prompt"></div>
+<div class="output_subarea output_stream output_stderr output_text">
+<pre>/Users/tom.augspurger/Envs/py3/lib/python3.4/site-packages/IPython/kernel/__main__.py:3: SettingWithCopyWarning:
+A value is trying to be set on a copy of a slice from a DataFrame.
+Try using .loc[row_indexer,col_indexer] = value instead
+
+See the the caveats in the documentation: http://pandas.pydata.org/pandas-docs/stable/indexing.html#indexing-view-versus-copy
+  app.launch_new_instance()
+</pre>
+</div>
+</div>
+
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing text_cell rendered">
+<div class="prompt input_prompt">
+</div>
+<div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>Extract parameter estimates, standard errors, p-values, AIC, etc.:</p>
+
+</div>
+</div>
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+<div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span class="nb">print</span><span class="p">(</span><span class="s">&#39;Parameters: &#39;</span><span class="p">,</span> <span class="n">res</span><span class="o">.</span><span class="n">params</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s">&#39;Standard errors: &#39;</span><span class="p">,</span> <span class="n">res</span><span class="o">.</span><span class="n">bse</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s">&#39;P-values: &#39;</span><span class="p">,</span> <span class="n">res</span><span class="o">.</span><span class="n">pvalues</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s">&#39;AIC: &#39;</span><span class="p">,</span> <span class="n">res</span><span class="o">.</span><span class="n">aic</span><span class="p">)</span>
+</pre></div>
+
+</div>
+</div>
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+
+<div class="output_area"><div class="prompt"></div>
+<div class="output_subarea output_stream output_stdout output_text">
+<pre>Optimization terminated successfully.
+         Current function value: 3.209014
+         Iterations: 805
+         Function evaluations: 1238
+</pre>
+</div>
+</div>
+
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing text_cell rendered">
+<div class="prompt input_prompt">
+</div>
+<div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>As usual, you can obtain a full list of available information by typing
+<code>dir(res)</code>.
+We can also look at the summary of the estimation results.</p>
+
+</div>
+</div>
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+<div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span class="nb">print</span><span class="p">(</span><span class="n">res</span><span class="o">.</span><span class="n">summary</span><span class="p">())</span>
+</pre></div>
+
+</div>
+</div>
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+
+<div class="output_area"><div class="prompt"></div>
+<div class="output_subarea output_stream output_stdout output_text">
+<pre>Parameters:  [ 0.2212642   0.70613942 -0.06798155 -0.12903932  2.31026565  0.44575147]
+Standard errors:  [ 0.05059259  0.07613047  0.05326097  0.06854141  0.06794692  0.01981542]
+P-values:  [  1.22297920e-005   1.76978024e-020   2.01819161e-001   5.97481600e-002
+   2.15079626e-253   4.62688439e-112]
+AIC:  9604.95320583
+</pre>
+</div>
+</div>
+
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing text_cell rendered">
+<div class="prompt input_prompt">
+</div>
+<div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<h3 id="Testing">Testing<a class="anchor-link" href="#Testing">&#182;</a></h3>
+</div>
+</div>
+</div>
+<div class="cell border-box-sizing text_cell rendered">
+<div class="prompt input_prompt">
+</div>
+<div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>We can check the results by using the statsmodels implementation of the Negative Binomial model, which uses the analytic score function and Hessian.</p>
+
+</div>
+</div>
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+<div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span class="n">res_nbin</span> <span class="o">=</span> <span class="n">sm</span><span class="o">.</span><span class="n">NegativeBinomial</span><span class="p">(</span><span class="n">y</span><span class="p">,</span> <span class="n">X</span><span class="p">)</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">disp</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">res_nbin</span><span class="o">.</span><span class="n">summary</span><span class="p">())</span>
+</pre></div>
+
+</div>
+</div>
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+
+<div class="output_area"><div class="prompt"></div>
+<div class="output_subarea output_stream output_stdout output_text">
+<pre>                                 NBin Results
+==============================================================================
+Dep. Variable:                    los   Log-Likelihood:                -4797.5
+Model:                           NBin   AIC:                             9605.
+Method:            Maximum Likelihood   BIC:                             9632.
+Date:                Mon, 20 Jul 2015
+Time:                        17:43:31
+No. Observations:                1495
+Df Residuals:                    1490
+Df Model:                           4
+==============================================================================
+                 coef    std err          z      P&gt;|z|      [95.0% Conf. Int.]
+------------------------------------------------------------------------------
+type2          0.2213      0.051      4.373      0.000         0.122     0.320
+type3          0.7061      0.076      9.275      0.000         0.557     0.855
+hmo           -0.0680      0.053     -1.276      0.202        -0.172     0.036
+white         -0.1290      0.069     -1.883      0.060        -0.263     0.005
+constant       2.3103      0.068     34.001      0.000         2.177     2.443
+alpha          0.4458      0.020     22.495      0.000         0.407     0.485
+==============================================================================
+</pre>
+</div>
+</div>
+
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+<div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span class="nb">print</span><span class="p">(</span><span class="n">res_nbin</span><span class="o">.</span><span class="n">params</span><span class="p">)</span>
+</pre></div>
+
+</div>
+</div>
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+
+<div class="output_area"><div class="prompt"></div>
+<div class="output_subarea output_stream output_stdout output_text">
+<pre>                     NegativeBinomial Regression Results
+==============================================================================
+Dep. Variable:                    los   No. Observations:                 1495
+Model:               NegativeBinomial   Df Residuals:                     1490
+Method:                           MLE   Df Model:                            4
+Date:                Mon, 20 Jul 2015   Pseudo R-squ.:                 0.01215
+Time:                        17:43:31   Log-Likelihood:                -4797.5
+converged:                       True   LL-Null:                       -4856.5
+                                        LLR p-value:                 1.404e-24
+==============================================================================
+                 coef    std err          z      P&gt;|z|      [95.0% Conf. Int.]
+------------------------------------------------------------------------------
+type2          0.2212      0.051      4.373      0.000         0.122     0.320
+type3          0.7062      0.076      9.276      0.000         0.557     0.855
+hmo           -0.0680      0.053     -1.277      0.202        -0.172     0.036
+white         -0.1291      0.069     -1.883      0.060        -0.263     0.005
+constant       2.3103      0.068     34.001      0.000         2.177     2.443
+alpha          0.4458      0.020     22.495      0.000         0.407     0.485
+==============================================================================
+</pre>
+</div>
+</div>
+
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing code_cell rendered">
+<div class="input">
+<div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+<div class="inner_cell">
+    <div class="input_area">
+<div class=" highlight hl-ipython3"><pre><span class="nb">print</span><span class="p">(</span><span class="n">res_nbin</span><span class="o">.</span><span class="n">bse</span><span class="p">)</span>
+</pre></div>
+
+</div>
+</div>
+</div>
+
+<div class="output_wrapper">
+<div class="output">
+
+
+<div class="output_area"><div class="prompt"></div>
+<div class="output_subarea output_stream output_stdout output_text">
+<pre>type2       0.221231
+type3       0.706175
+hmo        -0.067990
+white      -0.129065
+constant    2.310288
+alpha       0.445758
+dtype: float64
+</pre>
+</div>
+</div>
+
+</div>
+</div>
+
+</div>
+<div class="cell border-box-sizing text_cell rendered">
+<div class="prompt input_prompt">
+</div>
+<div class="inner_cell">
+<div class="text_cell_render border-box-sizing rendered_html">
+<p>Or we could compare them to results obtained using the MASS implementation for R:</p>
+
+<pre><code>url = 'http://vincentarelbundock.github.com/Rdatasets/csv/COUNT/medpar.csv'
+medpar = read.csv(url)
+f = los~factor(type)+hmo+white
+
+library(MASS)
+mod = glm.nb(f, medpar)
+coef(summary(mod))
+                 Estimate Std. Error   z value      Pr(&gt;|z|)
+(Intercept)    2.31027893 0.06744676 34.253370 3.885556e-257
+factor(type)2  0.22124898 0.05045746  4.384861  1.160597e-05
+factor(type)3  0.70615882 0.07599849  9.291748  1.517751e-20
+hmo           -0.06795522 0.05321375 -1.277024  2.015939e-01
+white         -0.12906544 0.06836272 -1.887951  5.903257e-02
+
+</code></pre>
+<h3 id="Numerical-precision">Numerical precision<a class="anchor-link" href="#Numerical-precision">&#182;</a></h3><p>The <code>statsmodels</code> generic MLE and <code>R</code> parameter estimates agree up to the fourth decimal. The standard errors, however, agree only up to the second decimal. This discrepancy is the result of imprecision in our Hessian numerical estimates. In the current context, the difference between <code>MASS</code> and <code>statsmodels</code> standard error estimates is substantively irrelevant, but it highlights the fact that users who need very precise estimates may not always want to rely on default settings when using numerical derivatives. In such cases, it is better to use analytical derivatives with the <code>LikelihoodModel</code> class.</p>
+
+</div>
+</div>
+</div>
+
+<script src="https://c328740.ssl.cf1.rackcdn.com/mathjax/latest/MathJax.js?config=TeX-AMS_HTML"type="text/javascript"></script>
+<script type="text/javascript">
+init_mathjax = function() {
+    if (window.MathJax) {
+        // MathJax loaded
+        MathJax.Hub.Config({
+            tex2jax: {
+            // I'm not sure about the \( and \[ below. It messes with the
+            // prompt, and I think it's an issue with the template. -SS
+                inlineMath: [ ['$','$'], ["\\(","\\)"] ],
+                displayMath: [ ['$$','$$'], ["\\[","\\]"] ]
+            },
+            displayAlign: 'left', // Change this to 'center' to center equations.
+            "HTML-CSS": {
+                styles: {'.MathJax_Display': {"margin": 0}}
+            }
+        });
+        MathJax.Hub.Queue(["Typeset",MathJax.Hub]);
+    }
+}
+init_mathjax();
+
+// since we have to load this in a ..raw:: directive we will add the css
+// after the fact
+function loadcssfile(filename){
+    var fileref=document.createElement("link")
+    fileref.setAttribute("rel", "stylesheet")
+    fileref.setAttribute("type", "text/css")
+    fileref.setAttribute("href", filename)
+
+    document.getElementsByTagName("head")[0].appendChild(fileref)
+}
+// loadcssfile({{pathto("_static/nbviewer.pygments.css", 1) }})
+// loadcssfile({{pathto("_static/nbviewer.min.css", 1) }})
+loadcssfile("../../../_static/nbviewer.pygments.css")
+loadcssfile("../../../_static/ipython.min.css")
+</script></div>
+
+
+
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+  <div role="note" aria-label="source link">
+    <h3>This Page</h3>
+    <ul class="this-page-menu">
+      <li><a href="../../../_sources/examples/notebooks/generated/generic_mle.txt"
+            rel="nofollow">Show Source</a></li>
+    </ul>
+   </div>
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <form class="search" action="../../../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer" role="contentinfo">
+        &copy; Copyright 2009-2013, Josef Perktold, Skipper Seabold, Jonathan Taylor, statsmodels-developers.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.3.1.
+    </div>
+  </body>
+</html>

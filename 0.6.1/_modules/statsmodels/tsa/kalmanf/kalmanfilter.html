@@ -1,0 +1,983 @@
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>statsmodels.tsa.kalmanf.kalmanfilter &mdash; statsmodels 0.6.1 documentation</title>
+    
+    <link rel="stylesheet" href="../../../../_static/nature.css" type="text/css" />
+    <link rel="stylesheet" href="../../../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../../../',
+        VERSION:     '0.6.1',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../../_static/doctools.js"></script>
+    <link rel="shortcut icon" href="../../../../_static/statsmodels_hybi_favico.ico"/>
+    <link rel="author" title="About these documents" href="../../../../about.html" />
+    <link rel="top" title="statsmodels 0.6.1 documentation" href="../../../../index.html" />
+    <link rel="up" title="Module code" href="../../../index.html" />
+<link rel="stylesheet" href="../../_static/facebox.css" type="text/css" />
+<link rel="stylesheet" href="../_static/examples.css" type="text/css" />
+<script type="text/javascript" src="../../../../_static/scripts.js">
+</script>
+<script type="text/javascript" src="../../../../_static/facebox.js">
+</script>
+
+  </head>
+  <body role="document">
+<div class="headerwrap">
+    <div class = "header">
+        
+        <a href = "../../../../index.html">
+<img src="../../../../_static/statsmodels_hybi_banner.png" alt="Logo"
+    style="padding-left: 15px"/></a>
+        
+    </div>
+</div>
+
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+<li><a href ="../../../../install.html">Install</a></li> &nbsp;|&nbsp;
+<li><a href="https://groups.google.com/group/pystatsmodels?hl=en">Support</a></li> &nbsp;|&nbsp;
+<li><a href="https://github.com/statsmodels/statsmodels/issues">Bugs</a></li> &nbsp;|&nbsp;
+<li><a href="../../../../dev/index.html">Develop</a></li> &nbsp;|&nbsp;
+<li><a href="../../../../examples/index.html">Examples</a></li> &nbsp;|&nbsp;
+<li><a href="../../../../faq.html">FAQ</a></li> &nbsp;|&nbsp;
+
+          <li class="nav-item nav-item-1"><a href="../../../index.html" accesskey="U">Module code</a> |</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+
+
+
+
+  <h1>Source code for statsmodels.tsa.kalmanf.kalmanfilter</h1><div class="highlight"><pre>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">State Space Analysis using the Kalman Filter</span>
+
+<span class="sd">References</span>
+<span class="sd">-----------</span>
+<span class="sd">Durbin., J and Koopman, S.J.  `Time Series Analysis by State Space Methods`.</span>
+<span class="sd">    Oxford, 2001.</span>
+
+<span class="sd">Hamilton, J.D.  `Time Series Analysis`.  Princeton, 1994.</span>
+
+<span class="sd">Harvey, A.C. `Forecasting, Structural Time Series Models and the Kalman Filter`.</span>
+<span class="sd">    Cambridge, 1989.</span>
+
+<span class="sd">Notes</span>
+<span class="sd">-----</span>
+<span class="sd">This file follows Hamilton&#39;s notation pretty closely.</span>
+<span class="sd">The ARMA Model class follows Durbin and Koopman notation.</span>
+<span class="sd">Harvey uses Durbin and Koopman notation.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="c">#Anderson and Moore `Optimal Filtering` provides a more efficient algorithm</span>
+<span class="c"># namely the information filter</span>
+<span class="c"># if the number of series is much greater than the number of states</span>
+<span class="c"># e.g., with a DSGE model.  See also</span>
+<span class="c"># http://www.federalreserve.gov/pubs/oss/oss4/aimindex.html</span>
+<span class="c"># Harvey notes that the square root filter will keep P_t pos. def. but</span>
+<span class="c"># is not strictly needed outside of the engineering (long series)</span>
+<span class="kn">from</span> <span class="nn">__future__</span> <span class="kn">import</span> <span class="n">print_function</span>
+<span class="kn">from</span> <span class="nn">statsmodels.compat.python</span> <span class="kn">import</span> <span class="n">lzip</span><span class="p">,</span> <span class="n">lmap</span><span class="p">,</span> <span class="nb">callable</span><span class="p">,</span> <span class="nb">range</span>
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="kn">as</span> <span class="nn">np</span>
+<span class="kn">from</span> <span class="nn">numpy</span> <span class="kn">import</span> <span class="n">dot</span><span class="p">,</span> <span class="n">identity</span><span class="p">,</span> <span class="n">kron</span><span class="p">,</span> <span class="n">log</span><span class="p">,</span> <span class="n">zeros</span><span class="p">,</span> <span class="n">pi</span><span class="p">,</span> <span class="n">exp</span><span class="p">,</span> <span class="n">eye</span><span class="p">,</span> <span class="n">issubdtype</span><span class="p">,</span> <span class="n">ones</span>
+<span class="kn">from</span> <span class="nn">numpy.linalg</span> <span class="kn">import</span> <span class="n">inv</span><span class="p">,</span> <span class="n">pinv</span>
+<span class="kn">from</span> <span class="nn">statsmodels.tools.tools</span> <span class="kn">import</span> <span class="n">chain_dot</span>
+<span class="kn">from</span> <span class="nn">.</span> <span class="kn">import</span> <span class="n">kalman_loglike</span>
+
+<span class="c">#Fast filtering and smoothing for multivariate state space models</span>
+<span class="c"># and The Riksbank -- Strid and Walentin (2008)</span>
+<span class="c"># Block Kalman filtering for large-scale DSGE models</span>
+<span class="c"># but this is obviously macro model specific</span>
+
+<span class="k">def</span> <span class="nf">_init_diffuse</span><span class="p">(</span><span class="n">T</span><span class="p">,</span><span class="n">R</span><span class="p">):</span>
+    <span class="n">m</span> <span class="o">=</span> <span class="n">T</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="c"># number of states</span>
+    <span class="n">r</span> <span class="o">=</span> <span class="n">R</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="c"># should also be the number of states?</span>
+    <span class="n">Q_0</span> <span class="o">=</span> <span class="n">dot</span><span class="p">(</span><span class="n">inv</span><span class="p">(</span><span class="n">identity</span><span class="p">(</span><span class="n">m</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span><span class="o">-</span><span class="n">kron</span><span class="p">(</span><span class="n">T</span><span class="p">,</span><span class="n">T</span><span class="p">)),</span><span class="n">dot</span><span class="p">(</span><span class="n">R</span><span class="p">,</span><span class="n">R</span><span class="o">.</span><span class="n">T</span><span class="p">)</span><span class="o">.</span><span class="n">ravel</span><span class="p">(</span><span class="s">&#39;F&#39;</span><span class="p">))</span>
+    <span class="k">return</span> <span class="n">zeros</span><span class="p">((</span><span class="n">m</span><span class="p">,</span><span class="mi">1</span><span class="p">)),</span> <span class="n">Q_0</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">r</span><span class="p">,</span><span class="n">r</span><span class="p">,</span><span class="n">order</span><span class="o">=</span><span class="s">&#39;F&#39;</span><span class="p">)</span>
+
+
+<span class="k">def</span> <span class="nf">kalmansmooth</span><span class="p">(</span><span class="n">F</span><span class="p">,</span> <span class="n">A</span><span class="p">,</span> <span class="n">H</span><span class="p">,</span> <span class="n">Q</span><span class="p">,</span> <span class="n">R</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">X</span><span class="p">,</span> <span class="n">xi10</span><span class="p">):</span>
+    <span class="k">pass</span>
+
+<span class="k">def</span> <span class="nf">kalmanfilter</span><span class="p">(</span><span class="n">F</span><span class="p">,</span> <span class="n">A</span><span class="p">,</span> <span class="n">H</span><span class="p">,</span> <span class="n">Q</span><span class="p">,</span> <span class="n">R</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">X</span><span class="p">,</span> <span class="n">xi10</span><span class="p">,</span> <span class="n">ntrain</span><span class="p">,</span> <span class="n">history</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Returns the negative log-likelihood of y conditional on the information set</span>
+
+<span class="sd">    Assumes that the initial state and all innovations are multivariate</span>
+<span class="sd">    Gaussian.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    -----------</span>
+<span class="sd">    F : array-like</span>
+<span class="sd">        The (r x r) array holding the transition matrix for the hidden state.</span>
+<span class="sd">    A : array-like</span>
+<span class="sd">        The (nobs x k) array relating the predetermined variables to the</span>
+<span class="sd">        observed data.</span>
+<span class="sd">    H : array-like</span>
+<span class="sd">        The (nobs x r) array relating the hidden state vector to the</span>
+<span class="sd">        observed data.</span>
+<span class="sd">    Q : array-like</span>
+<span class="sd">        (r x r) variance/covariance matrix on the error term in the hidden</span>
+<span class="sd">        state transition.</span>
+<span class="sd">    R : array-like</span>
+<span class="sd">        (nobs x nobs) variance/covariance of the noise in the observation</span>
+<span class="sd">        equation.</span>
+<span class="sd">    y : array-like</span>
+<span class="sd">        The (nobs x 1) array holding the observed data.</span>
+<span class="sd">    X : array-like</span>
+<span class="sd">        The (nobs x k) array holding the predetermined variables data.</span>
+<span class="sd">    xi10 : array-like</span>
+<span class="sd">        Is the (r x 1) initial prior on the initial state vector.</span>
+<span class="sd">    ntrain : int</span>
+<span class="sd">        The number of training periods for the filter.  This is the number of</span>
+<span class="sd">        observations that do not affect the likelihood.</span>
+
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    likelihood</span>
+<span class="sd">        The negative of the log likelihood</span>
+<span class="sd">    history or priors, history of posterior</span>
+<span class="sd">        If history is True.</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    No input checking is done.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+<span class="c"># uses log of Hamilton 13.4.1</span>
+    <span class="n">F</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">F</span><span class="p">)</span>
+    <span class="n">H</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">atleast_2d</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">H</span><span class="p">))</span>
+    <span class="n">n</span> <span class="o">=</span> <span class="n">H</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>  <span class="c"># remember that H gets transposed</span>
+    <span class="n">y</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">y</span><span class="p">)</span>
+    <span class="n">A</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">A</span><span class="p">)</span>
+    <span class="n">X</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">X</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">y</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span> <span class="c"># note that Y is in rows for now</span>
+        <span class="n">y</span> <span class="o">=</span> <span class="n">y</span><span class="p">[:,</span><span class="bp">None</span><span class="p">]</span>
+    <span class="n">nobs</span> <span class="o">=</span> <span class="n">y</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">xi10</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">atleast_2d</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">xi10</span><span class="p">))</span>
+<span class="c">#    if xi10.ndim == 1:</span>
+<span class="c">#        xi10[:,None]</span>
+    <span class="k">if</span> <span class="n">history</span><span class="p">:</span>
+        <span class="n">state_vector</span> <span class="o">=</span> <span class="p">[</span><span class="n">xi10</span><span class="p">]</span>
+    <span class="n">Q</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">Q</span><span class="p">)</span>
+    <span class="n">r</span> <span class="o">=</span> <span class="n">xi10</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+<span class="c"># Eq. 12.2.21, other version says P0 = Q</span>
+<span class="c">#    p10 = np.dot(np.linalg.inv(np.eye(r**2)-np.kron(F,F)),Q.ravel(&#39;F&#39;))</span>
+<span class="c">#    p10 = np.reshape(P0, (r,r), order=&#39;F&#39;)</span>
+<span class="c"># Assume a fixed, known intial point and set P0 = Q</span>
+<span class="c">#TODO: this looks *slightly * different than Durbin-Koopman exact likelihood</span>
+<span class="c"># initialization p 112 unless I&#39;ve misunderstood the notational translation.</span>
+    <span class="n">p10</span> <span class="o">=</span> <span class="n">Q</span>
+
+    <span class="n">loglikelihood</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nobs</span><span class="p">):</span>
+        <span class="n">HTPHR</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">atleast_1d</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">squeeze</span><span class="p">(</span><span class="n">chain_dot</span><span class="p">(</span><span class="n">H</span><span class="o">.</span><span class="n">T</span><span class="p">,</span><span class="n">p10</span><span class="p">,</span><span class="n">H</span><span class="p">)</span><span class="o">+</span><span class="n">R</span><span class="p">))</span>
+<span class="c">#        print HTPHR</span>
+<span class="c">#        print HTPHR.ndim</span>
+<span class="c">#        print HTPHR.shape</span>
+        <span class="k">if</span> <span class="n">HTPHR</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="n">HTPHRinv</span> <span class="o">=</span> <span class="mf">1.</span><span class="o">/</span><span class="n">HTPHR</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">HTPHRinv</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">inv</span><span class="p">(</span><span class="n">HTPHR</span><span class="p">)</span> <span class="c"># correct</span>
+<span class="c">#        print A.T</span>
+<span class="c">#        print X</span>
+<span class="c">#        print H.T</span>
+<span class="c">#        print xi10</span>
+<span class="c">#        print y[i]</span>
+        <span class="n">part1</span> <span class="o">=</span> <span class="n">y</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">A</span><span class="o">.</span><span class="n">T</span><span class="p">,</span><span class="n">X</span><span class="p">)</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">H</span><span class="o">.</span><span class="n">T</span><span class="p">,</span><span class="n">xi10</span><span class="p">)</span> <span class="c"># correct</span>
+        <span class="k">if</span> <span class="n">i</span> <span class="o">&gt;=</span> <span class="n">ntrain</span><span class="p">:</span> <span class="c"># zero-index, but ntrain isn&#39;t</span>
+            <span class="n">HTPHRdet</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">det</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">atleast_2d</span><span class="p">(</span><span class="n">HTPHR</span><span class="p">))</span> <span class="c"># correct</span>
+            <span class="n">part2</span> <span class="o">=</span> <span class="o">-.</span><span class="mi">5</span><span class="o">*</span><span class="n">chain_dot</span><span class="p">(</span><span class="n">part1</span><span class="o">.</span><span class="n">T</span><span class="p">,</span><span class="n">HTPHRinv</span><span class="p">,</span><span class="n">part1</span><span class="p">)</span> <span class="c"># correct</span>
+<span class="c">#TODO: Need to test with ill-conditioned problem.</span>
+            <span class="n">loglike_interm</span> <span class="o">=</span> <span class="p">(</span><span class="o">-</span><span class="n">n</span><span class="o">/</span><span class="mf">2.</span><span class="p">)</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="mi">2</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">pi</span><span class="p">)</span> <span class="o">-</span> <span class="o">.</span><span class="mi">5</span><span class="o">*</span>\
+                        <span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">HTPHRdet</span><span class="p">)</span> <span class="o">+</span> <span class="n">part2</span>
+            <span class="n">loglikelihood</span> <span class="o">+=</span> <span class="n">loglike_interm</span>
+
+        <span class="c"># 13.2.15 Update current state xi_t based on y</span>
+        <span class="n">xi11</span> <span class="o">=</span> <span class="n">xi10</span> <span class="o">+</span> <span class="n">chain_dot</span><span class="p">(</span><span class="n">p10</span><span class="p">,</span> <span class="n">H</span><span class="p">,</span> <span class="n">HTPHRinv</span><span class="p">,</span> <span class="n">part1</span><span class="p">)</span>
+        <span class="c"># 13.2.16 MSE of that state</span>
+        <span class="n">p11</span> <span class="o">=</span> <span class="n">p10</span> <span class="o">-</span> <span class="n">chain_dot</span><span class="p">(</span><span class="n">p10</span><span class="p">,</span> <span class="n">H</span><span class="p">,</span> <span class="n">HTPHRinv</span><span class="p">,</span> <span class="n">H</span><span class="o">.</span><span class="n">T</span><span class="p">,</span> <span class="n">p10</span><span class="p">)</span>
+        <span class="c"># 13.2.17 Update forecast about xi_{t+1} based on our F</span>
+        <span class="n">xi10</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">F</span><span class="p">,</span><span class="n">xi11</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">history</span><span class="p">:</span>
+            <span class="n">state_vector</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">xi10</span><span class="p">)</span>
+        <span class="c"># 13.2.21 Update the MSE of the forecast</span>
+        <span class="n">p10</span> <span class="o">=</span> <span class="n">chain_dot</span><span class="p">(</span><span class="n">F</span><span class="p">,</span><span class="n">p11</span><span class="p">,</span><span class="n">F</span><span class="o">.</span><span class="n">T</span><span class="p">)</span> <span class="o">+</span> <span class="n">Q</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">history</span><span class="p">:</span>
+        <span class="k">return</span> <span class="o">-</span><span class="n">loglikelihood</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="o">-</span><span class="n">loglikelihood</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">state_vector</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span>
+
+<span class="c">#TODO: this works if it gets refactored, but it&#39;s not quite as accurate</span>
+<span class="c"># as KalmanFilter</span>
+<span class="c">#    def loglike_exact(self, params):</span>
+<span class="c">#        &quot;&quot;&quot;</span>
+<span class="c">#        Exact likelihood for ARMA process.</span>
+<span class="c">#</span>
+<span class="c">#        Notes</span>
+<span class="c">#        -----</span>
+<span class="c">#        Computes the exact likelihood for an ARMA process by modifying the</span>
+<span class="c">#        conditional sum of squares likelihood as suggested by Shephard (1997)</span>
+<span class="c">#        &quot;The relationship between the conditional sum of squares and the exact</span>
+<span class="c">#        likelihood for autoregressive moving average models.&quot;</span>
+<span class="c">#        &quot;&quot;&quot;</span>
+<span class="c">#        p = self.p</span>
+<span class="c">#        q = self.q</span>
+<span class="c">#        k = self.k</span>
+<span class="c">#        y = self.endog.copy()</span>
+<span class="c">#        nobs = self.nobs</span>
+<span class="c">#        if self.transparams:</span>
+<span class="c">#            newparams = self._transparams(params)</span>
+<span class="c">#        else:</span>
+<span class="c">#            newparams = params</span>
+<span class="c">#        if k &gt; 0:</span>
+<span class="c">#            y -= dot(self.exog, newparams[:k])</span>
+<span class="c">#        if p != 0:</span>
+<span class="c">#            arcoefs = newparams[k:k+p][::-1]</span>
+<span class="c">#            T = KalmanFilter.T(arcoefs)</span>
+<span class="c">#        else:</span>
+<span class="c">#            arcoefs = 0</span>
+<span class="c">#        if q != 0:</span>
+<span class="c">#            macoefs = newparams[k+p:k+p+q][::-1]</span>
+<span class="c">#        else:</span>
+<span class="c">#            macoefs = 0</span>
+<span class="c">#        errors = [0] * q # psuedo-errors</span>
+<span class="c">#        rerrors = [1] * q # error correction term</span>
+<span class="c">#        # create pseudo-error and error correction series iteratively</span>
+<span class="c">#        for i in range(p,len(y)):</span>
+<span class="c">#            errors.append(y[i]-sum(arcoefs*y[i-p:i])-\</span>
+<span class="c">#                                sum(macoefs*errors[i-q:i]))</span>
+<span class="c">#            rerrors.append(-sum(macoefs*rerrors[i-q:i]))</span>
+<span class="c">#        errors = np.asarray(errors)</span>
+<span class="c">#        rerrors = np.asarray(rerrors)</span>
+<span class="c">#</span>
+<span class="c">#        # compute bayesian expected mean and variance of initial errors</span>
+<span class="c">#        one_sumrt2 = 1 + np.sum(rerrors**2)</span>
+<span class="c">#        sum_errors2 = np.sum(errors**2)</span>
+<span class="c">#        mup = -np.sum(errors * rerrors)/one_sumrt2</span>
+<span class="c">#</span>
+<span class="c">#        # concentrating out the ML estimator of &quot;true&quot; sigma2 gives</span>
+<span class="c">#        sigma2 = 1./(2*nobs)  * (sum_errors2 - mup**2*(one_sumrt2))</span>
+<span class="c">#</span>
+<span class="c">#        # which gives a variance of the initial errors of</span>
+<span class="c">#        sigma2p = sigma2/one_sumrt2</span>
+<span class="c">#</span>
+<span class="c">#        llf = -(nobs-p)/2. * np.log(2*pi*sigma2) - 1./(2*sigma2)*sum_errors2 \</span>
+<span class="c">#                + 1./2*log(one_sumrt2) + 1./(2*sigma2) * mup**2*one_sumrt2</span>
+<span class="c">#        Z_mat = KalmanFilter.Z(r)</span>
+<span class="c">#        R_mat = KalmanFilter.R(newparams, r, k, q, p)</span>
+<span class="c">#        T_mat = KalmanFilter.T(newparams, r, k, p)</span>
+<span class="c">#        # initial state and its variance</span>
+<span class="c">#        alpha = zeros((m,1))</span>
+<span class="c">#        Q_0 = dot(inv(identity(m**2)-kron(T_mat,T_mat)),</span>
+<span class="c">#                dot(R_mat,R_mat.T).ravel(&#39;F&#39;))</span>
+<span class="c">#        Q_0 = Q_0.reshape(r,r,order=&#39;F&#39;)</span>
+<span class="c">#        P = Q_0</span>
+<span class="c">#        v = zeros((nobs,1))</span>
+<span class="c">#        F = zeros((nobs,1))</span>
+<span class="c">#        B = array([T_mat, 0], dtype=object)</span>
+<span class="c">#</span>
+<span class="c">#</span>
+<span class="c">#        for i in xrange(int(nobs)):</span>
+<span class="c">#            v_mat = (y[i],0) - dot(z_mat,B)</span>
+<span class="c">#</span>
+<span class="c">#        B_0 = (T,0)</span>
+<span class="c">#        v_t = (y_t,0) - z*B_t</span>
+<span class="c">#        llf = -nobs/2.*np.log(2*pi*sigma2) - 1/(2.*sigma2)*se_n - \</span>
+<span class="c">#            1/2.*logdet(Sigma_a) + 1/(2*sigma2)*s_n_prime*sigma_a*s_n</span>
+<span class="c">#        return llf</span>
+<span class="c">#</span>
+
+
+<span class="k">class</span> <span class="nc">StateSpaceModel</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Generic StateSpaceModel class. Meant to be a base class.</span>
+
+<span class="sd">    This class lays out the methods that are to be defined by any child</span>
+<span class="sd">    class.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    endog : array-like</span>
+<span class="sd">        An `nobs` x `p` array of observations</span>
+<span class="sd">    exog : array-like, optional</span>
+<span class="sd">        An `nobs` x `k` array of exogenous variables.</span>
+<span class="sd">    **kwargs</span>
+<span class="sd">        Anything provided to the constructor will be attached as an</span>
+<span class="sd">        attribute.</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    The state space model is assumed to be of the form</span>
+
+<span class="sd">    y[t] = Z[t].dot(alpha[t]) + epsilon[t]</span>
+<span class="sd">    alpha[t+1] = T[t].dot(alpha[t]) + R[t].dot(eta[t])</span>
+
+<span class="sd">    where</span>
+
+<span class="sd">    epsilon[t] ~ N(0, H[t])</span>
+<span class="sd">    eta[t] ~ N(0, Q[t])</span>
+<span class="sd">    alpha[0] ~ N(a[0], P[0])</span>
+
+<span class="sd">    Where y is the `p` x 1 observations vector, and alpha is the `m` x 1</span>
+<span class="sd">    state vector.</span>
+
+<span class="sd">    References</span>
+<span class="sd">    -----------</span>
+<span class="sd">    Durbin, J. and S.J. Koopman. 2001. `Time Series Analysis by State Space</span>
+<span class="sd">        Methods.` Oxford.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">endog</span><span class="p">,</span> <span class="n">exog</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="nb">dict</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">kwargs</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">__dict__</span> <span class="o">=</span> <span class="bp">self</span>
+
+        <span class="n">endog</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">endog</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">endog</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="n">endog</span> <span class="o">=</span> <span class="n">endog</span><span class="p">[:,</span><span class="bp">None</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">endog</span> <span class="o">=</span> <span class="n">endog</span>
+        <span class="n">p</span> <span class="o">=</span> <span class="n">endog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">p</span> <span class="o">=</span> <span class="n">nobs</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span> <span class="o">=</span> <span class="n">endog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">exog</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">exog</span> <span class="o">=</span> <span class="n">exog</span>
+
+    <span class="k">def</span> <span class="nf">T</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">):</span>
+        <span class="k">pass</span>
+
+    <span class="k">def</span> <span class="nf">R</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">):</span>
+        <span class="k">pass</span>
+
+    <span class="k">def</span> <span class="nf">Z</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">):</span>
+        <span class="k">pass</span>
+
+    <span class="k">def</span> <span class="nf">H</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">):</span>
+        <span class="k">pass</span>
+
+    <span class="k">def</span> <span class="nf">Q</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">):</span>
+        <span class="k">pass</span>
+
+    <span class="k">def</span> <span class="nf">_univariatefilter</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">init_state</span><span class="p">,</span> <span class="n">init_var</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Implements the Kalman Filter recursions. Optimized for univariate case.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">y</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">endog</span>
+        <span class="n">nobs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span>
+
+        <span class="n">R</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">R</span>
+        <span class="n">T</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">T</span>
+        <span class="n">Z</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">Z</span>
+        <span class="n">H</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">H</span>
+        <span class="n">Q</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">Q</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">init_state</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">init_var</span><span class="p">:</span>
+            <span class="n">alpha</span><span class="p">,</span> <span class="n">P</span> <span class="o">=</span> <span class="n">_init_diffuse</span><span class="p">(</span><span class="n">T</span><span class="p">,</span><span class="n">R</span><span class="p">)</span>
+        <span class="c">#NOTE: stopped here</span>
+
+    <span class="k">def</span> <span class="nf">_univariatefilter_update</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">pass</span>
+        <span class="c"># does the KF but calls _update after each loop to update the matrices</span>
+        <span class="c"># for time-varying coefficients</span>
+
+    <span class="k">def</span> <span class="nf">kalmanfilter</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">init_state</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">init_var</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Runs the Kalman Filter</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c"># determine if</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">p</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">_univariatefilter</span><span class="p">(</span><span class="n">init_state</span><span class="p">,</span> <span class="n">init_var</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&quot;No multivariate filter written yet&quot;</span><span class="p">)</span>
+
+
+    <span class="k">def</span> <span class="nf">_updateloglike</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">xi10</span><span class="p">,</span> <span class="n">ntrain</span><span class="p">,</span> <span class="n">penalty</span><span class="p">,</span> <span class="n">upperbounds</span><span class="p">,</span> <span class="n">lowerbounds</span><span class="p">,</span>
+            <span class="n">F</span><span class="p">,</span><span class="n">A</span><span class="p">,</span><span class="n">H</span><span class="p">,</span><span class="n">Q</span><span class="p">,</span><span class="n">R</span><span class="p">,</span> <span class="n">history</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">paramsorig</span> <span class="o">=</span> <span class="n">params</span>
+        <span class="c"># are the bounds binding?</span>
+        <span class="k">if</span> <span class="n">penalty</span><span class="p">:</span>
+            <span class="n">params</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">((</span><span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">((</span><span class="n">lowerbounds</span><span class="p">,</span> <span class="n">params</span><span class="p">),</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">),</span><span class="n">upperbounds</span><span class="p">),</span>
+                <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+        <span class="c">#TODO: does it make sense for all of these to be allowed to be None?</span>
+        <span class="k">if</span> <span class="n">F</span> <span class="o">!=</span> <span class="bp">None</span> <span class="ow">and</span> <span class="nb">callable</span><span class="p">(</span><span class="n">F</span><span class="p">):</span>
+            <span class="n">F</span> <span class="o">=</span> <span class="n">F</span><span class="p">(</span><span class="n">params</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">F</span> <span class="o">==</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">F</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">if</span> <span class="n">A</span> <span class="o">!=</span> <span class="bp">None</span> <span class="ow">and</span> <span class="nb">callable</span><span class="p">(</span><span class="n">A</span><span class="p">):</span>
+            <span class="n">A</span> <span class="o">=</span> <span class="n">A</span><span class="p">(</span><span class="n">params</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">A</span> <span class="o">==</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">A</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">if</span> <span class="n">H</span> <span class="o">!=</span> <span class="bp">None</span> <span class="ow">and</span> <span class="nb">callable</span><span class="p">(</span><span class="n">H</span><span class="p">):</span>
+            <span class="n">H</span> <span class="o">=</span> <span class="n">H</span><span class="p">(</span><span class="n">params</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">H</span> <span class="o">==</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">H</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">print</span><span class="p">(</span><span class="nb">callable</span><span class="p">(</span><span class="n">Q</span><span class="p">))</span>
+        <span class="k">if</span> <span class="n">Q</span> <span class="o">!=</span> <span class="bp">None</span> <span class="ow">and</span> <span class="nb">callable</span><span class="p">(</span><span class="n">Q</span><span class="p">):</span>
+            <span class="n">Q</span> <span class="o">=</span> <span class="n">Q</span><span class="p">(</span><span class="n">params</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">Q</span> <span class="o">==</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">Q</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">if</span> <span class="n">R</span> <span class="o">!=</span> <span class="bp">None</span> <span class="ow">and</span> <span class="nb">callable</span><span class="p">(</span><span class="n">R</span><span class="p">):</span>
+            <span class="n">R</span> <span class="o">=</span> <span class="n">R</span><span class="p">(</span><span class="n">params</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">R</span> <span class="o">==</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">R</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="n">X</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">exog</span>
+        <span class="k">if</span> <span class="n">X</span> <span class="o">==</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">X</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="n">y</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">endog</span>
+        <span class="n">loglike</span> <span class="o">=</span> <span class="n">kalmanfilter</span><span class="p">(</span><span class="n">F</span><span class="p">,</span><span class="n">A</span><span class="p">,</span><span class="n">H</span><span class="p">,</span><span class="n">Q</span><span class="p">,</span><span class="n">R</span><span class="p">,</span><span class="n">y</span><span class="p">,</span><span class="n">X</span><span class="p">,</span> <span class="n">xi10</span><span class="p">,</span> <span class="n">ntrain</span><span class="p">,</span> <span class="n">history</span><span class="p">)</span>
+        <span class="c"># use a quadratic penalty function to move away from bounds</span>
+        <span class="k">if</span> <span class="n">penalty</span><span class="p">:</span>
+            <span class="n">loglike</span> <span class="o">+=</span> <span class="n">penalty</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">((</span><span class="n">paramsorig</span><span class="o">-</span><span class="n">params</span><span class="p">)</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">loglike</span>
+
+<span class="c">#        r = self.r</span>
+<span class="c">#        n = self.n</span>
+<span class="c">#        F = np.diagonal(np.ones(r-1), k=-1) # think this will be wrong for VAR</span>
+                                            <span class="c"># cf. 13.1.22 but think VAR</span>
+<span class="c">#        F[0] = params[:p] # assumes first p start_params are coeffs</span>
+                                <span class="c"># of obs. vector, needs to be nxp for VAR?</span>
+<span class="c">#        self.F = F</span>
+<span class="c">#        cholQ = np.diag(start_params[p:]) # fails for bivariate</span>
+                                                        <span class="c"># MA(1) section</span>
+                                                        <span class="c"># 13.4.2</span>
+<span class="c">#        Q = np.dot(cholQ,cholQ.T)</span>
+<span class="c">#        self.Q = Q</span>
+<span class="c">#        HT = np.zeros((n,r))</span>
+<span class="c">#        xi10 = self.xi10</span>
+<span class="c">#        y = self.endog</span>
+<span class="c">#        ntrain = self.ntrain</span>
+ <span class="c">#       loglike = kalmanfilter(F,H,y,xi10,Q,ntrain)</span>
+
+    <span class="k">def</span> <span class="nf">fit_kalman</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">start_params</span><span class="p">,</span> <span class="n">xi10</span><span class="p">,</span> <span class="n">ntrain</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">F</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">A</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">H</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+            <span class="n">Q</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+            <span class="n">R</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s">&quot;bfgs&quot;</span><span class="p">,</span> <span class="n">penalty</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">upperbounds</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+            <span class="n">lowerbounds</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        method : str</span>
+<span class="sd">            Only &quot;bfgs&quot; is currently accepted.</span>
+<span class="sd">        start_params : array-like</span>
+<span class="sd">            The first guess on all parameters to be estimated.  This can</span>
+<span class="sd">            be in any order as long as the F,A,H,Q, and R functions handle</span>
+<span class="sd">            the parameters appropriately.</span>
+<span class="sd">        xi10 : arry-like</span>
+<span class="sd">            The (r x 1) vector of initial states.  See notes.</span>
+<span class="sd">        F,A,H,Q,R : functions or array-like, optional</span>
+<span class="sd">            If functions, they should take start_params (or the current</span>
+<span class="sd">            value of params during iteration and return the F,A,H,Q,R matrices).</span>
+<span class="sd">            See notes.  If they are constant then can be given as array-like</span>
+<span class="sd">            objects.  If not included in the state-space representation then</span>
+<span class="sd">            can be left as None.  See example in class docstring.</span>
+<span class="sd">        penalty : bool,</span>
+<span class="sd">            Whether or not to include a penalty for solutions that violate</span>
+<span class="sd">            the bounds given by `lowerbounds` and `upperbounds`.</span>
+<span class="sd">        lowerbounds : array-like</span>
+<span class="sd">            Lower bounds on the parameter solutions.  Expected to be in the</span>
+<span class="sd">            same order as `start_params`.</span>
+<span class="sd">        upperbounds : array-like</span>
+<span class="sd">            Upper bounds on the parameter solutions.  Expected to be in the</span>
+<span class="sd">            same order as `start_params`</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">y</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">endog</span>
+        <span class="n">ntrain</span> <span class="o">=</span> <span class="n">ntrain</span>
+        <span class="n">_updateloglike</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_updateloglike</span>
+        <span class="n">params</span> <span class="o">=</span> <span class="n">start_params</span>
+        <span class="k">if</span> <span class="n">method</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="s">&#39;bfgs&#39;</span><span class="p">:</span>
+            <span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="n">llf</span><span class="p">,</span> <span class="n">score</span><span class="p">,</span> <span class="n">cov_params</span><span class="p">,</span> <span class="n">func_calls</span><span class="p">,</span> <span class="n">grad_calls</span><span class="p">,</span>
+            <span class="n">warnflag</span><span class="p">)</span> <span class="o">=</span> <span class="n">optimize</span><span class="o">.</span><span class="n">fmin_bfgs</span><span class="p">(</span><span class="n">_updateloglike</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span>
+                    <span class="n">args</span> <span class="o">=</span> <span class="p">(</span><span class="n">xi10</span><span class="p">,</span> <span class="n">ntrain</span><span class="p">,</span> <span class="n">penalty</span><span class="p">,</span> <span class="n">upperbounds</span><span class="p">,</span> <span class="n">lowerbounds</span><span class="p">,</span>
+                        <span class="n">F</span><span class="p">,</span><span class="n">A</span><span class="p">,</span><span class="n">H</span><span class="p">,</span><span class="n">Q</span><span class="p">,</span><span class="n">R</span><span class="p">,</span> <span class="bp">False</span><span class="p">),</span> <span class="n">gtol</span><span class="o">=</span> <span class="mf">1e-8</span><span class="p">,</span> <span class="n">epsilon</span><span class="o">=</span><span class="mf">1e-5</span><span class="p">,</span>
+                        <span class="n">full_output</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+            <span class="c">#TODO: provide more options to user for optimize</span>
+        <span class="c"># Getting history would require one more call to _updatelikelihood</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">params</span> <span class="o">=</span> <span class="n">params</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">llf</span> <span class="o">=</span> <span class="n">llf</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">gradient</span> <span class="o">=</span> <span class="n">score</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">cov_params</span> <span class="o">=</span> <span class="n">cov_params</span> <span class="c"># how to interpret this?</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">warnflag</span> <span class="o">=</span> <span class="n">warnflag</span>
+
+<span class="k">def</span> <span class="nf">updatematrices</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">xi10</span><span class="p">,</span> <span class="n">ntrain</span><span class="p">,</span> <span class="n">penalty</span><span class="p">,</span> <span class="n">upperbound</span><span class="p">,</span> <span class="n">lowerbound</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    TODO: change API, update names</span>
+
+<span class="sd">    This isn&#39;t general.  Copy of Luca&#39;s matlab example.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">paramsorig</span> <span class="o">=</span> <span class="n">params</span>
+    <span class="c"># are the bounds binding?</span>
+    <span class="n">params</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">((</span><span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">((</span><span class="n">lowerbound</span><span class="p">,</span><span class="n">params</span><span class="p">),</span><span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">),</span><span class="n">upperbound</span><span class="p">),</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+    <span class="n">rho</span> <span class="o">=</span> <span class="n">params</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">sigma1</span> <span class="o">=</span> <span class="n">params</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+    <span class="n">sigma2</span> <span class="o">=</span> <span class="n">params</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span>
+
+    <span class="n">F</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="n">rho</span><span class="p">,</span> <span class="mi">0</span><span class="p">],[</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">]])</span>
+    <span class="n">cholQ</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="n">sigma1</span><span class="p">,</span><span class="mi">0</span><span class="p">],[</span><span class="mi">0</span><span class="p">,</span><span class="n">sigma2</span><span class="p">]])</span>
+    <span class="n">H</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">((</span><span class="mi">2</span><span class="p">,</span><span class="mi">1</span><span class="p">))</span>
+    <span class="n">q</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">cholQ</span><span class="p">,</span><span class="n">cholQ</span><span class="o">.</span><span class="n">T</span><span class="p">)</span>
+    <span class="n">loglike</span> <span class="o">=</span> <span class="n">kalmanfilter</span><span class="p">(</span><span class="n">F</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="n">H</span><span class="p">,</span><span class="n">q</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="n">xi10</span><span class="p">,</span> <span class="n">ntrain</span><span class="p">)</span>
+    <span class="n">loglike</span> <span class="o">=</span> <span class="n">loglike</span> <span class="o">+</span> <span class="n">penalty</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">((</span><span class="n">paramsorig</span><span class="o">-</span><span class="n">params</span><span class="p">)</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">loglike</span>
+
+<div class="viewcode-block" id="KalmanFilter"><a class="viewcode-back" href="../../../../generated/statsmodels.tsa.kalmanf.kalmanfilter.KalmanFilter.html#statsmodels.tsa.kalmanf.kalmanfilter.KalmanFilter">[docs]</a><span class="k">class</span> <span class="nc">KalmanFilter</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Kalman Filter code intended for use with the ARMA model.</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    The notation for the state-space form follows Durbin and Koopman (2001).</span>
+
+<span class="sd">    The observation equations is</span>
+
+<span class="sd">    .. math:: y_{t} = Z_{t}\\alpha_{t} + \\epsilon_{t}</span>
+
+<span class="sd">    The state equation is</span>
+
+<span class="sd">    .. math:: \\alpha_{t+1} = T_{t}\\alpha_{t} + R_{t}\\eta_{t}</span>
+
+<span class="sd">    For the present purposed \epsilon_{t} is assumed to always be zero.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="nd">@classmethod</span>
+<div class="viewcode-block" id="KalmanFilter.T"><a class="viewcode-back" href="../../../../generated/statsmodels.tsa.kalmanf.kalmanfilter.KalmanFilter.T.html#statsmodels.tsa.kalmanf.kalmanfilter.KalmanFilter.T">[docs]</a>    <span class="k">def</span> <span class="nf">T</span><span class="p">(</span><span class="n">cls</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">r</span><span class="p">,</span> <span class="n">k</span><span class="p">,</span> <span class="n">p</span><span class="p">):</span> <span class="c"># F in Hamilton</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        The coefficient matrix for the state vector in the state equation.</span>
+
+<span class="sd">        Its dimension is r+k x r+k.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        r : int</span>
+<span class="sd">            In the context of the ARMA model r is max(p,q+1) where p is the</span>
+<span class="sd">            AR order and q is the MA order.</span>
+<span class="sd">        k : int</span>
+<span class="sd">            The number of exogenous variables in the ARMA model, including</span>
+<span class="sd">            the constant if appropriate.</span>
+<span class="sd">        p : int</span>
+<span class="sd">            The AR coefficient in an ARMA model.</span>
+
+<span class="sd">        References</span>
+<span class="sd">        ----------</span>
+<span class="sd">        Durbin and Koopman Section 3.7.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">arr</span> <span class="o">=</span> <span class="n">zeros</span><span class="p">((</span><span class="n">r</span><span class="p">,</span> <span class="n">r</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">params</span><span class="o">.</span><span class="n">dtype</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="s">&quot;F&quot;</span><span class="p">)</span>
+        <span class="c"># allows for complex-step derivative</span>
+        <span class="n">params_padded</span> <span class="o">=</span> <span class="n">zeros</span><span class="p">(</span><span class="n">r</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">params</span><span class="o">.</span><span class="n">dtype</span><span class="p">,</span>
+                              <span class="n">order</span><span class="o">=</span><span class="s">&quot;F&quot;</span><span class="p">)</span>
+                        <span class="c"># handle zero coefficients if necessary</span>
+        <span class="c">#NOTE: squeeze added for cg optimizer</span>
+        <span class="n">params_padded</span><span class="p">[:</span><span class="n">p</span><span class="p">]</span> <span class="o">=</span> <span class="n">params</span><span class="p">[</span><span class="n">k</span><span class="p">:</span><span class="n">p</span><span class="o">+</span><span class="n">k</span><span class="p">]</span>
+        <span class="n">arr</span><span class="p">[:,</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">params_padded</span>   <span class="c"># first p params are AR coeffs w/ short params</span>
+        <span class="n">arr</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">:]</span> <span class="o">=</span> <span class="n">eye</span><span class="p">(</span><span class="n">r</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">arr</span>
+</div>
+    <span class="nd">@classmethod</span>
+<div class="viewcode-block" id="KalmanFilter.R"><a class="viewcode-back" href="../../../../generated/statsmodels.tsa.kalmanf.kalmanfilter.KalmanFilter.R.html#statsmodels.tsa.kalmanf.kalmanfilter.KalmanFilter.R">[docs]</a>    <span class="k">def</span> <span class="nf">R</span><span class="p">(</span><span class="n">cls</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">r</span><span class="p">,</span> <span class="n">k</span><span class="p">,</span> <span class="n">q</span><span class="p">,</span> <span class="n">p</span><span class="p">):</span> <span class="c"># R is H in Hamilton</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        The coefficient matrix for the state vector in the observation equation.</span>
+
+<span class="sd">        Its dimension is r+k x 1.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        r : int</span>
+<span class="sd">            In the context of the ARMA model r is max(p,q+1) where p is the</span>
+<span class="sd">            AR order and q is the MA order.</span>
+<span class="sd">        k : int</span>
+<span class="sd">            The number of exogenous variables in the ARMA model, including</span>
+<span class="sd">            the constant if appropriate.</span>
+<span class="sd">        q : int</span>
+<span class="sd">            The MA order in an ARMA model.</span>
+<span class="sd">        p : int</span>
+<span class="sd">            The AR order in an ARMA model.</span>
+
+<span class="sd">        References</span>
+<span class="sd">        ----------</span>
+<span class="sd">        Durbin and Koopman Section 3.7.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">arr</span> <span class="o">=</span> <span class="n">zeros</span><span class="p">((</span><span class="n">r</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">params</span><span class="o">.</span><span class="n">dtype</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="s">&quot;F&quot;</span><span class="p">)</span>
+                               <span class="c"># this allows zero coefficients</span>
+                               <span class="c"># dtype allows for compl. der.</span>
+        <span class="n">arr</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="n">q</span><span class="o">+</span><span class="mi">1</span><span class="p">,:]</span> <span class="o">=</span> <span class="n">params</span><span class="p">[</span><span class="n">p</span><span class="o">+</span><span class="n">k</span><span class="p">:</span><span class="n">p</span><span class="o">+</span><span class="n">k</span><span class="o">+</span><span class="n">q</span><span class="p">][:,</span><span class="bp">None</span><span class="p">]</span>
+        <span class="n">arr</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="mf">1.0</span>
+        <span class="k">return</span> <span class="n">arr</span>
+</div>
+    <span class="nd">@classmethod</span>
+<div class="viewcode-block" id="KalmanFilter.Z"><a class="viewcode-back" href="../../../../generated/statsmodels.tsa.kalmanf.kalmanfilter.KalmanFilter.Z.html#statsmodels.tsa.kalmanf.kalmanfilter.KalmanFilter.Z">[docs]</a>    <span class="k">def</span> <span class="nf">Z</span><span class="p">(</span><span class="n">cls</span><span class="p">,</span> <span class="n">r</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Returns the Z selector matrix in the observation equation.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        r : int</span>
+<span class="sd">            In the context of the ARMA model r is max(p,q+1) where p is the</span>
+<span class="sd">            AR order and q is the MA order.</span>
+
+<span class="sd">        Notes</span>
+<span class="sd">        -----</span>
+<span class="sd">        Currently only returns a 1 x r vector [1,0,0,...0].  Will need to</span>
+<span class="sd">        be generalized when the Kalman Filter becomes more flexible.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">arr</span> <span class="o">=</span> <span class="n">zeros</span><span class="p">((</span><span class="mi">1</span><span class="p">,</span><span class="n">r</span><span class="p">),</span> <span class="n">order</span><span class="o">=</span><span class="s">&quot;F&quot;</span><span class="p">)</span>
+        <span class="n">arr</span><span class="p">[:,</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="mf">1.</span>
+        <span class="k">return</span> <span class="n">arr</span>
+</div>
+    <span class="nd">@classmethod</span>
+<div class="viewcode-block" id="KalmanFilter.geterrors"><a class="viewcode-back" href="../../../../generated/statsmodels.tsa.kalmanf.kalmanfilter.KalmanFilter.geterrors.html#statsmodels.tsa.kalmanf.kalmanfilter.KalmanFilter.geterrors">[docs]</a>    <span class="k">def</span> <span class="nf">geterrors</span><span class="p">(</span><span class="n">cls</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">k</span><span class="p">,</span> <span class="n">k_ar</span><span class="p">,</span> <span class="n">k_ma</span><span class="p">,</span> <span class="n">k_lags</span><span class="p">,</span> <span class="n">nobs</span><span class="p">,</span> <span class="n">Z_mat</span><span class="p">,</span> <span class="n">m</span><span class="p">,</span> <span class="n">R_mat</span><span class="p">,</span> <span class="n">T_mat</span><span class="p">,</span>
+                  <span class="n">paramsdtype</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Returns just the errors of the Kalman Filter</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">issubdtype</span><span class="p">(</span><span class="n">paramsdtype</span><span class="p">,</span> <span class="nb">float</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">kalman_loglike</span><span class="o">.</span><span class="n">kalman_filter_double</span><span class="p">(</span><span class="n">y</span><span class="p">,</span> <span class="n">k</span><span class="p">,</span> <span class="n">k_ar</span><span class="p">,</span> <span class="n">k_ma</span><span class="p">,</span>
+                                <span class="n">k_lags</span><span class="p">,</span> <span class="nb">int</span><span class="p">(</span><span class="n">nobs</span><span class="p">),</span> <span class="n">Z_mat</span><span class="p">,</span> <span class="n">R_mat</span><span class="p">,</span> <span class="n">T_mat</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="k">elif</span> <span class="n">issubdtype</span><span class="p">(</span><span class="n">paramsdtype</span><span class="p">,</span> <span class="nb">complex</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">kalman_loglike</span><span class="o">.</span><span class="n">kalman_filter_complex</span><span class="p">(</span><span class="n">y</span><span class="p">,</span> <span class="n">k</span><span class="p">,</span> <span class="n">k_ar</span><span class="p">,</span> <span class="n">k_ma</span><span class="p">,</span>
+                                <span class="n">k_lags</span><span class="p">,</span> <span class="nb">int</span><span class="p">(</span><span class="n">nobs</span><span class="p">),</span> <span class="n">Z_mat</span><span class="p">,</span> <span class="n">R_mat</span><span class="p">,</span> <span class="n">T_mat</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s">&quot;dtype </span><span class="si">%s</span><span class="s"> is not supported &quot;</span>
+                            <span class="s">&quot;Please file a bug report&quot;</span> <span class="o">%</span> <span class="n">paramsdtype</span><span class="p">)</span>
+</div>
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span> <span class="nf">_init_kalman_state</span><span class="p">(</span><span class="n">cls</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">arma_model</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Returns the system matrices and other info needed for the</span>
+<span class="sd">        Kalman Filter recursions</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">paramsdtype</span> <span class="o">=</span> <span class="n">params</span><span class="o">.</span><span class="n">dtype</span>
+        <span class="n">y</span> <span class="o">=</span> <span class="n">arma_model</span><span class="o">.</span><span class="n">endog</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">paramsdtype</span><span class="p">)</span>
+        <span class="n">k</span> <span class="o">=</span> <span class="n">arma_model</span><span class="o">.</span><span class="n">k_exog</span> <span class="o">+</span> <span class="n">arma_model</span><span class="o">.</span><span class="n">k_trend</span>
+        <span class="n">nobs</span> <span class="o">=</span> <span class="n">arma_model</span><span class="o">.</span><span class="n">nobs</span>
+        <span class="n">k_ar</span> <span class="o">=</span> <span class="n">arma_model</span><span class="o">.</span><span class="n">k_ar</span>
+        <span class="n">k_ma</span> <span class="o">=</span> <span class="n">arma_model</span><span class="o">.</span><span class="n">k_ma</span>
+        <span class="n">k_lags</span> <span class="o">=</span> <span class="n">arma_model</span><span class="o">.</span><span class="n">k_lags</span>
+
+        <span class="k">if</span> <span class="n">arma_model</span><span class="o">.</span><span class="n">transparams</span><span class="p">:</span>
+            <span class="n">newparams</span> <span class="o">=</span> <span class="n">arma_model</span><span class="o">.</span><span class="n">_transparams</span><span class="p">(</span><span class="n">params</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">newparams</span> <span class="o">=</span> <span class="n">params</span>  <span class="c"># don&#39;t need a copy if not modified.</span>
+
+        <span class="k">if</span> <span class="n">k</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">y</span> <span class="o">-=</span> <span class="n">dot</span><span class="p">(</span><span class="n">arma_model</span><span class="o">.</span><span class="n">exog</span><span class="p">,</span> <span class="n">newparams</span><span class="p">[:</span><span class="n">k</span><span class="p">])</span>
+
+        <span class="c"># system matrices</span>
+        <span class="n">Z_mat</span> <span class="o">=</span> <span class="n">cls</span><span class="o">.</span><span class="n">Z</span><span class="p">(</span><span class="n">k_lags</span><span class="p">)</span>
+        <span class="n">m</span> <span class="o">=</span> <span class="n">Z_mat</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="c"># r</span>
+        <span class="n">R_mat</span> <span class="o">=</span> <span class="n">cls</span><span class="o">.</span><span class="n">R</span><span class="p">(</span><span class="n">newparams</span><span class="p">,</span> <span class="n">k_lags</span><span class="p">,</span> <span class="n">k</span><span class="p">,</span> <span class="n">k_ma</span><span class="p">,</span> <span class="n">k_ar</span><span class="p">)</span>
+        <span class="n">T_mat</span> <span class="o">=</span> <span class="n">cls</span><span class="o">.</span><span class="n">T</span><span class="p">(</span><span class="n">newparams</span><span class="p">,</span> <span class="n">k_lags</span><span class="p">,</span> <span class="n">k</span><span class="p">,</span> <span class="n">k_ar</span><span class="p">)</span>
+        <span class="k">return</span> <span class="p">(</span><span class="n">y</span><span class="p">,</span> <span class="n">k</span><span class="p">,</span> <span class="n">nobs</span><span class="p">,</span> <span class="n">k_ar</span><span class="p">,</span> <span class="n">k_ma</span><span class="p">,</span> <span class="n">k_lags</span><span class="p">,</span>
+               <span class="n">newparams</span><span class="p">,</span> <span class="n">Z_mat</span><span class="p">,</span> <span class="n">m</span><span class="p">,</span> <span class="n">R_mat</span><span class="p">,</span> <span class="n">T_mat</span><span class="p">,</span> <span class="n">paramsdtype</span><span class="p">)</span>
+
+    <span class="nd">@classmethod</span>
+<div class="viewcode-block" id="KalmanFilter.loglike"><a class="viewcode-back" href="../../../../generated/statsmodels.tsa.kalmanf.kalmanfilter.KalmanFilter.loglike.html#statsmodels.tsa.kalmanf.kalmanfilter.KalmanFilter.loglike">[docs]</a>    <span class="k">def</span> <span class="nf">loglike</span><span class="p">(</span><span class="n">cls</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">arma_model</span><span class="p">,</span> <span class="n">set_sigma2</span><span class="o">=</span><span class="bp">True</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        The loglikelihood for an ARMA model using the Kalman Filter recursions.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        params : array</span>
+<span class="sd">            The coefficients of the ARMA model, assumed to be in the order of</span>
+<span class="sd">            trend variables and `k` exogenous coefficients, the `p` AR</span>
+<span class="sd">            coefficients, then the `q` MA coefficients.</span>
+<span class="sd">        arma_model : `statsmodels.tsa.arima.ARMA` instance</span>
+<span class="sd">            A reference to the ARMA model instance.</span>
+<span class="sd">        set_sigma2 : bool, optional</span>
+<span class="sd">            True if arma_model.sigma2 should be set.</span>
+<span class="sd">            Note that sigma2 will be computed in any case,</span>
+<span class="sd">            but it will be discarded if set_sigma2 is False.</span>
+
+<span class="sd">        Notes</span>
+<span class="sd">        -----</span>
+<span class="sd">        This works for both real valued and complex valued parameters. The</span>
+<span class="sd">        complex values being used to compute the numerical derivative. If</span>
+<span class="sd">        available will use a Cython version of the Kalman Filter.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c">#TODO: see section 3.4.6 in Harvey for computing the derivatives in the</span>
+        <span class="c"># recursion itself.</span>
+        <span class="c">#TODO: this won&#39;t work for time-varying parameters</span>
+        <span class="p">(</span><span class="n">y</span><span class="p">,</span> <span class="n">k</span><span class="p">,</span> <span class="n">nobs</span><span class="p">,</span> <span class="n">k_ar</span><span class="p">,</span> <span class="n">k_ma</span><span class="p">,</span> <span class="n">k_lags</span><span class="p">,</span> <span class="n">newparams</span><span class="p">,</span> <span class="n">Z_mat</span><span class="p">,</span> <span class="n">m</span><span class="p">,</span> <span class="n">R_mat</span><span class="p">,</span> <span class="n">T_mat</span><span class="p">,</span>
+                <span class="n">paramsdtype</span><span class="p">)</span> <span class="o">=</span> <span class="n">cls</span><span class="o">.</span><span class="n">_init_kalman_state</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="n">arma_model</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">issubdtype</span><span class="p">(</span><span class="n">paramsdtype</span><span class="p">,</span> <span class="nb">float</span><span class="p">):</span>
+            <span class="n">loglike</span><span class="p">,</span> <span class="n">sigma2</span> <span class="o">=</span>  <span class="n">kalman_loglike</span><span class="o">.</span><span class="n">kalman_loglike_double</span><span class="p">(</span><span class="n">y</span><span class="p">,</span> <span class="n">k</span><span class="p">,</span>
+                                    <span class="n">k_ar</span><span class="p">,</span> <span class="n">k_ma</span><span class="p">,</span> <span class="n">k_lags</span><span class="p">,</span> <span class="nb">int</span><span class="p">(</span><span class="n">nobs</span><span class="p">),</span> <span class="n">Z_mat</span><span class="p">,</span>
+                                    <span class="n">R_mat</span><span class="p">,</span> <span class="n">T_mat</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">issubdtype</span><span class="p">(</span><span class="n">paramsdtype</span><span class="p">,</span> <span class="nb">complex</span><span class="p">):</span>
+            <span class="n">loglike</span><span class="p">,</span> <span class="n">sigma2</span> <span class="o">=</span>  <span class="n">kalman_loglike</span><span class="o">.</span><span class="n">kalman_loglike_complex</span><span class="p">(</span><span class="n">y</span><span class="p">,</span> <span class="n">k</span><span class="p">,</span>
+                                    <span class="n">k_ar</span><span class="p">,</span> <span class="n">k_ma</span><span class="p">,</span> <span class="n">k_lags</span><span class="p">,</span> <span class="nb">int</span><span class="p">(</span><span class="n">nobs</span><span class="p">),</span>
+                                    <span class="n">Z_mat</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">complex</span><span class="p">),</span>
+                                    <span class="n">R_mat</span><span class="p">,</span> <span class="n">T_mat</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s">&quot;This dtype </span><span class="si">%s</span><span class="s"> is not supported &quot;</span>
+                            <span class="s">&quot; Please files a bug report.&quot;</span> <span class="o">%</span> <span class="n">paramsdtype</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">set_sigma2</span><span class="p">:</span>
+            <span class="n">arma_model</span><span class="o">.</span><span class="n">sigma2</span> <span class="o">=</span> <span class="n">sigma2</span>
+
+        <span class="k">return</span> <span class="n">loglike</span>
+
+</div></div>
+<span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="kn">import</span> <span class="nn">numpy</span> <span class="kn">as</span> <span class="nn">np</span>
+    <span class="kn">from</span> <span class="nn">scipy.linalg</span> <span class="kn">import</span> <span class="n">block_diag</span>
+    <span class="kn">import</span> <span class="nn">numpy</span> <span class="kn">as</span> <span class="nn">np</span>
+    <span class="c"># Make our observations as in 13.1.13</span>
+    <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">seed</span><span class="p">(</span><span class="mi">54321</span><span class="p">)</span>
+    <span class="n">nobs</span> <span class="o">=</span> <span class="mi">600</span>
+    <span class="n">y</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">nobs</span><span class="p">)</span>
+    <span class="n">rho</span> <span class="o">=</span> <span class="p">[</span><span class="o">.</span><span class="mi">5</span><span class="p">,</span> <span class="o">-.</span><span class="mi">25</span><span class="p">,</span> <span class="o">.</span><span class="mi">35</span><span class="p">,</span> <span class="o">.</span><span class="mi">25</span><span class="p">]</span>
+    <span class="n">sigma</span> <span class="o">=</span> <span class="mf">2.0</span> <span class="c"># std dev. or noise</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">4</span><span class="p">,</span><span class="n">nobs</span><span class="p">):</span>
+        <span class="n">y</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">rho</span><span class="p">,</span><span class="n">y</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="mi">4</span><span class="p">:</span><span class="n">i</span><span class="p">][::</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="n">scale</span><span class="o">=</span><span class="n">sigma</span><span class="p">)</span>
+    <span class="n">y</span> <span class="o">=</span> <span class="n">y</span><span class="p">[</span><span class="mi">100</span><span class="p">:]</span>
+
+    <span class="c"># make an MA(2) observation equation as in example 13.3</span>
+    <span class="c"># y = mu + [1 theta][e_t e_t-1]&#39;</span>
+    <span class="n">mu</span> <span class="o">=</span> <span class="mf">2.</span>
+    <span class="n">theta</span> <span class="o">=</span> <span class="o">.</span><span class="mi">8</span>
+    <span class="n">rho</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="n">theta</span><span class="p">])</span>
+    <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randn</span><span class="p">(</span><span class="mi">54321</span><span class="p">)</span>
+    <span class="n">e</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randn</span><span class="p">(</span><span class="mi">101</span><span class="p">)</span>
+    <span class="n">y</span> <span class="o">=</span> <span class="n">mu</span> <span class="o">+</span> <span class="n">rho</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">*</span><span class="n">e</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span><span class="o">+</span><span class="n">rho</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">*</span><span class="n">e</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+    <span class="c"># might need to add an axis</span>
+    <span class="n">r</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">rho</span><span class="p">)</span>
+    <span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ones_like</span><span class="p">(</span><span class="n">y</span><span class="p">)</span>
+
+    <span class="c"># For now, assume that F,Q,A,H, and R are known</span>
+    <span class="n">F</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">],[</span><span class="mi">1</span><span class="p">,</span><span class="mi">0</span><span class="p">]])</span>
+    <span class="n">Q</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="mi">1</span><span class="p">,</span><span class="mi">0</span><span class="p">],[</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">]])</span>
+    <span class="n">A</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">mu</span><span class="p">])</span>
+    <span class="n">H</span> <span class="o">=</span> <span class="n">rho</span><span class="p">[:,</span><span class="bp">None</span><span class="p">]</span>
+    <span class="n">R</span> <span class="o">=</span> <span class="mi">0</span>
+
+    <span class="c"># remember that the goal is to solve recursively for the</span>
+    <span class="c"># state vector, xi, given the data, y (in this case)</span>
+    <span class="c"># we can also get a MSE matrix, P, associated with *each* observation</span>
+
+    <span class="c"># given that our errors are ~ NID(0,variance)</span>
+    <span class="c"># the starting E[e(1),e(0)] = [0,0]</span>
+    <span class="n">xi0</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="mi">0</span><span class="p">],[</span><span class="mi">0</span><span class="p">]])</span>
+    <span class="c"># with variance = 1 we know that</span>
+<span class="c">#    P0 = np.eye(2)  # really P_{1|0}</span>
+
+<span class="c"># Using the note below</span>
+    <span class="n">P0</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">inv</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="n">r</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span><span class="o">-</span><span class="n">np</span><span class="o">.</span><span class="n">kron</span><span class="p">(</span><span class="n">F</span><span class="p">,</span><span class="n">F</span><span class="p">)),</span><span class="n">Q</span><span class="o">.</span><span class="n">ravel</span><span class="p">(</span><span class="s">&#39;F&#39;</span><span class="p">))</span>
+    <span class="n">P0</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">P0</span><span class="p">,</span> <span class="p">(</span><span class="n">r</span><span class="p">,</span><span class="n">r</span><span class="p">),</span> <span class="n">order</span><span class="o">=</span><span class="s">&#39;F&#39;</span><span class="p">)</span>
+
+    <span class="c"># more generally, if the eigenvalues for F are in the unit circle</span>
+    <span class="c"># (watch out for rounding error in LAPACK!) then</span>
+    <span class="c"># the DGP of the state vector is var/cov stationary, we know that</span>
+    <span class="c"># xi0 = 0</span>
+    <span class="c"># Furthermore, we could start with</span>
+    <span class="c"># vec(P0) = np.dot(np.linalg.inv(np.eye(r**2) - np.kron(F,F)),vec(Q))</span>
+    <span class="c"># where vec(X) = np.ravel(X, order=&#39;F&#39;) with a possible [:,np.newaxis]</span>
+    <span class="c"># if you really want a &quot;2-d&quot; array</span>
+    <span class="c"># a fortran (row-) ordered raveled array</span>
+    <span class="c"># If instead, some eigenvalues are on or outside the unit circle</span>
+    <span class="c"># xi0 can be replaced with a best guess and then</span>
+    <span class="c"># P0 is a positive definite matrix repr the confidence in the guess</span>
+    <span class="c"># larger diagonal elements signify less confidence</span>
+
+
+    <span class="c"># we also know that y1 = mu</span>
+    <span class="c"># and MSE(y1) = variance*(1+theta**2) = np.dot(np.dot(H.T,P0),H)</span>
+
+    <span class="n">state_vector</span> <span class="o">=</span> <span class="p">[</span><span class="n">xi0</span><span class="p">]</span>
+    <span class="n">forecast_vector</span> <span class="o">=</span> <span class="p">[</span><span class="n">mu</span><span class="p">]</span>
+    <span class="n">MSE_state</span> <span class="o">=</span> <span class="p">[</span><span class="n">P0</span><span class="p">]</span>    <span class="c"># will be a list of matrices</span>
+    <span class="n">MSE_forecast</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="c"># must be numerical shortcuts for some of this...</span>
+    <span class="c"># this should be general enough to be reused</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">y</span><span class="p">)</span><span class="o">-</span><span class="mi">1</span><span class="p">):</span>
+        <span class="c"># update the state vector</span>
+        <span class="n">sv</span> <span class="o">=</span> <span class="n">state_vector</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+        <span class="n">P</span> <span class="o">=</span> <span class="n">MSE_state</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+        <span class="n">HTPHR</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">H</span><span class="o">.</span><span class="n">T</span><span class="p">,</span><span class="n">P</span><span class="p">),</span><span class="n">H</span><span class="p">)</span><span class="o">+</span><span class="n">R</span>
+        <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">ndim</span><span class="p">(</span><span class="n">HTPHR</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mi">2</span><span class="p">:</span> <span class="c"># we have a scalar</span>
+            <span class="n">HTPHRinv</span> <span class="o">=</span> <span class="mf">1.</span><span class="o">/</span><span class="n">HTPHR</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">HTPHRinv</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">inv</span><span class="p">(</span><span class="n">HTPHR</span><span class="p">)</span>
+        <span class="n">FPH</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">F</span><span class="p">,</span><span class="n">P</span><span class="p">),</span><span class="n">H</span><span class="p">)</span>
+        <span class="n">gain_matrix</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">FPH</span><span class="p">,</span><span class="n">HTPHRinv</span><span class="p">)</span>  <span class="c"># correct</span>
+        <span class="n">new_sv</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">F</span><span class="p">,</span><span class="n">sv</span><span class="p">)</span>
+        <span class="n">new_sv</span> <span class="o">+=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">gain_matrix</span><span class="p">,</span><span class="n">y</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">A</span><span class="o">.</span><span class="n">T</span><span class="p">,</span><span class="n">x</span><span class="p">[</span><span class="n">i</span><span class="p">])</span> <span class="o">-</span>
+                <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">H</span><span class="o">.</span><span class="n">T</span><span class="p">,</span><span class="n">sv</span><span class="p">))</span>
+        <span class="n">state_vector</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">new_sv</span><span class="p">)</span>
+        <span class="c"># update the MSE of the state vector forecast using 13.2.28</span>
+        <span class="n">new_MSEf</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">F</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">gain_matrix</span><span class="p">,</span><span class="n">H</span><span class="o">.</span><span class="n">T</span><span class="p">),</span><span class="n">P</span><span class="p">),</span><span class="n">F</span><span class="o">.</span><span class="n">T</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">H</span><span class="p">,</span>
+            <span class="n">gain_matrix</span><span class="o">.</span><span class="n">T</span><span class="p">))</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">gain_matrix</span><span class="p">,</span><span class="n">R</span><span class="p">),</span><span class="n">gain_matrix</span><span class="o">.</span><span class="n">T</span><span class="p">)</span> <span class="o">+</span> <span class="n">Q</span>
+        <span class="n">MSE_state</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">new_MSEf</span><span class="p">)</span>
+        <span class="c"># update the in sample forecast of y</span>
+        <span class="n">forecast_vector</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">A</span><span class="o">.</span><span class="n">T</span><span class="p">,</span><span class="n">x</span><span class="p">[</span><span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="p">])</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">H</span><span class="o">.</span><span class="n">T</span><span class="p">,</span><span class="n">new_sv</span><span class="p">))</span>
+        <span class="c"># update the MSE of the forecast</span>
+        <span class="n">MSE_forecast</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">H</span><span class="o">.</span><span class="n">T</span><span class="p">,</span><span class="n">new_MSEf</span><span class="p">),</span><span class="n">H</span><span class="p">)</span> <span class="o">+</span> <span class="n">R</span><span class="p">)</span>
+    <span class="n">MSE_forecast</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">MSE_forecast</span><span class="p">)</span><span class="o">.</span><span class="n">squeeze</span><span class="p">()</span>
+    <span class="n">MSE_state</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">MSE_state</span><span class="p">)</span>
+    <span class="n">forecast_vector</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">forecast_vector</span><span class="p">)</span>
+    <span class="n">state_vector</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">state_vector</span><span class="p">)</span><span class="o">.</span><span class="n">squeeze</span><span class="p">()</span>
+
+<span class="c">##########</span>
+<span class="c">#    Luca&#39;s example</span>
+    <span class="c"># choose parameters governing the signal extraction problem</span>
+    <span class="n">rho</span> <span class="o">=</span> <span class="o">.</span><span class="mi">9</span>
+    <span class="n">sigma1</span> <span class="o">=</span> <span class="mi">1</span>
+    <span class="n">sigma2</span> <span class="o">=</span> <span class="mi">1</span>
+    <span class="n">nobs</span> <span class="o">=</span> <span class="mi">100</span>
+
+<span class="c"># get the state space representation (Hamilton&#39;s notation)\</span>
+    <span class="n">F</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="n">rho</span><span class="p">,</span> <span class="mi">0</span><span class="p">],[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">]])</span>
+    <span class="n">cholQ</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="n">sigma1</span><span class="p">,</span> <span class="mi">0</span><span class="p">],[</span><span class="mi">0</span><span class="p">,</span><span class="n">sigma2</span><span class="p">]])</span>
+    <span class="n">H</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">((</span><span class="mi">2</span><span class="p">,</span><span class="mi">1</span><span class="p">))</span>
+
+<span class="c"># generate random data</span>
+    <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">seed</span><span class="p">(</span><span class="mi">12345</span><span class="p">)</span>
+    <span class="n">xihistory</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="mi">2</span><span class="p">,</span><span class="n">nobs</span><span class="p">))</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="n">nobs</span><span class="p">):</span>
+        <span class="n">xihistory</span><span class="p">[:,</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">F</span><span class="p">,</span><span class="n">xihistory</span><span class="p">[:,</span><span class="n">i</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span> <span class="o">+</span> \
+                <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">cholQ</span><span class="p">,</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randn</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span><span class="mi">1</span><span class="p">))</span><span class="o">.</span><span class="n">squeeze</span><span class="p">()</span>
+                <span class="c"># this makes an ARMA process?</span>
+                <span class="c"># check notes, do the math</span>
+    <span class="n">y</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">H</span><span class="o">.</span><span class="n">T</span><span class="p">,</span> <span class="n">xihistory</span><span class="p">)</span>
+    <span class="n">y</span> <span class="o">=</span> <span class="n">y</span><span class="o">.</span><span class="n">T</span>
+
+    <span class="n">params</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">rho</span><span class="p">,</span> <span class="n">sigma1</span><span class="p">,</span> <span class="n">sigma2</span><span class="p">])</span>
+    <span class="n">penalty</span> <span class="o">=</span> <span class="mf">1e5</span>
+    <span class="n">upperbounds</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="o">.</span><span class="mi">999</span><span class="p">,</span> <span class="mi">100</span><span class="p">,</span> <span class="mi">100</span><span class="p">])</span>
+    <span class="n">lowerbounds</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="o">-.</span><span class="mi">999</span><span class="p">,</span> <span class="o">.</span><span class="mo">001</span><span class="p">,</span> <span class="o">.</span><span class="mo">001</span><span class="p">])</span>
+    <span class="n">xi10</span> <span class="o">=</span> <span class="n">xihistory</span><span class="p">[:,</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">ntrain</span> <span class="o">=</span> <span class="mi">1</span>
+    <span class="n">bounds</span> <span class="o">=</span> <span class="n">lzip</span><span class="p">(</span><span class="n">lowerbounds</span><span class="p">,</span><span class="n">upperbounds</span><span class="p">)</span> <span class="c"># if you use fmin_l_bfgs_b</span>
+<span class="c">#    results = optimize.fmin_bfgs(updatematrices, params,</span>
+<span class="c">#        args=(y,xi10,ntrain,penalty,upperbounds,lowerbounds),</span>
+<span class="c">#        gtol = 1e-8, epsilon=1e-10)</span>
+<span class="c">#    array([ 0.83111567,  1.2695249 ,  0.61436685])</span>
+
+
+    <span class="n">F</span> <span class="o">=</span> <span class="k">lambda</span> <span class="n">x</span> <span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="n">x</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span><span class="mi">0</span><span class="p">],[</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">]])</span>
+    <span class="k">def</span> <span class="nf">Q</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+        <span class="n">cholQ</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="n">x</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span><span class="mi">0</span><span class="p">],[</span><span class="mi">0</span><span class="p">,</span><span class="n">x</span><span class="p">[</span><span class="mi">2</span><span class="p">]]])</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">cholQ</span><span class="p">,</span><span class="n">cholQ</span><span class="o">.</span><span class="n">T</span><span class="p">)</span>
+    <span class="n">H</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">((</span><span class="mi">2</span><span class="p">,</span><span class="mi">1</span><span class="p">))</span>
+<span class="c">#    ssm_model = StateSpaceModel(y)  # need to pass in Xi10!</span>
+<span class="c">#    ssm_model.fit_kalman(start_params=params, xi10=xi10, F=F, Q=Q, H=H,</span>
+<span class="c">#            upperbounds=upperbounds, lowerbounds=lowerbounds)</span>
+<span class="c"># why does the above take 3 times as many iterations than direct max?</span>
+
+    <span class="c"># compare directly to matlab output</span>
+    <span class="kn">from</span> <span class="nn">scipy</span> <span class="kn">import</span> <span class="n">io</span>
+<span class="c">#    y_matlab = io.loadmat(&#39;./kalman_y.mat&#39;)[&#39;y&#39;].reshape(-1,1)</span>
+<span class="c">#    ssm_model2 = StateSpaceModel(y_matlab)</span>
+<span class="c">#    ssm_model2.fit_kalman(start_params=params, xi10=xi10, F=F, Q=Q, H=H,</span>
+<span class="c">#            upperbounds=upperbounds, lowerbounds=lowerbounds)</span>
+
+<span class="c"># matlab output</span>
+<span class="c">#    thetaunc = np.array([0.7833, 1.1688, 0.5584])</span>
+<span class="c">#    np.testing.assert_almost_equal(ssm_model2.params, thetaunc, 4)</span>
+    <span class="c"># maybe add a line search check to make sure we didn&#39;t get stuck in a local</span>
+    <span class="c"># max for more complicated ssm?</span>
+
+
+
+<span class="c"># Examples from Durbin and Koopman</span>
+    <span class="kn">import</span> <span class="nn">zipfile</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">dk</span> <span class="o">=</span> <span class="n">zipfile</span><span class="o">.</span><span class="n">ZipFile</span><span class="p">(</span><span class="s">&#39;/home/skipper/statsmodels/statsmodels-skipper/scikits/statsmodels/sandbox/tsa/DK-data.zip&#39;</span><span class="p">)</span>
+    <span class="k">except</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">IOError</span><span class="p">(</span><span class="s">&quot;Install DK-data.zip from http://www.ssfpack.com/DKbook.html or specify its correct local path.&quot;</span><span class="p">)</span>
+    <span class="n">nile</span> <span class="o">=</span> <span class="n">dk</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="s">&#39;Nile.dat&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">readlines</span><span class="p">()</span>
+    <span class="n">nile</span> <span class="o">=</span> <span class="p">[</span><span class="nb">float</span><span class="p">(</span><span class="n">_</span><span class="o">.</span><span class="n">strip</span><span class="p">())</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="n">nile</span><span class="p">[</span><span class="mi">1</span><span class="p">:]]</span>
+    <span class="n">nile</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">nile</span><span class="p">)</span>
+<span class="c">#    v = np.zeros_like(nile)</span>
+<span class="c">#    a = np.zeros_like(nile)</span>
+<span class="c">#    F = np.zeros_like(nile)</span>
+<span class="c">#    P = np.zeros_like(nile)</span>
+<span class="c">#    P[0] = 10.**7</span>
+<span class="c">#    sigma2e = 15099.</span>
+<span class="c">#    sigma2n = 1469.1</span>
+<span class="c">#    for i in range(len(nile)):</span>
+<span class="c">#        v[i] = nile[i] - a[i] # Kalman filter residual</span>
+<span class="c">#        F[i] = P[i] + sigma2e # the variance of the Kalman filter residual</span>
+<span class="c">#        K = P[i]/F[i]</span>
+<span class="c">#        a[i+1] = a[i] + K*v[i]</span>
+<span class="c">#        P[i+1] = P[i]*(1.-K) + sigma2n</span>
+
+    <span class="n">nile_ssm</span> <span class="o">=</span> <span class="n">StateSpaceModel</span><span class="p">(</span><span class="n">nile</span><span class="p">)</span>
+    <span class="n">R</span> <span class="o">=</span> <span class="k">lambda</span> <span class="n">params</span> <span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">params</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+    <span class="n">Q</span> <span class="o">=</span> <span class="k">lambda</span> <span class="n">params</span> <span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">params</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+<span class="c">#    nile_ssm.fit_kalman(start_params=[1.0,1.0], xi10=0, F=[1.], H=[1.],</span>
+<span class="c">#                Q=Q, R=R, penalty=False, ntrain=0)</span>
+
+<span class="c"># p. 162 univariate structural time series example</span>
+    <span class="n">seatbelt</span> <span class="o">=</span> <span class="n">dk</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="s">&#39;Seatbelt.dat&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">readlines</span><span class="p">()</span>
+    <span class="n">seatbelt</span> <span class="o">=</span> <span class="p">[</span><span class="n">lmap</span><span class="p">(</span><span class="nb">float</span><span class="p">,</span><span class="n">_</span><span class="o">.</span><span class="n">split</span><span class="p">())</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="n">seatbelt</span><span class="p">[</span><span class="mi">2</span><span class="p">:]]</span>
+    <span class="n">sb_ssm</span> <span class="o">=</span> <span class="n">StateSpaceModel</span><span class="p">(</span><span class="n">seatbelt</span><span class="p">)</span>
+    <span class="n">s</span> <span class="o">=</span> <span class="mi">12</span> <span class="c"># monthly data</span>
+<span class="c"># s p.</span>
+    <span class="n">H</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">s</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">))</span> <span class="c"># Z in DK, H&#39; in Hamilton</span>
+    <span class="n">H</span><span class="p">[::</span><span class="mi">2</span><span class="p">]</span> <span class="o">=</span> <span class="mf">1.</span>
+    <span class="n">lambdaj</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">r_</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="mi">6</span><span class="p">:</span><span class="mi">6j</span><span class="p">]</span>
+    <span class="n">lambdaj</span> <span class="o">*=</span> <span class="mi">2</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">pi</span><span class="o">/</span><span class="n">s</span>
+    <span class="n">T</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">s</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span><span class="n">s</span><span class="o">+</span><span class="mi">1</span><span class="p">))</span>
+    <span class="n">C</span> <span class="o">=</span> <span class="k">lambda</span> <span class="n">j</span> <span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="n">np</span><span class="o">.</span><span class="n">cos</span><span class="p">(</span><span class="n">j</span><span class="p">),</span> <span class="n">np</span><span class="o">.</span><span class="n">sin</span><span class="p">(</span><span class="n">j</span><span class="p">)],[</span><span class="o">-</span><span class="n">np</span><span class="o">.</span><span class="n">sin</span><span class="p">(</span><span class="n">j</span><span class="p">),</span> <span class="n">np</span><span class="o">.</span><span class="n">cos</span><span class="p">(</span><span class="n">j</span><span class="p">)]])</span>
+    <span class="n">Cj</span> <span class="o">=</span> <span class="p">[</span><span class="n">C</span><span class="p">(</span><span class="n">j</span><span class="p">)</span> <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="n">lambdaj</span><span class="p">]</span> <span class="o">+</span> <span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+<span class="c">#NOTE: the above is for handling seasonality</span>
+<span class="c">#TODO: it is just a rotation matrix.  See if Robert&#39;s link has a better way</span>
+<span class="c">#http://citeseerx.ist.psu.edu/viewdoc/download;jsessionid=5F5145BE25D61F87478B25AD1493C8F4?doi=10.1.1.110.5134&amp;rep=rep1&amp;type=pdf&amp;ei=QcetSefqF4GEsQPnx4jSBA&amp;sig2=HjJILSBPFgJTfuifbvKrxw&amp;usg=AFQjCNFbABIxusr-NEbgrinhtR6buvjaYA</span>
+    <span class="kn">from</span> <span class="nn">scipy</span> <span class="kn">import</span> <span class="n">linalg</span>
+    <span class="n">F</span> <span class="o">=</span> <span class="n">linalg</span><span class="o">.</span><span class="n">block_diag</span><span class="p">(</span><span class="o">*</span><span class="n">Cj</span><span class="p">)</span> <span class="c"># T in DK, F in Hamilton</span>
+    <span class="n">R</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="n">s</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+    <span class="n">sigma2_omega</span> <span class="o">=</span> <span class="mf">1.</span>
+    <span class="n">Q</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="n">s</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span> <span class="o">*</span> <span class="n">sigma2_omega</span>
+</pre></div>
+
+
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <form class="search" action="../../../../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer" role="contentinfo">
+        &copy; Copyright 2009-2013, Josef Perktold, Skipper Seabold, Jonathan Taylor, statsmodels-developers.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.3.1.
+    </div>
+  </body>
+</html>
