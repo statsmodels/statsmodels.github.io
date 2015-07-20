@@ -1,0 +1,358 @@
+State space modeling: Local Linear Trends
+===========================================
+
+
+.. _statespace_local_linear_trend_notebook:
+
+`Link to Notebook GitHub <https://github.com/statsmodels/statsmodels/blob/master/examples/notebooks/statespace_local_linear_trend.ipynb>`_
+
+.. raw:: html
+
+   
+   <div class="cell border-box-sizing text_cell rendered">
+   <div class="prompt input_prompt">
+   </div>
+   <div class="inner_cell">
+   <div class="text_cell_render border-box-sizing rendered_html">
+   <p>This notebook describes how to extend the Statsmodels statespace classes to create and estimate a custom model. Here we develop a local linear trend model.</p>
+   <p>The Local Linear Trend model has the form (see Durbin and Koopman 2012, Chapter 3.2 for all notation and details):</p>
+   $$
+   \begin{align}
+   y_t & = \mu_t + \varepsilon_t \qquad & \varepsilon_t \sim
+       N(0, \sigma_\varepsilon^2) \\
+   \mu_{t+1} & = \mu_t + \nu_t + \xi_t & \xi_t \sim N(0, \sigma_\xi^2) \\
+   \nu_{t+1} & = \nu_t + \zeta_t & \zeta_t \sim N(0, \sigma_\zeta^2)
+   \end{align}
+   $$<p>It is easy to see that this can be cast into state space form as:</p>
+   $$
+   \begin{align}
+   y_t & = \begin{pmatrix} 1 & 0 \end{pmatrix} \begin{pmatrix} \mu_t \\ \nu_t \end{pmatrix} + \varepsilon_t \\
+   \begin{pmatrix} \mu_{t+1} \\ \nu_{t+1} \end{pmatrix} & = \begin{bmatrix} 1 & 1 \\ 0 & 1 \end{bmatrix} \begin{pmatrix} \mu_t \\ \nu_t \end{pmatrix} + \begin{pmatrix} \xi_t \\ \zeta_t \end{pmatrix}
+   \end{align}
+   $$<p>Notice that much of the state space representation is composed of known values; in fact the only parts in which parameters to be estimated appear are in the variance / covariance matrices:</p>
+   $$
+   \begin{align}
+   H_t & = \begin{bmatrix} \sigma_\varepsilon^2 \end{bmatrix} \\
+   Q_t & = \begin{bmatrix} \sigma_\xi^2 & 0 \\ 0 & \sigma_\zeta^2 \end{bmatrix}
+   \end{align}
+   $$
+   </div>
+   </div>
+   </div>
+   <div class="cell border-box-sizing code_cell rendered">
+   <div class="input">
+   <div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+   <div class="inner_cell">
+       <div class="input_area">
+   <div class=" highlight hl-ipython2"><pre><span class="o">%</span><span class="k">matplotlib</span> inline
+   
+   <span class="kn">import</span> <span class="nn">numpy</span> <span class="kn">as</span> <span class="nn">np</span>
+   <span class="kn">import</span> <span class="nn">pandas</span> <span class="kn">as</span> <span class="nn">pd</span>
+   <span class="kn">from</span> <span class="nn">scipy.stats</span> <span class="kn">import</span> <span class="n">norm</span>
+   <span class="kn">import</span> <span class="nn">statsmodels.api</span> <span class="kn">as</span> <span class="nn">sm</span>
+   <span class="kn">import</span> <span class="nn">matplotlib.pyplot</span> <span class="kn">as</span> <span class="nn">plt</span>
+   </pre></div>
+   
+   </div>
+   </div>
+   </div>
+   
+   </div>
+   <div class="cell border-box-sizing text_cell rendered">
+   <div class="prompt input_prompt">
+   </div>
+   <div class="inner_cell">
+   <div class="text_cell_render border-box-sizing rendered_html">
+   <p>To take advantage of the existing infrastructure, including Kalman filtering and maximum likelihood estimation, we create a new class which extends from <code>statsmodels.tsa.statespace.MLEModel</code>. There are a number of things that must be specified:</p>
+   <ol>
+   <li><strong>k_states</strong>, <strong>k_posdef</strong>: These two parameters must be provided to the base classes in initialization. The inform the statespace model about the size of, respectively, the state vector, above $\begin{pmatrix} \mu_t & \nu_t \end{pmatrix}'$, and   the state error vector, above $\begin{pmatrix} \xi_t & \zeta_t \end{pmatrix}'$. Note that the dimension of the endogenous vector does not have to be specified, since it can be inferred from the <code>endog</code> array.</li>
+   <li><strong>update</strong>: The method <code>update</code>, with argument <code>params</code>, must be specified (it is used when <code>fit()</code> is called to calculate the MLE). It takes the parameters and fills them into the appropriate state space matrices. For example, below, the <code>params</code> vector contains variance parameters $\begin{pmatrix} \sigma_\varepsilon^2 & \sigma_\xi^2 & \sigma_\zeta^2\end{pmatrix}$, and the <code>update</code> method must place them in the observation and state covariance matrices. More generally, the parameter vector might be mapped into many different places in all of the statespace matrices.</li>
+   <li><strong>statespace matrices</strong>: by default, all state space matrices (<code>obs_intercept, design, obs_cov, state_intercept, transition, selection, state_cov</code>) are set to zeros. Values that are fixed (like the ones in the design and transition matrices here) can be set in initialization, whereas values that vary with the parameters should be set in the <code>update</code> method. Note that it is easy to forget to set the selection matrix, which is often just the identity matrix (as it is here), but not setting it will lead to a very different model (one where there is not a stochastic component to the transition equation).</li>
+   <li><strong>start params</strong>: start parameters must be set, even if it is just a vector of zeros, although often good start parameters can be found from the data. Maximum likelihood estimation by gradient methods (as employed here) can be sensitive to the starting parameters, so it is important to select good ones if possible. Here it does not matter too much (although as variances, they should't be set zero).</li>
+   <li><strong>initialization</strong>: in addition to defined state space matrices, all state space models must be initialized with the mean and variance for the initial distribution of the state vector. If the distribution is known, <code>initialize_known(initial_state, initial_state_cov)</code> can be called, or if the model is stationary (e.g. an ARMA model), <code>initialize_stationary</code> can be used. Otherwise, <code>initialize_approximate_diffuse</code> is a reasonable generic initialization (exact diffuse initialization is not yet available). Since the local linear trend model is not stationary (it is composed of random walks) and since the distribution is not generally known, we use <code>initialize_approximate_diffuse</code> below.</li>
+   </ol>
+   <p>The above are the minimum necessary for a successful model. There are also a number of things that do not have to be set, but which may be helpful or important for some applications:</p>
+   <ol>
+   <li><strong>transform / untransform</strong>: when <code>fit</code> is called, the optimizer in the background will use gradient methods to select the parameters that maximize the likelihood function. By default it uses unbounded optimization, which means that it may select any parameter value. In many cases, that is not the desired behavior; variances, for example, cannot be negative. To get around this, the <code>transform</code> method takes the unconstrained vector of parameters provided by the optimizer and returns a constrained vector of parameters used in likelihood evaluation. <code>untransform</code> provides the reverse operation.</li>
+   <li><strong>param_names</strong>: this internal method can be used to set names for the estimated parameters so that e.g. the summary provides meaningful names. If not present, parameters are named <code>param0</code>, <code>param1</code>, etc.</li>
+   </ol>
+   
+   </div>
+   </div>
+   </div>
+   <div class="cell border-box-sizing code_cell rendered">
+   <div class="input">
+   <div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+   <div class="inner_cell">
+       <div class="input_area">
+   <div class=" highlight hl-ipython2"><pre><span class="sd">&quot;&quot;&quot;</span>
+   <span class="sd">Univariate Local Linear Trend Model</span>
+   <span class="sd">&quot;&quot;&quot;</span>
+   <span class="k">class</span> <span class="nc">LocalLinearTrend</span><span class="p">(</span><span class="n">sm</span><span class="o">.</span><span class="n">tsa</span><span class="o">.</span><span class="n">statespace</span><span class="o">.</span><span class="n">MLEModel</span><span class="p">):</span>
+       <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">endog</span><span class="p">):</span>
+           <span class="c"># Model order</span>
+           <span class="n">k_states</span> <span class="o">=</span> <span class="n">k_posdef</span> <span class="o">=</span> <span class="mi">2</span>
+   
+           <span class="c"># Initialize the statespace</span>
+           <span class="nb">super</span><span class="p">(</span><span class="n">LocalLinearTrend</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span>
+               <span class="n">endog</span><span class="p">,</span> <span class="n">k_states</span><span class="o">=</span><span class="n">k_states</span><span class="p">,</span> <span class="n">k_posdef</span><span class="o">=</span><span class="n">k_posdef</span><span class="p">,</span>
+               <span class="n">initialization</span><span class="o">=</span><span class="s">&#39;approximate_diffuse&#39;</span><span class="p">,</span>
+               <span class="n">loglikelihood_burn</span><span class="o">=</span><span class="n">k_states</span>
+           <span class="p">)</span>
+   
+           <span class="c"># Initialize the matrices</span>
+           <span class="bp">self</span><span class="o">.</span><span class="n">ssm</span><span class="p">[</span><span class="s">&#39;design&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">])</span>
+           <span class="bp">self</span><span class="o">.</span><span class="n">ssm</span><span class="p">[</span><span class="s">&#39;transition&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">],</span>
+                                          <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">]])</span>
+           <span class="bp">self</span><span class="o">.</span><span class="n">ssm</span><span class="p">[</span><span class="s">&#39;selection&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="n">k_states</span><span class="p">)</span>
+   
+           <span class="c"># Cache some indices</span>
+           <span class="bp">self</span><span class="o">.</span><span class="n">_state_cov_idx</span> <span class="o">=</span> <span class="p">(</span><span class="s">&#39;state_cov&#39;</span><span class="p">,)</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">diag_indices</span><span class="p">(</span><span class="n">k_posdef</span><span class="p">)</span>
+   
+       <span class="nd">@property</span>
+       <span class="k">def</span> <span class="nf">param_names</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+           <span class="k">return</span> <span class="p">[</span><span class="s">&#39;sigma2.measurement&#39;</span><span class="p">,</span> <span class="s">&#39;sigma2.level&#39;</span><span class="p">,</span> <span class="s">&#39;sigma2.trend&#39;</span><span class="p">]</span>
+   
+       <span class="nd">@property</span>
+       <span class="k">def</span> <span class="nf">start_params</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+           <span class="k">return</span> <span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">std</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">endog</span><span class="p">)]</span><span class="o">*</span><span class="mi">3</span>
+   
+       <span class="k">def</span> <span class="nf">transform_params</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">unconstrained</span><span class="p">):</span>
+           <span class="k">return</span> <span class="n">unconstrained</span><span class="o">**</span><span class="mi">2</span>
+   
+       <span class="k">def</span> <span class="nf">untransform_params</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">constrained</span><span class="p">):</span>
+           <span class="k">return</span> <span class="n">constrained</span><span class="o">**</span><span class="mf">0.5</span>
+   
+       <span class="k">def</span> <span class="nf">update</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+           <span class="n">params</span> <span class="o">=</span> <span class="nb">super</span><span class="p">(</span><span class="n">LocalLinearTrend</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+           
+           <span class="c"># Observation covariance</span>
+           <span class="bp">self</span><span class="o">.</span><span class="n">ssm</span><span class="p">[</span><span class="s">&#39;obs_cov&#39;</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">params</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+   
+           <span class="c"># State covariance</span>
+           <span class="bp">self</span><span class="o">.</span><span class="n">ssm</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_state_cov_idx</span><span class="p">]</span> <span class="o">=</span> <span class="n">params</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span>
+   </pre></div>
+   
+   </div>
+   </div>
+   </div>
+   
+   </div>
+   <div class="cell border-box-sizing text_cell rendered">
+   <div class="prompt input_prompt">
+   </div>
+   <div class="inner_cell">
+   <div class="text_cell_render border-box-sizing rendered_html">
+   <p>Using this simple model, we can estimate the parameters from a local linear trend model. The following example is from Commandeur and Koopman (2007), section 3.4., modeling motor vehicle fatalities in Finland.</p>
+   
+   </div>
+   </div>
+   </div>
+   <div class="cell border-box-sizing code_cell rendered">
+   <div class="input">
+   <div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+   <div class="inner_cell">
+       <div class="input_area">
+   <div class=" highlight hl-ipython2"><pre><span class="kn">import</span> <span class="nn">requests</span>
+   <span class="kn">from</span> <span class="nn">io</span> <span class="kn">import</span> <span class="n">BytesIO</span>
+   <span class="kn">from</span> <span class="nn">zipfile</span> <span class="kn">import</span> <span class="n">ZipFile</span>
+       
+   <span class="c"># Download the dataset</span>
+   <span class="n">ck</span> <span class="o">=</span> <span class="n">requests</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&#39;http://staff.feweb.vu.nl/koopman/projects/ckbook/OxCodeAll.zip&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">content</span>
+   <span class="n">zipped</span> <span class="o">=</span> <span class="n">ZipFile</span><span class="p">(</span><span class="n">BytesIO</span><span class="p">(</span><span class="n">ck</span><span class="p">))</span>
+   <span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_table</span><span class="p">(</span>
+       <span class="n">BytesIO</span><span class="p">(</span><span class="n">zipped</span><span class="o">.</span><span class="n">read</span><span class="p">(</span><span class="s">&#39;OxCodeIntroStateSpaceBook/Chapter_2/NorwayFinland.txt&#39;</span><span class="p">)),</span>
+       <span class="n">skiprows</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">header</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">sep</span><span class="o">=</span><span class="s">&#39;\s+&#39;</span><span class="p">,</span> <span class="n">engine</span><span class="o">=</span><span class="s">&#39;python&#39;</span><span class="p">,</span>
+       <span class="n">names</span><span class="o">=</span><span class="p">[</span><span class="s">&#39;date&#39;</span><span class="p">,</span><span class="s">&#39;nf&#39;</span><span class="p">,</span> <span class="s">&#39;ff&#39;</span><span class="p">]</span>
+   <span class="p">)</span>
+   </pre></div>
+   
+   </div>
+   </div>
+   </div>
+   
+   </div>
+   <div class="cell border-box-sizing text_cell rendered">
+   <div class="prompt input_prompt">
+   </div>
+   <div class="inner_cell">
+   <div class="text_cell_render border-box-sizing rendered_html">
+   <p>Since we defined the local linear trend model as extending from <code>MLEModel</code>, the <code>fit()</code> method is immediately available, just as in other Statsmodels maximum likelihood classes. Similarly, the returned results class supports many of the same post-estimation results, like the <code>summary</code> method.</p>
+   
+   </div>
+   </div>
+   </div>
+   <div class="cell border-box-sizing code_cell rendered">
+   <div class="input">
+   <div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+   <div class="inner_cell">
+       <div class="input_area">
+   <div class=" highlight hl-ipython2"><pre><span class="c"># Load Dataset</span>
+   <span class="n">df</span><span class="o">.</span><span class="n">index</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">date_range</span><span class="p">(</span><span class="n">start</span><span class="o">=</span><span class="s">&#39;</span><span class="si">%d</span><span class="s">-01-01&#39;</span> <span class="o">%</span> <span class="n">df</span><span class="o">.</span><span class="n">date</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">end</span><span class="o">=</span><span class="s">&#39;</span><span class="si">%d</span><span class="s">-01-01&#39;</span> <span class="o">%</span> <span class="n">df</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span> <span class="n">freq</span><span class="o">=</span><span class="s">&#39;AS&#39;</span><span class="p">)</span>
+   
+   <span class="c"># Log transform</span>
+   <span class="n">df</span><span class="p">[</span><span class="s">&#39;lff&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">df</span><span class="p">[</span><span class="s">&#39;ff&#39;</span><span class="p">])</span>
+   
+   <span class="c"># Setup the model</span>
+   <span class="n">mod</span> <span class="o">=</span> <span class="n">LocalLinearTrend</span><span class="p">(</span><span class="n">df</span><span class="p">[</span><span class="s">&#39;lff&#39;</span><span class="p">])</span>
+   
+   <span class="c"># Fit it using MLE (recall that we are fitting the three variance parameters)</span>
+   <span class="n">res</span> <span class="o">=</span> <span class="n">mod</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">disp</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+   <span class="k">print</span><span class="p">(</span><span class="n">res</span><span class="o">.</span><span class="n">summary</span><span class="p">())</span>
+   </pre></div>
+   
+   </div>
+   </div>
+   </div>
+   
+   </div>
+   <div class="cell border-box-sizing text_cell rendered">
+   <div class="prompt input_prompt">
+   </div>
+   <div class="inner_cell">
+   <div class="text_cell_render border-box-sizing rendered_html">
+   <p>Finally, we can do post-estimation prediction and forecasting. Notice that the end period can be specified as a date.</p>
+   
+   </div>
+   </div>
+   </div>
+   <div class="cell border-box-sizing code_cell rendered">
+   <div class="input">
+   <div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+   <div class="inner_cell">
+       <div class="input_area">
+   <div class=" highlight hl-ipython2"><pre><span class="c"># Perform prediction and forecasting</span>
+   <span class="n">predict_res</span> <span class="o">=</span><span class="n">res</span><span class="o">.</span><span class="n">predict</span><span class="p">(</span><span class="n">end</span><span class="o">=</span><span class="s">&#39;2014&#39;</span><span class="p">,</span> <span class="n">full_results</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+   
+   <span class="n">predict</span> <span class="o">=</span> <span class="n">predict_res</span><span class="o">.</span><span class="n">forecasts</span>
+   <span class="n">cov</span> <span class="o">=</span> <span class="n">predict_res</span><span class="o">.</span><span class="n">forecasts_error_cov</span>
+   <span class="n">idx</span> <span class="o">=</span> <span class="n">res</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">predict_dates</span>
+   
+   <span class="c"># 95% confidence intervals</span>
+   <span class="n">critical_value</span> <span class="o">=</span> <span class="n">norm</span><span class="o">.</span><span class="n">ppf</span><span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="mf">0.05</span> <span class="o">/</span> <span class="mf">2.</span><span class="p">)</span>
+   <span class="n">std_errors</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">cov</span><span class="o">.</span><span class="n">diagonal</span><span class="p">()</span><span class="o">.</span><span class="n">T</span><span class="p">)</span>
+   <span class="n">ci</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">c_</span><span class="p">[</span>
+       <span class="p">(</span><span class="n">predict</span> <span class="o">-</span> <span class="n">critical_value</span><span class="o">*</span><span class="n">std_errors</span><span class="p">)[:,</span> <span class="p">:,</span> <span class="bp">None</span><span class="p">],</span>
+       <span class="p">(</span><span class="n">predict</span> <span class="o">+</span> <span class="n">critical_value</span><span class="o">*</span><span class="n">std_errors</span><span class="p">)[:,</span> <span class="p">:,</span> <span class="bp">None</span><span class="p">],</span>
+   <span class="p">]</span>
+   </pre></div>
+   
+   </div>
+   </div>
+   </div>
+   
+   <div class="output_wrapper">
+   <div class="output">
+   
+   
+   <div class="output_area"><div class="prompt"></div>
+   <div class="output_subarea output_stream output_stdout output_text">
+   <pre>                           Statespace Model Results                           
+   ==============================================================================
+   Dep. Variable:                    lff   No. Observations:                   34
+   Model:               LocalLinearTrend   Log Likelihood                  27.510
+   Date:                Mon, 20 Jul 2015   AIC                            -49.020
+   Time:                        12:23:13   BIC                            -44.441
+   Sample:                    01-01-1970   HQIC                           -47.458
+                            - 01-01-2003                                         
+   Covariance Type:                  opg                                         
+   ======================================================================================
+                            coef    std err          z      P&gt;|z|      [95.0% Conf. Int.]
+   --------------------------------------------------------------------------------------
+   sigma2.measurement     0.0010      0.003      0.346      0.730        -0.005     0.007
+   sigma2.level           0.0074      0.005      1.564      0.118        -0.002     0.017
+   sigma2.trend        2.436e-11      0.000   1.62e-07      1.000        -0.000     0.000
+   ======================================================================================
+   
+   Warnings:
+   [1] Covariance matrix calculated using the outer product of gradients.
+   </pre>
+   </div>
+   </div>
+   
+   </div>
+   </div>
+   
+   </div>
+   <div class="cell border-box-sizing code_cell rendered">
+   <div class="input">
+   <div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+   <div class="inner_cell">
+       <div class="input_area">
+   <div class=" highlight hl-ipython2"><pre><span class="n">fig</span><span class="p">,</span> <span class="n">ax</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">subplots</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">10</span><span class="p">,</span><span class="mi">4</span><span class="p">))</span>
+   
+   <span class="c"># Plot the results</span>
+   <span class="n">dates</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">_mpl_repr</span><span class="p">()</span>
+   <span class="n">ax</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">dates</span><span class="p">,</span> <span class="n">df</span><span class="p">[</span><span class="s">&#39;lff&#39;</span><span class="p">],</span> <span class="s">&#39;k.&#39;</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="s">&#39;Observations&#39;</span><span class="p">);</span>
+   <span class="n">ax</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">idx</span><span class="p">[:</span><span class="o">-</span><span class="mi">10</span><span class="p">],</span> <span class="n">predict</span><span class="p">[</span><span class="mi">0</span><span class="p">][:</span><span class="o">-</span><span class="mi">10</span><span class="p">],</span> <span class="n">label</span><span class="o">=</span><span class="s">&#39;One-step-ahead Prediction&#39;</span><span class="p">);</span>
+   <span class="n">ax</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">idx</span><span class="p">[:</span><span class="o">-</span><span class="mi">10</span><span class="p">],</span> <span class="n">ci</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="p">:</span><span class="o">-</span><span class="mi">10</span><span class="p">],</span> <span class="s">&#39;k--&#39;</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="mf">0.5</span><span class="p">);</span>
+   
+   <span class="n">ax</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">idx</span><span class="p">[</span><span class="o">-</span><span class="mi">10</span><span class="p">:],</span> <span class="n">predict</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="o">-</span><span class="mi">10</span><span class="p">:],</span> <span class="s">&#39;r&#39;</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="s">&#39;Forecast&#39;</span><span class="p">);</span>
+   <span class="n">ax</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">idx</span><span class="p">[</span><span class="o">-</span><span class="mi">10</span><span class="p">:],</span> <span class="n">ci</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="o">-</span><span class="mi">10</span><span class="p">:],</span> <span class="s">&#39;k--&#39;</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="mf">0.5</span><span class="p">);</span>
+   
+   <span class="c"># Cleanup the image</span>
+   <span class="n">ax</span><span class="o">.</span><span class="n">set_ylim</span><span class="p">((</span><span class="mi">4</span><span class="p">,</span> <span class="mi">8</span><span class="p">));</span>
+   <span class="n">legend</span> <span class="o">=</span> <span class="n">ax</span><span class="o">.</span><span class="n">legend</span><span class="p">(</span><span class="n">loc</span><span class="o">=</span><span class="s">&#39;lower left&#39;</span><span class="p">);</span>
+   <span class="n">legend</span><span class="o">.</span><span class="n">get_frame</span><span class="p">()</span><span class="o">.</span><span class="n">set_facecolor</span><span class="p">(</span><span class="s">&#39;w&#39;</span><span class="p">)</span>
+   </pre></div>
+   
+   </div>
+   </div>
+   </div>
+   
+   </div>
+   <div class="cell border-box-sizing text_cell rendered">
+   <div class="prompt input_prompt">
+   </div>
+   <div class="inner_cell">
+   <div class="text_cell_render border-box-sizing rendered_html">
+   <h3 id="References">References<a class="anchor-link" href="#References">&#182;</a></h3>
+   <pre><code>Commandeur, Jacques J. F., and Siem Jan Koopman. 2007.
+   An Introduction to State Space Time Series Analysis.
+   Oxford ; New York: Oxford University Press.
+   
+   Durbin, James, and Siem Jan Koopman. 2012.
+   Time Series Analysis by State Space Methods: Second Edition.
+   Oxford University Press.</code></pre>
+   
+   </div>
+   </div>
+   </div>
+
+   <script src="http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML" type="text/javascript"></script>
+   <script type="text/javascript">
+   init_mathjax = function() {
+       if (window.MathJax) {
+           // MathJax loaded
+           MathJax.Hub.Config({
+               tex2jax: {
+               // I'm not sure about the \( and \[ below. It messes with the
+               // prompt, and I think it's an issue with the template. -SS
+                   inlineMath: [ ['$','$'], ["\\(","\\)"] ],
+                   displayMath: [ ['$$','$$'], ["\\[","\\]"] ]
+               },
+               displayAlign: 'left', // Change this to 'center' to center equations.
+               "HTML-CSS": {
+                   styles: {'.MathJax_Display': {"margin": 0}}
+               }
+           });
+           MathJax.Hub.Queue(["Typeset",MathJax.Hub]);
+       }
+   }
+   init_mathjax();
+
+   // since we have to load this in a ..raw:: directive we will add the css
+   // after the fact
+   function loadcssfile(filename){
+       var fileref=document.createElement("link")
+       fileref.setAttribute("rel", "stylesheet")
+       fileref.setAttribute("type", "text/css")
+       fileref.setAttribute("href", filename)
+
+       document.getElementsByTagName("head")[0].appendChild(fileref)
+   }
+   // loadcssfile({{pathto("_static/nbviewer.pygments.css", 1) }})
+   // loadcssfile({{pathto("_static/nbviewer.min.css", 1) }})
+   loadcssfile("../../../_static/nbviewer.pygments.css")
+   loadcssfile("../../../_static/ipython.min.css")
+   </script>

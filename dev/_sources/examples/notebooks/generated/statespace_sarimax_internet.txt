@@ -1,0 +1,368 @@
+SARIMAX: Model selection, missing data
+========================================
+
+
+.. _statespace_sarimax_internet_notebook:
+
+`Link to Notebook GitHub <https://github.com/statsmodels/statsmodels/blob/master/examples/notebooks/statespace_sarimax_internet.ipynb>`_
+
+.. raw:: html
+
+   
+   <div class="cell border-box-sizing text_cell rendered">
+   <div class="prompt input_prompt">
+   </div>
+   <div class="inner_cell">
+   <div class="text_cell_render border-box-sizing rendered_html">
+   <p>The example mirrors Durbin and Koopman (2012), Chapter 8.4 in application of Box-Jenkins methodology to fit ARMA models. The novel feature is the ability of the model to work on datasets with missing values.</p>
+   
+   </div>
+   </div>
+   </div>
+   <div class="cell border-box-sizing code_cell rendered">
+   <div class="input">
+   <div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+   <div class="inner_cell">
+       <div class="input_area">
+   <div class=" highlight hl-ipython2"><pre><span class="o">%</span><span class="k">matplotlib</span> inline
+   </pre></div>
+   
+   </div>
+   </div>
+   </div>
+   
+   </div>
+   <div class="cell border-box-sizing code_cell rendered">
+   <div class="input">
+   <div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+   <div class="inner_cell">
+       <div class="input_area">
+   <div class=" highlight hl-ipython2"><pre><span class="kn">import</span> <span class="nn">numpy</span> <span class="kn">as</span> <span class="nn">np</span>
+   <span class="kn">import</span> <span class="nn">pandas</span> <span class="kn">as</span> <span class="nn">pd</span>
+   <span class="kn">from</span> <span class="nn">scipy.stats</span> <span class="kn">import</span> <span class="n">norm</span>
+   <span class="kn">import</span> <span class="nn">statsmodels.api</span> <span class="kn">as</span> <span class="nn">sm</span>
+   <span class="kn">import</span> <span class="nn">matplotlib.pyplot</span> <span class="kn">as</span> <span class="nn">plt</span>
+   </pre></div>
+   
+   </div>
+   </div>
+   </div>
+   
+   </div>
+   <div class="cell border-box-sizing code_cell rendered">
+   <div class="input">
+   <div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+   <div class="inner_cell">
+       <div class="input_area">
+   <div class=" highlight hl-ipython2"><pre><span class="kn">import</span> <span class="nn">requests</span>
+   <span class="kn">from</span> <span class="nn">io</span> <span class="kn">import</span> <span class="n">BytesIO</span>
+   <span class="kn">from</span> <span class="nn">zipfile</span> <span class="kn">import</span> <span class="n">ZipFile</span>
+   
+   <span class="c"># Download the dataset</span>
+   <span class="n">dk</span> <span class="o">=</span> <span class="n">requests</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&#39;http://www.ssfpack.com/files/DK-data.zip&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">content</span>
+   <span class="n">f</span> <span class="o">=</span> <span class="n">BytesIO</span><span class="p">(</span><span class="n">dk</span><span class="p">)</span>
+   <span class="n">zipped</span> <span class="o">=</span> <span class="n">ZipFile</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
+   <span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_table</span><span class="p">(</span>
+       <span class="n">BytesIO</span><span class="p">(</span><span class="n">zipped</span><span class="o">.</span><span class="n">read</span><span class="p">(</span><span class="s">&#39;internet.dat&#39;</span><span class="p">)),</span>
+       <span class="n">skiprows</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">header</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">sep</span><span class="o">=</span><span class="s">&#39;\s+&#39;</span><span class="p">,</span> <span class="n">engine</span><span class="o">=</span><span class="s">&#39;python&#39;</span><span class="p">,</span>
+       <span class="n">names</span><span class="o">=</span><span class="p">[</span><span class="s">&#39;internet&#39;</span><span class="p">,</span><span class="s">&#39;dinternet&#39;</span><span class="p">]</span>
+   <span class="p">)</span>
+   </pre></div>
+   
+   </div>
+   </div>
+   </div>
+   
+   </div>
+   <div class="cell border-box-sizing text_cell rendered">
+   <div class="prompt input_prompt">
+   </div>
+   <div class="inner_cell">
+   <div class="text_cell_render border-box-sizing rendered_html">
+   <h3 id="Model-Selection">Model Selection<a class="anchor-link" href="#Model-Selection">&#182;</a></h3><p>As in Durbin and Koopman, we force a number of the values to be missing.</p>
+   
+   </div>
+   </div>
+   </div>
+   <div class="cell border-box-sizing code_cell rendered">
+   <div class="input">
+   <div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+   <div class="inner_cell">
+       <div class="input_area">
+   <div class=" highlight hl-ipython2"><pre><span class="c"># Get the basic series</span>
+   <span class="n">dta_full</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">dinternet</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span><span class="o">.</span><span class="n">values</span>
+   <span class="n">dta_miss</span> <span class="o">=</span> <span class="n">dta_full</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+   
+   <span class="c"># Remove datapoints</span>
+   <span class="n">missing</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">r_</span><span class="p">[</span><span class="mi">6</span><span class="p">,</span><span class="mi">16</span><span class="p">,</span><span class="mi">26</span><span class="p">,</span><span class="mi">36</span><span class="p">,</span><span class="mi">46</span><span class="p">,</span><span class="mi">56</span><span class="p">,</span><span class="mi">66</span><span class="p">,</span><span class="mi">72</span><span class="p">,</span><span class="mi">73</span><span class="p">,</span><span class="mi">74</span><span class="p">,</span><span class="mi">75</span><span class="p">,</span><span class="mi">76</span><span class="p">,</span><span class="mi">86</span><span class="p">,</span><span class="mi">96</span><span class="p">]</span><span class="o">-</span><span class="mi">1</span>
+   <span class="n">dta_miss</span><span class="p">[</span><span class="n">missing</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span>
+   </pre></div>
+   
+   </div>
+   </div>
+   </div>
+   
+   </div>
+   <div class="cell border-box-sizing text_cell rendered">
+   <div class="prompt input_prompt">
+   </div>
+   <div class="inner_cell">
+   <div class="text_cell_render border-box-sizing rendered_html">
+   <p>Then we can consider model selection using the Akaike information criteria (AIC), but running the model for each variant and selecting the model with the lowest AIC value.</p>
+   <p>There are a couple of things to note here:</p>
+   <ul>
+   <li>When running such a large batch of models, particularly when the autoregressive and moving average orders become large, there is the possibility of poor maximum likelihood convergence. Below we ignore the warnings since this example is illustrative.</li>
+   <li>We use the option <code>enforce_invertibility=False</code>, which allows the moving average polynomial to be non-invertible, so that more of the models are estimable.</li>
+   <li>Several of the models do not produce good results, and their AIC value is set to NaN. This is not surprising, as Durbin and Koopman note numerical problems with the high order models.</li>
+   </ul>
+   
+   </div>
+   </div>
+   </div>
+   <div class="cell border-box-sizing code_cell rendered">
+   <div class="input">
+   <div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+   <div class="inner_cell">
+       <div class="input_area">
+   <div class=" highlight hl-ipython2"><pre><span class="kn">import</span> <span class="nn">warnings</span>
+   
+   <span class="n">aic_full</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="mi">6</span><span class="p">,</span><span class="mi">6</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">))</span>
+   <span class="n">aic_miss</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="mi">6</span><span class="p">,</span><span class="mi">6</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">))</span>
+   
+   <span class="n">warnings</span><span class="o">.</span><span class="n">simplefilter</span><span class="p">(</span><span class="s">&#39;ignore&#39;</span><span class="p">)</span>
+   
+   <span class="c"># Iterate over all ARMA(p,q) models with p,q in [0,6]</span>
+   <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">6</span><span class="p">):</span>
+       <span class="k">for</span> <span class="n">q</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">6</span><span class="p">):</span>
+           <span class="k">if</span> <span class="n">p</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">q</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+               <span class="k">continue</span>
+               
+           <span class="c"># Estimate the model with no missing datapoints</span>
+           <span class="n">mod</span> <span class="o">=</span> <span class="n">sm</span><span class="o">.</span><span class="n">tsa</span><span class="o">.</span><span class="n">statespace</span><span class="o">.</span><span class="n">SARIMAX</span><span class="p">(</span><span class="n">dta_full</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="p">(</span><span class="n">p</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="n">q</span><span class="p">),</span> <span class="n">enforce_invertibility</span><span class="o">=</span><span class="bp">False</span><span class="p">)</span>
+           <span class="k">try</span><span class="p">:</span>
+               <span class="n">res</span> <span class="o">=</span> <span class="n">mod</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">disp</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+               <span class="n">aic_full</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="n">p</span><span class="p">,</span><span class="n">q</span><span class="p">]</span> <span class="o">=</span> <span class="n">res</span><span class="o">.</span><span class="n">aic</span>
+           <span class="k">except</span><span class="p">:</span>
+               <span class="n">aic_full</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="n">p</span><span class="p">,</span><span class="n">q</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span>
+           
+           <span class="c"># Estimate the model with missing datapoints</span>
+           <span class="n">mod</span> <span class="o">=</span> <span class="n">sm</span><span class="o">.</span><span class="n">tsa</span><span class="o">.</span><span class="n">statespace</span><span class="o">.</span><span class="n">SARIMAX</span><span class="p">(</span><span class="n">dta_miss</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="p">(</span><span class="n">p</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="n">q</span><span class="p">),</span> <span class="n">enforce_invertibility</span><span class="o">=</span><span class="bp">False</span><span class="p">)</span>
+           <span class="k">try</span><span class="p">:</span>
+               <span class="n">res</span> <span class="o">=</span> <span class="n">mod</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">disp</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+               <span class="n">aic_miss</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="n">p</span><span class="p">,</span><span class="n">q</span><span class="p">]</span> <span class="o">=</span> <span class="n">res</span><span class="o">.</span><span class="n">aic</span>
+           <span class="k">except</span><span class="p">:</span>
+               <span class="n">aic_miss</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="n">p</span><span class="p">,</span><span class="n">q</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span>
+   </pre></div>
+   
+   </div>
+   </div>
+   </div>
+   
+   </div>
+   <div class="cell border-box-sizing text_cell rendered">
+   <div class="prompt input_prompt">
+   </div>
+   <div class="inner_cell">
+   <div class="text_cell_render border-box-sizing rendered_html">
+   <p>For the models estimated over the full (non-missing) dataset, the AIC chooses ARMA(1,1) or ARMA(3,0). Durbin and Koopman suggest the ARMA(1,1) specification is better due to parsimony.</p>
+   $$
+   \text{Replication of:}\\
+   \textbf{Table 8.1} ~~ \text{AIC for different ARMA models.}\\
+   \newcommand{\r}[1]{{\color{red}{#1}}}
+   \begin{array}{lrrrrrr}
+   \hline
+   q &      0 &      1 &      2 &      3 &      4 &      5 \\
+   \hline
+   p &     {} &     {} &     {} &     {} &     {} &     {} \\
+   0 &   0.00 & 549.81 & 519.87 & 520.27 & 519.38 & 518.86 \\
+   1 & 529.24 & \r{514.30} & 516.25 & 514.58 & 515.10 & 516.28 \\
+   2 & 522.18 & 516.29 & 517.16 & 515.77 & 513.24 & 514.73 \\
+   3 & \r{511.99} & 513.94 & 515.92 & 512.06 & 513.72 & 514.50 \\
+   4 & 513.93 & 512.89 &    nan &    nan & 514.81 & 516.08 \\
+   5 & 515.86 & 517.64 &    nan &    nan &    nan &    nan \\
+   \hline
+   \end{array}
+   $$<p>For the models estimated over missing dataset, the AIC chooses ARMA(1,1)</p>
+   $$
+   \text{Replication of:}\\
+   \textbf{Table 8.2} ~~ \text{AIC for different ARMA models with missing observations.}\\
+   \begin{array}{lrrrrrr}
+   \hline
+   q &      0 &      1 &      2 &      3 &      4 &      5 \\
+   \hline
+   p &     {} &     {} &     {} &     {} &     {} &     {} \\
+   0 &   0.00 & 488.93 & 464.01 & 463.86 & 462.63 & 463.62 \\
+   1 & 468.01 & \r{457.54} & 459.35 & 458.66 & 459.15 & 461.01 \\
+   2 & 469.68 &    nan & 460.48 & 459.43 & 459.23 & 460.47 \\
+   3 & 467.10 & 458.44 & 459.64 & 456.66 & 459.54 & 460.05 \\
+   4 & 469.00 & 459.52 &    nan & 463.04 & 459.35 & 460.96 \\
+   5 & 471.32 & 461.26 &    nan &    nan & 461.00 & 462.97 \\
+   \hline
+   \end{array}
+   $$<p><strong>Note</strong>: the AIC values are calculated differently than in Durbin and Koopman, but show overall similar trends.</p>
+   
+   </div>
+   </div>
+   </div>
+   <div class="cell border-box-sizing text_cell rendered">
+   <div class="prompt input_prompt">
+   </div>
+   <div class="inner_cell">
+   <div class="text_cell_render border-box-sizing rendered_html">
+   <h3 id="Postestimation">Postestimation<a class="anchor-link" href="#Postestimation">&#182;</a></h3><p>Using the ARMA(1,1) specification selected above, we perform in-sample prediction and out-of-sample forecasting.</p>
+   
+   </div>
+   </div>
+   </div>
+   <div class="cell border-box-sizing code_cell rendered">
+   <div class="input">
+   <div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+   <div class="inner_cell">
+       <div class="input_area">
+   <div class=" highlight hl-ipython2"><pre><span class="c"># Statespace</span>
+   <span class="n">mod</span> <span class="o">=</span> <span class="n">sm</span><span class="o">.</span><span class="n">tsa</span><span class="o">.</span><span class="n">statespace</span><span class="o">.</span><span class="n">SARIMAX</span><span class="p">(</span><span class="n">dta_miss</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">1</span><span class="p">))</span>
+   <span class="n">res</span> <span class="o">=</span> <span class="n">mod</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">disp</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+   <span class="k">print</span><span class="p">(</span><span class="n">res</span><span class="o">.</span><span class="n">summary</span><span class="p">())</span>
+   </pre></div>
+   
+   </div>
+   </div>
+   </div>
+   
+   </div>
+   <div class="cell border-box-sizing code_cell rendered">
+   <div class="input">
+   <div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+   <div class="inner_cell">
+       <div class="input_area">
+   <div class=" highlight hl-ipython2"><pre><span class="c"># In-sample one-step-ahead predictions</span>
+   <span class="n">predict_res</span> <span class="o">=</span> <span class="n">res</span><span class="o">.</span><span class="n">predict</span><span class="p">(</span><span class="n">full_results</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+   
+   <span class="n">predict</span> <span class="o">=</span> <span class="n">predict_res</span><span class="o">.</span><span class="n">forecasts</span>
+   <span class="n">cov</span> <span class="o">=</span> <span class="n">predict_res</span><span class="o">.</span><span class="n">forecasts_error_cov</span>
+   <span class="n">predict_idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">predict</span><span class="p">[</span><span class="mi">0</span><span class="p">]))</span>
+   
+   <span class="c"># 95% confidence intervals</span>
+   <span class="n">critical_value</span> <span class="o">=</span> <span class="n">norm</span><span class="o">.</span><span class="n">ppf</span><span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="mf">0.05</span> <span class="o">/</span> <span class="mf">2.</span><span class="p">)</span>
+   <span class="n">std_errors</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">cov</span><span class="o">.</span><span class="n">diagonal</span><span class="p">()</span><span class="o">.</span><span class="n">T</span><span class="p">)</span>
+   <span class="n">ci</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">c_</span><span class="p">[</span>
+       <span class="p">(</span><span class="n">predict</span> <span class="o">-</span> <span class="n">critical_value</span><span class="o">*</span><span class="n">std_errors</span><span class="p">)[:,</span> <span class="p">:,</span> <span class="bp">None</span><span class="p">],</span>
+       <span class="p">(</span><span class="n">predict</span> <span class="o">+</span> <span class="n">critical_value</span><span class="o">*</span><span class="n">std_errors</span><span class="p">)[:,</span> <span class="p">:,</span> <span class="bp">None</span><span class="p">],</span>
+   <span class="p">][</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">T</span>
+   </pre></div>
+   
+   </div>
+   </div>
+   </div>
+   
+   <div class="output_wrapper">
+   <div class="output">
+   
+   
+   <div class="output_area"><div class="prompt"></div>
+   <div class="output_subarea output_stream output_stdout output_text">
+   <pre>                           Statespace Model Results                           
+   ==============================================================================
+   Dep. Variable:                      y   No. Observations:                   99
+   Model:               SARIMAX(1, 0, 1)   Log Likelihood                -225.770
+   Date:                Mon, 20 Jul 2015   AIC                            457.541
+   Time:                        12:23:27   BIC                            465.326
+   Sample:                             0   HQIC                           460.691
+                                    - 99                                         
+   Covariance Type:                  opg                                         
+   ==============================================================================
+                    coef    std err          z      P&gt;|z|      [95.0% Conf. Int.]
+   ------------------------------------------------------------------------------
+   ar.L1          0.6562      0.092      7.161      0.000         0.477     0.836
+   ma.L1          0.4878      0.111      4.395      0.000         0.270     0.705
+   sigma2        10.3402      1.568      6.593      0.000         7.266    13.414
+   ==============================================================================
+   
+   Warnings:
+   [1] Covariance matrix calculated using the outer product of gradients.
+   </pre>
+   </div>
+   </div>
+   
+   </div>
+   </div>
+   
+   </div>
+   <div class="cell border-box-sizing code_cell rendered">
+   <div class="input">
+   <div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+   <div class="inner_cell">
+       <div class="input_area">
+   <div class=" highlight hl-ipython2"><pre><span class="c"># Out-of-sample forecasts and confidence intervals</span>
+   <span class="n">nforecast</span> <span class="o">=</span> <span class="mi">20</span>
+   <span class="n">forecast</span> <span class="o">=</span> <span class="n">res</span><span class="o">.</span><span class="n">forecast</span><span class="p">(</span><span class="n">nforecast</span><span class="p">)</span>
+   <span class="n">forcast_idx</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">dta_full</span><span class="p">)</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">nforecast</span><span class="p">)</span>
+   </pre></div>
+   
+   </div>
+   </div>
+   </div>
+   
+   </div>
+   <div class="cell border-box-sizing code_cell rendered">
+   <div class="input">
+   <div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+   <div class="inner_cell">
+       <div class="input_area">
+   <div class=" highlight hl-ipython2"><pre><span class="c"># Graph</span>
+   <span class="n">fig</span><span class="p">,</span> <span class="n">ax</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">subplots</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">12</span><span class="p">,</span><span class="mi">6</span><span class="p">))</span>
+   <span class="n">ax</span><span class="o">.</span><span class="n">xaxis</span><span class="o">.</span><span class="n">grid</span><span class="p">()</span>
+   <span class="n">ax</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">predict_idx</span><span class="p">,</span> <span class="n">dta_miss</span><span class="p">,</span> <span class="s">&#39;k.&#39;</span><span class="p">)</span>
+   
+   <span class="c"># Plot</span>
+   <span class="n">ax</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">predict_idx</span><span class="p">,</span> <span class="n">predict</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="s">&#39;gray&#39;</span><span class="p">);</span>
+   <span class="n">ax</span><span class="o">.</span><span class="n">fill_between</span><span class="p">(</span><span class="n">predict_idx</span><span class="p">,</span> <span class="n">ci</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">ci</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">alpha</span><span class="o">=</span><span class="mf">0.1</span><span class="p">)</span>
+   
+   <span class="n">ax</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">forcast_idx</span><span class="p">[</span><span class="o">-</span><span class="mi">20</span><span class="p">:],</span> <span class="n">forecast</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="s">&#39;k--&#39;</span><span class="p">,</span> <span class="n">linestyle</span><span class="o">=</span><span class="s">&#39;--&#39;</span><span class="p">,</span> <span class="n">linewidth</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+   
+   <span class="n">ax</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">title</span><span class="o">=</span><span class="s">&#39;Figure 8.9 - Internet series&#39;</span><span class="p">);</span>
+   </pre></div>
+   
+   </div>
+   </div>
+   </div>
+   
+   </div>
+
+   <script src="http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML" type="text/javascript"></script>
+   <script type="text/javascript">
+   init_mathjax = function() {
+       if (window.MathJax) {
+           // MathJax loaded
+           MathJax.Hub.Config({
+               tex2jax: {
+               // I'm not sure about the \( and \[ below. It messes with the
+               // prompt, and I think it's an issue with the template. -SS
+                   inlineMath: [ ['$','$'], ["\\(","\\)"] ],
+                   displayMath: [ ['$$','$$'], ["\\[","\\]"] ]
+               },
+               displayAlign: 'left', // Change this to 'center' to center equations.
+               "HTML-CSS": {
+                   styles: {'.MathJax_Display': {"margin": 0}}
+               }
+           });
+           MathJax.Hub.Queue(["Typeset",MathJax.Hub]);
+       }
+   }
+   init_mathjax();
+
+   // since we have to load this in a ..raw:: directive we will add the css
+   // after the fact
+   function loadcssfile(filename){
+       var fileref=document.createElement("link")
+       fileref.setAttribute("rel", "stylesheet")
+       fileref.setAttribute("type", "text/css")
+       fileref.setAttribute("href", filename)
+
+       document.getElementsByTagName("head")[0].appendChild(fileref)
+   }
+   // loadcssfile({{pathto("_static/nbviewer.pygments.css", 1) }})
+   // loadcssfile({{pathto("_static/nbviewer.min.css", 1) }})
+   loadcssfile("../../../_static/nbviewer.pygments.css")
+   loadcssfile("../../../_static/ipython.min.css")
+   </script>

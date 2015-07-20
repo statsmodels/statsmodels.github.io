@@ -1,0 +1,1409 @@
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>statsmodels.tsa.statespace.mlemodel &mdash; statsmodels 0.7.0 documentation</title>
+    
+    <link rel="stylesheet" href="../../../../_static/nature.css" type="text/css" />
+    <link rel="stylesheet" href="../../../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../../../',
+        VERSION:     '0.7.0',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../../_static/doctools.js"></script>
+    <link rel="shortcut icon" href="../../../../_static/statsmodels_hybi_favico.ico"/>
+    <link rel="author" title="About these documents" href="../../../../about.html" />
+    <link rel="top" title="statsmodels 0.7.0 documentation" href="../../../../index.html" />
+    <link rel="up" title="Module code" href="../../../index.html" />
+<link rel="stylesheet" href="../../_static/facebox.css" type="text/css" />
+<link rel="stylesheet" href="../_static/examples.css" type="text/css" />
+<script type="text/javascript" src="../../../../_static/scripts.js">
+</script>
+<script type="text/javascript" src="../../../../_static/facebox.js">
+</script>
+
+  </head>
+  <body role="document">
+<div class="headerwrap">
+    <div class = "header">
+        
+        <a href = "../../../../index.html">
+<img src="../../../../_static/statsmodels_hybi_banner.png" alt="Logo"
+    style="padding-left: 15px"/></a>
+        
+    </div>
+</div>
+
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+<li><a href ="../../../../install.html">Install</a></li> &nbsp;|&nbsp;
+<li><a href="https://groups.google.com/group/pystatsmodels?hl=en">Support</a></li> &nbsp;|&nbsp;
+<li><a href="https://github.com/statsmodels/statsmodels/issues">Bugs</a></li> &nbsp;|&nbsp;
+<li><a href="../../../../dev/index.html">Develop</a></li> &nbsp;|&nbsp;
+<li><a href="../../../../examples/index.html">Examples</a></li> &nbsp;|&nbsp;
+<li><a href="../../../../faq.html">FAQ</a></li> &nbsp;|&nbsp;
+
+          <li class="nav-item nav-item-1"><a href="../../../index.html" accesskey="U">Module code</a> |</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+
+
+
+
+  <h1>Source code for statsmodels.tsa.statespace.mlemodel</h1><div class="highlight"><pre>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">State Space Model</span>
+
+<span class="sd">Author: Chad Fulton</span>
+<span class="sd">License: Simplified-BSD</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="kn">from</span> <span class="nn">__future__</span> <span class="kn">import</span> <span class="n">division</span><span class="p">,</span> <span class="n">absolute_import</span><span class="p">,</span> <span class="n">print_function</span>
+
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="kn">as</span> <span class="nn">np</span>
+<span class="kn">import</span> <span class="nn">pandas</span> <span class="kn">as</span> <span class="nn">pd</span>
+<span class="kn">from</span> <span class="nn">scipy.stats</span> <span class="kn">import</span> <span class="n">norm</span>
+
+<span class="kn">from</span> <span class="nn">.kalman_filter</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">KalmanFilter</span><span class="p">,</span> <span class="n">FilterResults</span><span class="p">,</span> <span class="n">INVERT_UNIVARIATE</span><span class="p">,</span> <span class="n">SOLVE_LU</span>
+<span class="p">)</span>
+<span class="kn">import</span> <span class="nn">statsmodels.tsa.base.tsa_model</span> <span class="kn">as</span> <span class="nn">tsbase</span>
+<span class="kn">import</span> <span class="nn">statsmodels.base.wrapper</span> <span class="kn">as</span> <span class="nn">wrap</span>
+<span class="kn">from</span> <span class="nn">statsmodels.tools.numdiff</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">_get_epsilon</span><span class="p">,</span> <span class="n">approx_hess_cs</span><span class="p">,</span> <span class="n">approx_fprime_cs</span>
+<span class="p">)</span>
+<span class="kn">from</span> <span class="nn">statsmodels.tools.decorators</span> <span class="kn">import</span> <span class="n">cache_readonly</span><span class="p">,</span> <span class="n">resettable_cache</span>
+<span class="kn">from</span> <span class="nn">statsmodels.tools.eval_measures</span> <span class="kn">import</span> <span class="n">aic</span><span class="p">,</span> <span class="n">bic</span><span class="p">,</span> <span class="n">hqic</span>
+
+
+<div class="viewcode-block" id="MLEModel"><a class="viewcode-back" href="../../../../generated/statsmodels.tsa.statespace.mlemodel.MLEModel.html#statsmodels.tsa.statespace.mlemodel.MLEModel">[docs]</a><span class="k">class</span> <span class="nc">MLEModel</span><span class="p">(</span><span class="n">tsbase</span><span class="o">.</span><span class="n">TimeSeriesModel</span><span class="p">):</span>
+    <span class="sd">r&quot;&quot;&quot;</span>
+<span class="sd">    State space model for maximum likelihood estimation</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    endog : array_like</span>
+<span class="sd">        The observed time-series process :math:`y`</span>
+<span class="sd">    k_states : int</span>
+<span class="sd">        The dimension of the unobserved state process.</span>
+<span class="sd">    exog : array_like, optional</span>
+<span class="sd">        Array of exogenous regressors, shaped nobs x k. Default is no</span>
+<span class="sd">        exogenous regressors.</span>
+<span class="sd">    dates : array-like of datetime, optional</span>
+<span class="sd">        An array-like object of datetime objects. If a Pandas object is given</span>
+<span class="sd">        for endog, it is assumed to have a DateIndex.</span>
+<span class="sd">    freq : str, optional</span>
+<span class="sd">        The frequency of the time-series. A Pandas offset or &#39;B&#39;, &#39;D&#39;, &#39;W&#39;,</span>
+<span class="sd">        &#39;M&#39;, &#39;A&#39;, or &#39;Q&#39;. This is optional if dates are given.</span>
+<span class="sd">    **kwargs</span>
+<span class="sd">        Keyword arguments may be used to provide default values for state space</span>
+<span class="sd">        matrices or for Kalman filtering options. See `Representation`, and</span>
+<span class="sd">        `KalmanFilter` for more details.</span>
+
+<span class="sd">    Attributes</span>
+<span class="sd">    ----------</span>
+<span class="sd">    ssm : KalmanFilter</span>
+<span class="sd">        Underlying state space representation.</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    This class wraps the state space model with Kalman filtering to add in</span>
+<span class="sd">    functionality for maximum likelihood estimation. In particular, it adds</span>
+<span class="sd">    the concept of updating the state space representation based on a defined</span>
+<span class="sd">    set of parameters, through the `update` method or `updater` attribute (see</span>
+<span class="sd">    below for more details on which to use when), and it adds a `fit` method</span>
+<span class="sd">    which uses a numerical optimizer to select the parameters that maximize</span>
+<span class="sd">    the likelihood of the model.</span>
+
+<span class="sd">    The `start_params` `update` method must be overridden in the</span>
+<span class="sd">    child class (and the `transform` and `untransform` methods, if needed).</span>
+
+<span class="sd">    See Also</span>
+<span class="sd">    --------</span>
+<span class="sd">    MLEResults</span>
+<span class="sd">    statsmodels.tsa.statespace.kalman_filter.KalmanFilter</span>
+<span class="sd">    statsmodels.tsa.statespace.representation.Representation</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">optim_hessian</span> <span class="o">=</span> <span class="s">&#39;cs&#39;</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">endog</span><span class="p">,</span> <span class="n">k_states</span><span class="p">,</span> <span class="n">exog</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">dates</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">freq</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+                 <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="c"># Initialize the model base</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">MLEModel</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="n">endog</span><span class="o">=</span><span class="n">endog</span><span class="p">,</span> <span class="n">exog</span><span class="o">=</span><span class="n">exog</span><span class="p">,</span>
+                                              <span class="n">dates</span><span class="o">=</span><span class="n">dates</span><span class="p">,</span> <span class="n">freq</span><span class="o">=</span><span class="n">freq</span><span class="p">,</span>
+                                              <span class="n">missing</span><span class="o">=</span><span class="s">&#39;none&#39;</span><span class="p">)</span>
+
+        <span class="c"># Store kwargs to recreate model</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_init_kwargs</span> <span class="o">=</span> <span class="n">kwargs</span>
+
+        <span class="c"># Prepared the endog array: C-ordered, shape=(nobs x k_endog)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">endog</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">exog</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">prepare_data</span><span class="p">()</span>
+
+        <span class="c"># Dimensions</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">endog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">k_states</span> <span class="o">=</span> <span class="n">k_states</span>
+
+        <span class="c"># Initialize the state-space representation</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">initialize_statespace</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+<div class="viewcode-block" id="MLEModel.prepare_data"><a class="viewcode-back" href="../../../../generated/statsmodels.tsa.statespace.mlemodel.MLEModel.prepare_data.html#statsmodels.tsa.statespace.mlemodel.MLEModel.prepare_data">[docs]</a>    <span class="k">def</span> <span class="nf">prepare_data</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Prepare data for use in the state space representation</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">endog</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">orig_endog</span><span class="p">)</span>
+        <span class="n">exog</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">orig_exog</span>
+        <span class="k">if</span> <span class="n">exog</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">exog</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">exog</span><span class="p">)</span>
+
+        <span class="c"># Base class may allow 1-dim data, whereas we need 2-dim</span>
+        <span class="k">if</span> <span class="n">endog</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="n">endog</span><span class="o">.</span><span class="n">shape</span> <span class="o">=</span> <span class="p">(</span><span class="n">endog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="mi">1</span><span class="p">)</span>  <span class="c"># this will be C-contiguous</span>
+
+        <span class="c"># Base classes data may be either C-ordered or F-ordered - we want it</span>
+        <span class="c"># to be C-ordered since it will also be in shape (nobs, k_endog), and</span>
+        <span class="c"># then we can just transpose it.</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">endog</span><span class="o">.</span><span class="n">flags</span><span class="p">[</span><span class="s">&#39;C_CONTIGUOUS&#39;</span><span class="p">]:</span>
+            <span class="c"># TODO this breaks the reference link between the model endog</span>
+            <span class="c"># variable and the original object - do we need a warn(&#39;&#39;)?</span>
+            <span class="c"># This will happen often with Pandas DataFrames, which are often</span>
+            <span class="c"># Fortran-ordered and in the long format</span>
+            <span class="n">endog</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ascontiguousarray</span><span class="p">(</span><span class="n">endog</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">endog</span><span class="p">,</span> <span class="n">exog</span>
+</div>
+<div class="viewcode-block" id="MLEModel.initialize_statespace"><a class="viewcode-back" href="../../../../generated/statsmodels.tsa.statespace.mlemodel.MLEModel.initialize_statespace.html#statsmodels.tsa.statespace.mlemodel.MLEModel.initialize_statespace">[docs]</a>    <span class="k">def</span> <span class="nf">initialize_statespace</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Initialize the state space representation</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        **kwargs</span>
+<span class="sd">            Additional keyword arguments to pass to the state space class</span>
+<span class="sd">            constructor.</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c"># (Now self.endog is C-ordered and in long format (nobs x k_endog). To</span>
+        <span class="c"># get F-ordered and in wide format just need to transpose)</span>
+        <span class="n">endog</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">endog</span><span class="o">.</span><span class="n">T</span>
+
+        <span class="c"># Instantiate the state space object</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">ssm</span> <span class="o">=</span> <span class="n">KalmanFilter</span><span class="p">(</span><span class="n">endog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_states</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="c"># Bind the data to the model</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">ssm</span><span class="o">.</span><span class="n">bind</span><span class="p">(</span><span class="n">endog</span><span class="p">)</span>
+
+        <span class="c"># Other dimensions, now that `ssm` is available</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ssm</span><span class="o">.</span><span class="n">k_endog</span>
+</div>
+<div class="viewcode-block" id="MLEModel.fit"><a class="viewcode-back" href="../../../../generated/statsmodels.tsa.statespace.mlemodel.MLEModel.fit.html#statsmodels.tsa.statespace.mlemodel.MLEModel.fit">[docs]</a>    <span class="k">def</span> <span class="nf">fit</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">start_params</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">transformed</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">cov_type</span><span class="o">=</span><span class="s">&#39;opg&#39;</span><span class="p">,</span>
+            <span class="n">cov_kwds</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s">&#39;lbfgs&#39;</span><span class="p">,</span> <span class="n">maxiter</span><span class="o">=</span><span class="mi">50</span><span class="p">,</span> <span class="n">full_output</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+            <span class="n">disp</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span> <span class="n">callback</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">return_params</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span>
+            <span class="n">optim_hessian</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Fits the model by maximum likelihood via Kalman filter.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        start_params : array_like, optional</span>
+<span class="sd">            Initial guess of the solution for the loglikelihood maximization.</span>
+<span class="sd">            If None, the default is given by Model.start_params.</span>
+<span class="sd">        transformed : boolean, optional</span>
+<span class="sd">            Whether or not `start_params` is already transformed. Default is</span>
+<span class="sd">            True.</span>
+<span class="sd">        method : str, optional</span>
+<span class="sd">            The `method` determines which solver from `scipy.optimize`</span>
+<span class="sd">            is used, and it can be chosen from among the following strings:</span>
+
+<span class="sd">            - &#39;newton&#39; for Newton-Raphson, &#39;nm&#39; for Nelder-Mead</span>
+<span class="sd">            - &#39;bfgs&#39; for Broyden-Fletcher-Goldfarb-Shanno (BFGS)</span>
+<span class="sd">            - &#39;lbfgs&#39; for limited-memory BFGS with optional box constraints</span>
+<span class="sd">            - &#39;powell&#39; for modified Powell&#39;s method</span>
+<span class="sd">            - &#39;cg&#39; for conjugate gradient</span>
+<span class="sd">            - &#39;ncg&#39; for Newton-conjugate gradient</span>
+<span class="sd">            - &#39;basinhopping&#39; for global basin-hopping solver</span>
+
+<span class="sd">            The explicit arguments in `fit` are passed to the solver,</span>
+<span class="sd">            with the exception of the basin-hopping solver. Each</span>
+<span class="sd">            solver has several optional arguments that are not the same across</span>
+<span class="sd">            solvers. See the notes section below (or scipy.optimize) for the</span>
+<span class="sd">            available arguments and for the list of explicit arguments that the</span>
+<span class="sd">            basin-hopping solver supports.</span>
+<span class="sd">        cov_type : str, optional</span>
+<span class="sd">            The `cov_type` keyword governs the method for calculating the</span>
+<span class="sd">            covariance matrix of parameter estimates. Can be one of:</span>
+
+<span class="sd">            - &#39;opg&#39; for the outer product of gradient estimator</span>
+<span class="sd">            - &#39;oim&#39; for the observed information matrix estimator, calculated</span>
+<span class="sd">              using the method of Harvey (1989)</span>
+<span class="sd">            - &#39;cs&#39; for the observed information matrix estimator, calculated</span>
+<span class="sd">              using a numerical (complex step) approximation of the Hessian</span>
+<span class="sd">              matrix.</span>
+<span class="sd">            - &#39;delta&#39; for the observed information matrix estimator, calculated</span>
+<span class="sd">              using a numerical (complex step) approximation of the Hessian</span>
+<span class="sd">              along with the delta method (method of propagation of errors)</span>
+<span class="sd">              applied to the parameter transformation function</span>
+<span class="sd">              `transform_params`.</span>
+<span class="sd">            - &#39;robust&#39; for an approximate (quasi-maximum likelihood) covariance</span>
+<span class="sd">              matrix that may be valid even in the presense of some</span>
+<span class="sd">              misspecifications. Intermediate calculations use the &#39;oim&#39;</span>
+<span class="sd">              method.</span>
+<span class="sd">            - &#39;robust_cs&#39; is the same as &#39;robust&#39; except that the intermediate</span>
+<span class="sd">              calculations use the &#39;cs&#39; method.</span>
+<span class="sd">        cov_kwds : dict or None, optional</span>
+<span class="sd">            See `MLEResults.get_robustcov_results` for a description required</span>
+<span class="sd">            keywords for alternative covariance estimators</span>
+<span class="sd">        maxiter : int, optional</span>
+<span class="sd">            The maximum number of iterations to perform.</span>
+<span class="sd">        full_output : boolean, optional</span>
+<span class="sd">            Set to True to have all available output in the Results object&#39;s</span>
+<span class="sd">            mle_retvals attribute. The output is dependent on the solver.</span>
+<span class="sd">            See LikelihoodModelResults notes section for more information.</span>
+<span class="sd">        disp : boolean, optional</span>
+<span class="sd">            Set to True to print convergence messages.</span>
+<span class="sd">        callback : callable callback(xk), optional</span>
+<span class="sd">            Called after each iteration, as callback(xk), where xk is the</span>
+<span class="sd">            current parameter vector.</span>
+<span class="sd">        return_params : boolean, optional</span>
+<span class="sd">            Whether or not to return only the array of maximizing parameters.</span>
+<span class="sd">            Default is False.</span>
+<span class="sd">        optim_hessian : {&#39;opg&#39;,&#39;oim&#39;,&#39;cs&#39;}, optional</span>
+<span class="sd">            The method by which the Hessian is numerically approximated. &#39;opg&#39;</span>
+<span class="sd">            uses outer product of gradients, &#39;oim&#39; uses the information</span>
+<span class="sd">            matrix formula from Harvey (1989), and &#39;cs&#39; uses second-order</span>
+<span class="sd">            complex step differentiation. This keyword is only relevant if the</span>
+<span class="sd">            optimization method uses the Hessian matrix.</span>
+<span class="sd">        **kwargs</span>
+<span class="sd">            Additional keyword arguments to pass to the optimizer.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        MLEResults</span>
+
+<span class="sd">        See also</span>
+<span class="sd">        --------</span>
+<span class="sd">        statsmodels.base.model.LikelihoodModel.fit</span>
+<span class="sd">        MLEResults</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="k">if</span> <span class="n">start_params</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">start_params</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">start_params</span>
+            <span class="n">transformed</span> <span class="o">=</span> <span class="bp">True</span>
+
+        <span class="c"># Update the hessian method</span>
+        <span class="k">if</span> <span class="n">optim_hessian</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">optim_hessian</span> <span class="o">=</span> <span class="n">optim_hessian</span>
+
+        <span class="c"># Unconstrain the starting parameters</span>
+        <span class="k">if</span> <span class="n">transformed</span><span class="p">:</span>
+            <span class="n">start_params</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">untransform_params</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">start_params</span><span class="p">))</span>
+
+        <span class="k">if</span> <span class="n">method</span> <span class="o">==</span> <span class="s">&#39;lbfgs&#39;</span> <span class="ow">or</span> <span class="n">method</span> <span class="o">==</span> <span class="s">&#39;bfgs&#39;</span><span class="p">:</span>
+            <span class="c"># kwargs.setdefault(&#39;pgtol&#39;, 1e-8)</span>
+            <span class="c"># kwargs.setdefault(&#39;factr&#39;, 1e2)</span>
+            <span class="c"># kwargs.setdefault(&#39;m&#39;, 12)</span>
+            <span class="n">kwargs</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s">&#39;approx_grad&#39;</span><span class="p">,</span> <span class="bp">True</span><span class="p">)</span>
+            <span class="n">kwargs</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s">&#39;epsilon&#39;</span><span class="p">,</span> <span class="mf">1e-5</span><span class="p">)</span>
+
+        <span class="c"># Maximum likelihood estimation</span>
+        <span class="n">fargs</span> <span class="o">=</span> <span class="p">(</span><span class="bp">False</span><span class="p">,)</span>  <span class="c"># (sets transformed=False)</span>
+        <span class="n">mlefit</span> <span class="o">=</span> <span class="nb">super</span><span class="p">(</span><span class="n">MLEModel</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">start_params</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="n">method</span><span class="p">,</span>
+                                                  <span class="n">fargs</span><span class="o">=</span><span class="n">fargs</span><span class="p">,</span>
+                                                  <span class="n">maxiter</span><span class="o">=</span><span class="n">maxiter</span><span class="p">,</span>
+                                                  <span class="n">full_output</span><span class="o">=</span><span class="n">full_output</span><span class="p">,</span>
+                                                  <span class="n">disp</span><span class="o">=</span><span class="n">disp</span><span class="p">,</span> <span class="n">callback</span><span class="o">=</span><span class="n">callback</span><span class="p">,</span>
+                                                  <span class="n">skip_hessian</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+        <span class="c"># Just return the fitted parameters if requested</span>
+        <span class="k">if</span> <span class="n">return_params</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">transform_params</span><span class="p">(</span><span class="n">mlefit</span><span class="o">.</span><span class="n">params</span><span class="p">)</span>
+        <span class="c"># Otherwise construct the results class if desired</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">res</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">mlefit</span><span class="o">.</span><span class="n">params</span><span class="p">,</span> <span class="n">transformed</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span>
+                              <span class="n">cov_type</span><span class="o">=</span><span class="n">cov_type</span><span class="p">,</span> <span class="n">cov_kwds</span><span class="o">=</span><span class="n">cov_kwds</span><span class="p">)</span>
+            <span class="n">res</span><span class="o">.</span><span class="n">mlefit</span> <span class="o">=</span> <span class="n">mlefit</span>
+            <span class="n">res</span><span class="o">.</span><span class="n">mle_retvals</span> <span class="o">=</span> <span class="n">mlefit</span><span class="o">.</span><span class="n">mle_retvals</span>
+            <span class="n">res</span><span class="o">.</span><span class="n">mle_settings</span> <span class="o">=</span> <span class="n">mlefit</span><span class="o">.</span><span class="n">mle_settings</span>
+
+            <span class="k">return</span> <span class="n">res</span>
+</div>
+<div class="viewcode-block" id="MLEModel.filter"><a class="viewcode-back" href="../../../../generated/statsmodels.tsa.statespace.mlemodel.MLEModel.filter.html#statsmodels.tsa.statespace.mlemodel.MLEModel.filter">[docs]</a>    <span class="k">def</span> <span class="nf">filter</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">transformed</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">cov_type</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">cov_kwds</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+               <span class="n">return_ssm</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Kalman filtering</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        params : array_like</span>
+<span class="sd">            Array of parameters at which to evaluate the loglikelihood</span>
+<span class="sd">            function.</span>
+<span class="sd">        transformed : boolean, optional</span>
+<span class="sd">            Whether or not `params` is already transformed. Default is True.</span>
+<span class="sd">        return_ssm : boolean,optional</span>
+<span class="sd">            Whether or not to return only the state space output or a full</span>
+<span class="sd">            results object. Default is to return a full results object.</span>
+<span class="sd">        cov_type : str, optional</span>
+<span class="sd">            See `MLEResults.fit` for a description of covariance matrix types</span>
+<span class="sd">            for results object.</span>
+<span class="sd">        cov_kwds : dict or None, optional</span>
+<span class="sd">            See `MLEResults.get_robustcov_results` for a description required</span>
+<span class="sd">            keywords for alternative covariance estimators</span>
+<span class="sd">        **kwargs</span>
+<span class="sd">            Additional keyword arguments to pass to the Kalman filter. See</span>
+<span class="sd">            `KalmanFilter.filter` for more details.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">transformed</span><span class="p">:</span>
+            <span class="n">params</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">transform_params</span><span class="p">(</span><span class="n">params</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="n">transformed</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+
+        <span class="c"># Save the parameter names</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">param_names</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">param_names</span>
+
+        <span class="c"># Get the state space output</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ssm</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+        <span class="c"># Wrap in a results object</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">return_ssm</span><span class="p">:</span>
+            <span class="n">result_kwargs</span> <span class="o">=</span> <span class="p">{}</span>
+            <span class="k">if</span> <span class="n">cov_type</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+                <span class="n">result_kwargs</span><span class="p">[</span><span class="s">&#39;cov_type&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">cov_type</span>
+            <span class="n">result</span> <span class="o">=</span> <span class="n">MLEResultsWrapper</span><span class="p">(</span>
+                <span class="n">MLEResults</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">result</span><span class="p">,</span> <span class="o">**</span><span class="n">result_kwargs</span><span class="p">)</span>
+            <span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">result</span>
+</div>
+<div class="viewcode-block" id="MLEModel.loglike"><a class="viewcode-back" href="../../../../generated/statsmodels.tsa.statespace.mlemodel.MLEModel.loglike.html#statsmodels.tsa.statespace.mlemodel.MLEModel.loglike">[docs]</a>    <span class="k">def</span> <span class="nf">loglike</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">transformed</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Loglikelihood evaluation</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        params : array_like</span>
+<span class="sd">            Array of parameters at which to evaluate the loglikelihood</span>
+<span class="sd">            function.</span>
+<span class="sd">        transformed : boolean, optional</span>
+<span class="sd">            Whether or not `params` is already transformed. Default is True.</span>
+<span class="sd">        **kwargs</span>
+<span class="sd">            Additional keyword arguments to pass to the Kalman filter. See</span>
+<span class="sd">            `KalmanFilter.filter` for more details.</span>
+
+<span class="sd">        Notes</span>
+<span class="sd">        -----</span>
+<span class="sd">        [1]_ recommend maximizing the average likelihood to avoid scale issues;</span>
+<span class="sd">        this is done automatically by the base Model fit method.</span>
+
+<span class="sd">        References</span>
+<span class="sd">        ----------</span>
+<span class="sd">        .. [1] Koopman, Siem Jan, Neil Shephard, and Jurgen A. Doornik. 1999.</span>
+<span class="sd">           Statistical Algorithms for Models in State Space Using SsfPack 2.2.</span>
+<span class="sd">           Econometrics Journal 2 (1): 107-60. doi:10.1111/1368-423X.00023.</span>
+
+<span class="sd">        See Also</span>
+<span class="sd">        --------</span>
+<span class="sd">        update : modifies the internal state of the state space model to</span>
+<span class="sd">                 reflect new params</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">transformed</span><span class="p">:</span>
+            <span class="n">params</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">transform_params</span><span class="p">(</span><span class="n">params</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="n">transformed</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+
+        <span class="n">loglike</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ssm</span><span class="o">.</span><span class="n">loglike</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+        <span class="c"># Koopman, Shephard, and Doornik recommend maximizing the average</span>
+        <span class="c"># likelihood to avoid scale issues, but the averaging is done</span>
+        <span class="c"># automatically in the base model `fit` method</span>
+        <span class="k">return</span> <span class="n">loglike</span>
+</div>
+<div class="viewcode-block" id="MLEModel.loglikeobs"><a class="viewcode-back" href="../../../../generated/statsmodels.tsa.statespace.mlemodel.MLEModel.loglikeobs.html#statsmodels.tsa.statespace.mlemodel.MLEModel.loglikeobs">[docs]</a>    <span class="k">def</span> <span class="nf">loglikeobs</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">transformed</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Loglikelihood evaluation</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        params : array_like</span>
+<span class="sd">            Array of parameters at which to evaluate the loglikelihood</span>
+<span class="sd">            function.</span>
+<span class="sd">        transformed : boolean, optional</span>
+<span class="sd">            Whether or not `params` is already transformed. Default is True.</span>
+<span class="sd">        **kwargs</span>
+<span class="sd">            Additional keyword arguments to pass to the Kalman filter. See</span>
+<span class="sd">            `KalmanFilter.filter` for more details.</span>
+
+<span class="sd">        Notes</span>
+<span class="sd">        -----</span>
+<span class="sd">        [1]_ recommend maximizing the average likelihood to avoid scale issues;</span>
+<span class="sd">        this is done automatically by the base Model fit method.</span>
+
+<span class="sd">        References</span>
+<span class="sd">        ----------</span>
+<span class="sd">        .. [1] Koopman, Siem Jan, Neil Shephard, and Jurgen A. Doornik. 1999.</span>
+<span class="sd">           Statistical Algorithms for Models in State Space Using SsfPack 2.2.</span>
+<span class="sd">           Econometrics Journal 2 (1): 107-60. doi:10.1111/1368-423X.00023.</span>
+
+<span class="sd">        See Also</span>
+<span class="sd">        --------</span>
+<span class="sd">        update : modifies the internal state of the Model to reflect new params</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">transformed</span><span class="p">:</span>
+            <span class="n">params</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">transform_params</span><span class="p">(</span><span class="n">params</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="n">transformed</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">ssm</span><span class="o">.</span><span class="n">loglikeobs</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="MLEModel.observed_information_matrix"><a class="viewcode-back" href="../../../../generated/statsmodels.tsa.statespace.mlemodel.MLEModel.observed_information_matrix.html#statsmodels.tsa.statespace.mlemodel.MLEModel.observed_information_matrix">[docs]</a>    <span class="k">def</span> <span class="nf">observed_information_matrix</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Observed information matrix</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        params : array_like, optional</span>
+<span class="sd">            Array of parameters at which to evaluate the loglikelihood</span>
+<span class="sd">            function.</span>
+<span class="sd">        **kwargs</span>
+<span class="sd">            Additional keyword arguments to pass to the Kalman filter. See</span>
+<span class="sd">            `KalmanFilter.filter` for more details.</span>
+
+<span class="sd">        Notes</span>
+<span class="sd">        -----</span>
+<span class="sd">        This method is from Harvey (1989), which shows that the information</span>
+<span class="sd">        matrix only depends on terms from the gradient. This implementation is</span>
+<span class="sd">        partially analytic and partially numeric approximation, therefore,</span>
+<span class="sd">        because it uses the analytic formula for the information matrix, with</span>
+<span class="sd">        numerically computed elements of the gradient.</span>
+
+<span class="sd">        References</span>
+<span class="sd">        ----------</span>
+<span class="sd">        Harvey, Andrew C. 1990.</span>
+<span class="sd">        Forecasting, Structural Time Series Models and the Kalman Filter.</span>
+<span class="sd">        Cambridge University Press.</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c"># Setup</span>
+        <span class="n">n</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">params</span><span class="p">)</span>
+        <span class="n">epsilon</span> <span class="o">=</span> <span class="n">_get_epsilon</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="bp">None</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span>
+        <span class="n">increments</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">identity</span><span class="p">(</span><span class="n">n</span><span class="p">)</span> <span class="o">*</span> <span class="mi">1j</span> <span class="o">*</span> <span class="n">epsilon</span>
+
+        <span class="c"># Get values at the params themselves</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">params</span><span class="p">)</span>
+        <span class="n">res</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ssm</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="n">dtype</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ssm</span><span class="o">.</span><span class="n">dtype</span>
+        <span class="c"># Save this for inversion later</span>
+        <span class="n">inv_forecasts_error_cov</span> <span class="o">=</span> <span class="n">res</span><span class="o">.</span><span class="n">forecasts_error_cov</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+
+        <span class="c"># Compute partial derivatives</span>
+        <span class="n">partials_forecasts_error</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span><span class="p">,</span> <span class="n">n</span><span class="p">))</span>
+        <span class="p">)</span>
+        <span class="n">partials_forecasts_error_cov</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span><span class="p">,</span> <span class="n">n</span><span class="p">))</span>
+        <span class="p">)</span>
+        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">ih</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">increments</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">params</span> <span class="o">+</span> <span class="n">ih</span><span class="p">)</span>
+            <span class="n">res</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ssm</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+            <span class="n">partials_forecasts_error</span><span class="p">[:,</span> <span class="p">:,</span> <span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="n">res</span><span class="o">.</span><span class="n">forecasts_error</span><span class="o">.</span><span class="n">imag</span> <span class="o">/</span> <span class="n">epsilon</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+            <span class="p">)</span>
+
+            <span class="n">partials_forecasts_error_cov</span><span class="p">[:,</span> <span class="p">:,</span> <span class="p">:,</span> <span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="n">res</span><span class="o">.</span><span class="n">forecasts_error_cov</span><span class="o">.</span><span class="n">imag</span> <span class="o">/</span> <span class="n">epsilon</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+            <span class="p">)</span>
+
+        <span class="c"># Compute the information matrix</span>
+        <span class="n">tmp</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span><span class="p">,</span> <span class="n">n</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">)</span>
+
+        <span class="n">information_matrix</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n</span><span class="p">,</span> <span class="n">n</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ssm</span><span class="o">.</span><span class="n">loglikelihood_burn</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span><span class="p">):</span>
+            <span class="n">inv_forecasts_error_cov</span><span class="p">[:,</span> <span class="p">:,</span> <span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">inv</span><span class="p">(</span><span class="n">inv_forecasts_error_cov</span><span class="p">[:,</span> <span class="p">:,</span> <span class="n">t</span><span class="p">])</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n</span><span class="p">):</span>
+                <span class="n">tmp</span><span class="p">[:,</span> <span class="p">:,</span> <span class="n">t</span><span class="p">,</span> <span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span>
+                    <span class="n">inv_forecasts_error_cov</span><span class="p">[:,</span> <span class="p">:,</span> <span class="n">t</span><span class="p">],</span>
+                    <span class="n">partials_forecasts_error_cov</span><span class="p">[:,</span> <span class="p">:,</span> <span class="n">t</span><span class="p">,</span> <span class="n">i</span><span class="p">]</span>
+                <span class="p">)</span>
+            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n</span><span class="p">):</span>
+                <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n</span><span class="p">):</span>
+                    <span class="n">information_matrix</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="n">j</span><span class="p">]</span> <span class="o">+=</span> <span class="p">(</span>
+                        <span class="mf">0.5</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">trace</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">tmp</span><span class="p">[:,</span> <span class="p">:,</span> <span class="n">t</span><span class="p">,</span> <span class="n">i</span><span class="p">],</span>
+                                              <span class="n">tmp</span><span class="p">[:,</span> <span class="p">:,</span> <span class="n">t</span><span class="p">,</span> <span class="n">j</span><span class="p">]))</span>
+                    <span class="p">)</span>
+                    <span class="n">information_matrix</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="n">j</span><span class="p">]</span> <span class="o">+=</span> <span class="n">np</span><span class="o">.</span><span class="n">inner</span><span class="p">(</span>
+                        <span class="n">partials_forecasts_error</span><span class="p">[:,</span> <span class="n">t</span><span class="p">,</span> <span class="n">i</span><span class="p">],</span>
+                        <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">inv_forecasts_error_cov</span><span class="p">[:,:,</span><span class="n">t</span><span class="p">],</span>
+                               <span class="n">partials_forecasts_error</span><span class="p">[:,</span> <span class="n">t</span><span class="p">,</span> <span class="n">j</span><span class="p">])</span>
+                    <span class="p">)</span>
+        <span class="k">return</span> <span class="n">information_matrix</span> <span class="o">/</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">nobs</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">ssm</span><span class="o">.</span><span class="n">loglikelihood_burn</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="MLEModel.opg_information_matrix"><a class="viewcode-back" href="../../../../generated/statsmodels.tsa.statespace.mlemodel.MLEModel.opg_information_matrix.html#statsmodels.tsa.statespace.mlemodel.MLEModel.opg_information_matrix">[docs]</a>    <span class="k">def</span> <span class="nf">opg_information_matrix</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Outer product of gradients information matrix</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        params : array_like, optional</span>
+<span class="sd">            Array of parameters at which to evaluate the loglikelihood</span>
+<span class="sd">            function.</span>
+<span class="sd">        **kwargs</span>
+<span class="sd">            Additional arguments to the `loglikeobs` method.</span>
+
+<span class="sd">        References</span>
+<span class="sd">        ----------</span>
+<span class="sd">        Berndt, Ernst R., Bronwyn Hall, Robert Hall, and Jerry Hausman. 1974.</span>
+<span class="sd">        Estimation and Inference in Nonlinear Structural Models.</span>
+<span class="sd">        NBER Chapters. National Bureau of Economic Research, Inc.</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">score_obs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">score_obs</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span><span class="o">.</span><span class="n">transpose</span><span class="p">()</span>
+        <span class="k">return</span> <span class="p">(</span>
+            <span class="n">np</span><span class="o">.</span><span class="n">inner</span><span class="p">(</span><span class="n">score_obs</span><span class="p">,</span> <span class="n">score_obs</span><span class="p">)</span> <span class="o">/</span>
+            <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">nobs</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">ssm</span><span class="o">.</span><span class="n">loglikelihood_burn</span><span class="p">)</span>
+        <span class="p">)</span>
+</div>
+<div class="viewcode-block" id="MLEModel.score"><a class="viewcode-back" href="../../../../generated/statsmodels.tsa.statespace.mlemodel.MLEModel.score.html#statsmodels.tsa.statespace.mlemodel.MLEModel.score">[docs]</a>    <span class="k">def</span> <span class="nf">score</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Compute the score function at params.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        params : array_like</span>
+<span class="sd">            Array of parameters at which to evaluate the score.</span>
+<span class="sd">        *args, **kwargs</span>
+<span class="sd">            Additional arguments to the `loglike` method.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        ----------</span>
+<span class="sd">        score : array</span>
+<span class="sd">            Score, evaluated at `params`.</span>
+
+<span class="sd">        Notes</span>
+<span class="sd">        -----</span>
+<span class="sd">        This is a numerical approximation, calculated using first-order complex</span>
+<span class="sd">        step differentiation on the `loglike` method.</span>
+
+<span class="sd">        Both \*args and \*\*kwargs are necessary because the optimizer from</span>
+<span class="sd">        `fit` must call this function and only supports passing arguments via</span>
+<span class="sd">        \*args (for example `scipy.optimize.fmin_l_bfgs`).</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">transformed</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="n">args</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">args</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="k">else</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&#39;transformed&#39;</span><span class="p">,</span> <span class="bp">False</span><span class="p">)</span>
+        <span class="p">)</span>
+
+        <span class="n">score</span> <span class="o">=</span> <span class="n">approx_fprime_cs</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">loglike</span><span class="p">,</span> <span class="n">kwargs</span><span class="o">=</span><span class="p">{</span>
+            <span class="s">&#39;transformed&#39;</span><span class="p">:</span> <span class="n">transformed</span>
+        <span class="p">})</span>
+
+        <span class="k">return</span> <span class="n">score</span>
+</div>
+<div class="viewcode-block" id="MLEModel.score_obs"><a class="viewcode-back" href="../../../../generated/statsmodels.tsa.statespace.mlemodel.MLEModel.score_obs.html#statsmodels.tsa.statespace.mlemodel.MLEModel.score_obs">[docs]</a>    <span class="k">def</span> <span class="nf">score_obs</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Compute the score per observation, evaluated at params</span>
+<span class="sd"> </span>
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        params : array_like</span>
+<span class="sd">            Array of parameters at which to evaluate the score.</span>
+<span class="sd">        *args, **kwargs</span>
+<span class="sd">            Additional arguments to the `loglike` method.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        ----------</span>
+<span class="sd">        score : array (nobs, k_vars)</span>
+<span class="sd">            Score per observation, evaluated at `params`.</span>
+
+<span class="sd">        Notes</span>
+<span class="sd">        -----</span>
+<span class="sd">        This is a numerical approximation, calculated using first-order complex</span>
+<span class="sd">        step differentiation on the `loglikeobs` method.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">params</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">approx_fprime_cs</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">loglikeobs</span><span class="p">,</span> <span class="n">kwargs</span><span class="o">=</span><span class="n">kwargs</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="MLEModel.hessian"><a class="viewcode-back" href="../../../../generated/statsmodels.tsa.statespace.mlemodel.MLEModel.hessian.html#statsmodels.tsa.statespace.mlemodel.MLEModel.hessian">[docs]</a>    <span class="k">def</span> <span class="nf">hessian</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Hessian matrix of the likelihood function, evaluated at the given</span>
+<span class="sd">        parameters</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        params : array_like</span>
+<span class="sd">            Array of parameters at which to evaluate the hessian.</span>
+<span class="sd">        *args, **kwargs</span>
+<span class="sd">            Additional arguments to the `loglike` method.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        hessian : array</span>
+<span class="sd">            Hessian matrix evaluated at `params`</span>
+
+<span class="sd">        Notes</span>
+<span class="sd">        -----</span>
+<span class="sd">        This is a numerical approximation.</span>
+
+<span class="sd">        Both \*args and \*\*kwargs are necessary because the optimizer from</span>
+<span class="sd">        `fit` must call this function and only supports passing arguments via</span>
+<span class="sd">        \*args (for example `scipy.optimize.fmin_l_bfgs`).</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">optim_hessian</span> <span class="o">==</span> <span class="s">&#39;cs&#39;</span><span class="p">:</span>
+            <span class="n">hessian</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_hessian_cs</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">optim_hessian</span> <span class="o">==</span> <span class="s">&#39;oim&#39;</span><span class="p">:</span>
+            <span class="n">hessian</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_hessian_oim</span><span class="p">(</span><span class="n">params</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">optim_hessian</span> <span class="o">==</span> <span class="s">&#39;opg&#39;</span><span class="p">:</span>
+            <span class="n">hessian</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_hessian_opg</span><span class="p">(</span><span class="n">params</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span><span class="s">&#39;Invalid Hessian calculation method.&#39;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">hessian</span>
+</div>
+    <span class="k">def</span> <span class="nf">_hessian_oim</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Hessian matrix computed using the Harvey (1989) information matrix</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="o">-</span><span class="bp">self</span><span class="o">.</span><span class="n">observed_information_matrix</span><span class="p">(</span><span class="n">params</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_hessian_opg</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Hessian matrix computed using the outer product of gradients</span>
+<span class="sd">        information matrix</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="o">-</span><span class="bp">self</span><span class="o">.</span><span class="n">opg_information_matrix</span><span class="p">(</span><span class="n">params</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_hessian_cs</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Hessian matrix computed by second-order complex-step differentiation</span>
+<span class="sd">        on the `loglike` function.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">transformed</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="n">args</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">args</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="k">else</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&#39;transformed&#39;</span><span class="p">,</span> <span class="bp">False</span><span class="p">)</span>
+        <span class="p">)</span>
+
+        <span class="n">f</span> <span class="o">=</span> <span class="k">lambda</span> <span class="n">params</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">loglike</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span>
+        <span class="n">hessian</span> <span class="o">=</span> <span class="n">approx_hess_cs</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="n">f</span><span class="p">,</span> <span class="n">kwargs</span><span class="o">=</span><span class="p">{</span>
+            <span class="s">&#39;transformed&#39;</span><span class="p">:</span> <span class="n">transformed</span>
+        <span class="p">})</span>
+
+        <span class="k">return</span> <span class="n">hessian</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">start_params</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        (array) Starting parameters for maximum likelihood estimation.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s">&#39;_start_params&#39;</span><span class="p">):</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_start_params</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">NotImplementedError</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">param_names</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        (list of str) List of human readable parameter names (for parameters</span>
+<span class="sd">        actually included in the model).</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s">&#39;_param_names&#39;</span><span class="p">):</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_param_names</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">names</span> <span class="o">=</span> <span class="p">[</span><span class="s">&#39;param.</span><span class="si">%d</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">i</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">start_params</span><span class="p">))]</span>
+            <span class="k">except</span> <span class="ne">NotImplementedError</span><span class="p">:</span>
+                <span class="n">names</span> <span class="o">=</span> <span class="p">[]</span>
+
+<div class="viewcode-block" id="MLEModel.transform_jacobian"><a class="viewcode-back" href="../../../../generated/statsmodels.tsa.statespace.mlemodel.MLEModel.transform_jacobian.html#statsmodels.tsa.statespace.mlemodel.MLEModel.transform_jacobian">[docs]</a>    <span class="k">def</span> <span class="nf">transform_jacobian</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">unconstrained</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Jacobian matrix for the parameter transformation function</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        unconstrained : array_like</span>
+<span class="sd">            Array of unconstrained parameters used by the optimizer.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        jacobian : array</span>
+<span class="sd">            Jacobian matrix of the transformation, evaluated at `unconstrained`</span>
+
+<span class="sd">        Notes</span>
+<span class="sd">        -----</span>
+<span class="sd">        This is a numerical approximation.</span>
+
+<span class="sd">        See Also</span>
+<span class="sd">        --------</span>
+<span class="sd">        transform_params</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">approx_fprime_cs</span><span class="p">(</span><span class="n">unconstrained</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">transform_params</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="MLEModel.transform_params"><a class="viewcode-back" href="../../../../generated/statsmodels.tsa.statespace.mlemodel.MLEModel.transform_params.html#statsmodels.tsa.statespace.mlemodel.MLEModel.transform_params">[docs]</a>    <span class="k">def</span> <span class="nf">transform_params</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">unconstrained</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Transform unconstrained parameters used by the optimizer to constrained</span>
+<span class="sd">        parameters used in likelihood evaluation</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        unconstrained : array_like</span>
+<span class="sd">            Array of unconstrained parameters used by the optimizer, to be</span>
+<span class="sd">            transformed.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        constrained : array_like</span>
+<span class="sd">            Array of constrained parameters which may be used in likelihood</span>
+<span class="sd">            evalation.</span>
+
+<span class="sd">        Notes</span>
+<span class="sd">        -----</span>
+<span class="sd">        This is a noop in the base class, subclasses should override where</span>
+<span class="sd">        appropriate.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">unconstrained</span>
+</div>
+<div class="viewcode-block" id="MLEModel.untransform_params"><a class="viewcode-back" href="../../../../generated/statsmodels.tsa.statespace.mlemodel.MLEModel.untransform_params.html#statsmodels.tsa.statespace.mlemodel.MLEModel.untransform_params">[docs]</a>    <span class="k">def</span> <span class="nf">untransform_params</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">constrained</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Transform constrained parameters used in likelihood evaluation</span>
+<span class="sd">        to unconstrained parameters used by the optimizer</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        constrained : array_like</span>
+<span class="sd">            Array of constrained parameters used in likelihood evalution, to be</span>
+<span class="sd">            transformed.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        unconstrained : array_like</span>
+<span class="sd">            Array of unconstrained parameters used by the optimizer.</span>
+
+<span class="sd">        Notes</span>
+<span class="sd">        -----</span>
+<span class="sd">        This is a noop in the base class, subclasses should override where</span>
+<span class="sd">        appropriate.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">constrained</span>
+</div>
+<div class="viewcode-block" id="MLEModel.update"><a class="viewcode-back" href="../../../../generated/statsmodels.tsa.statespace.mlemodel.MLEModel.update.html#statsmodels.tsa.statespace.mlemodel.MLEModel.update">[docs]</a>    <span class="k">def</span> <span class="nf">update</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">transformed</span><span class="o">=</span><span class="bp">True</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Update the parameters of the model</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        params : array_like</span>
+<span class="sd">            Array of new parameters.</span>
+<span class="sd">        transformed : boolean, optional</span>
+<span class="sd">            Whether or not `params` is already transformed. If set to False,</span>
+<span class="sd">            `transform_params` is called. Default is True.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        params : array_like</span>
+<span class="sd">            Array of parameters.</span>
+
+<span class="sd">        Notes</span>
+<span class="sd">        -----</span>
+<span class="sd">        Since Model is a base class, this method should be overridden by</span>
+<span class="sd">        subclasses to perform actual updating steps.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">params</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">params</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">transformed</span><span class="p">:</span>
+            <span class="n">params</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">transform_params</span><span class="p">(</span><span class="n">params</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">params</span>
+</div>
+    <span class="nd">@classmethod</span>
+<div class="viewcode-block" id="MLEModel.from_formula"><a class="viewcode-back" href="../../../../generated/statsmodels.tsa.statespace.mlemodel.MLEModel.from_formula.html#statsmodels.tsa.statespace.mlemodel.MLEModel.from_formula">[docs]</a>    <span class="k">def</span> <span class="nf">from_formula</span><span class="p">(</span><span class="n">cls</span><span class="p">,</span> <span class="n">formula</span><span class="p">,</span> <span class="n">data</span><span class="p">,</span> <span class="n">subset</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Not implemented for state space models</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span>
+
+</div></div>
+<div class="viewcode-block" id="MLEResults"><a class="viewcode-back" href="../../../../generated/statsmodels.tsa.statespace.mlemodel.MLEResults.html#statsmodels.tsa.statespace.mlemodel.MLEResults">[docs]</a><span class="k">class</span> <span class="nc">MLEResults</span><span class="p">(</span><span class="n">tsbase</span><span class="o">.</span><span class="n">TimeSeriesModelResults</span><span class="p">):</span>
+    <span class="sd">r&quot;&quot;&quot;</span>
+<span class="sd">    Class to hold results from fitting a state space model.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    model : MLEModel instance</span>
+<span class="sd">        The fitted model instance</span>
+<span class="sd">    params : array</span>
+<span class="sd">        Fitted parameters</span>
+<span class="sd">    filter_results : KalmanFilter instance</span>
+<span class="sd">        The underlying state space model and Kalman filter output</span>
+
+<span class="sd">    Attributes</span>
+<span class="sd">    ----------</span>
+<span class="sd">    model : Model instance</span>
+<span class="sd">        A reference to the model that was fit.</span>
+<span class="sd">    filter_results : KalmanFilter instance</span>
+<span class="sd">        The underlying state space model and Kalman filter output</span>
+<span class="sd">    nobs : float</span>
+<span class="sd">        The number of observations used to fit the model.</span>
+<span class="sd">    params : array</span>
+<span class="sd">        The parameters of the model.</span>
+<span class="sd">    scale : float</span>
+<span class="sd">        This is currently set to 1.0 and not used by the model or its results.</span>
+
+<span class="sd">    See Also</span>
+<span class="sd">    --------</span>
+<span class="sd">    MLEModel</span>
+<span class="sd">    statsmodels.tsa.statespace.kalman_filter.FilterResults</span>
+<span class="sd">    statsmodels.tsa.statespace.representation.FrozenRepresentation</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">filter_results</span><span class="p">,</span> <span class="n">cov_type</span><span class="o">=</span><span class="s">&#39;opg&#39;</span><span class="p">,</span>
+                 <span class="n">cov_kwds</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">data</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">data</span>
+
+        <span class="n">tsbase</span><span class="o">.</span><span class="n">TimeSeriesModelResults</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span>
+                                               <span class="n">normalized_cov_params</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+                                               <span class="n">scale</span><span class="o">=</span><span class="mf">1.</span><span class="p">)</span>
+
+        <span class="c"># Save the state space representation output</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">filter_results</span> <span class="o">=</span> <span class="n">filter_results</span>
+
+        <span class="c"># Dimensions</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">nobs</span>
+
+        <span class="c"># Setup covariance matrix notes dictionary</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s">&#39;cov_kwds&#39;</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">cov_kwds</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">cov_type</span> <span class="o">=</span> <span class="n">cov_type</span>
+
+        <span class="c"># Setup the cache</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_cache</span> <span class="o">=</span> <span class="n">resettable_cache</span><span class="p">()</span>
+
+        <span class="c"># Handle covariance matrix calculation</span>
+        <span class="k">if</span> <span class="n">cov_kwds</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+                <span class="n">cov_kwds</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_get_robustcov_results</span><span class="p">(</span><span class="n">cov_type</span><span class="o">=</span><span class="n">cov_type</span><span class="p">,</span> <span class="n">use_self</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span>
+                                    <span class="o">**</span><span class="n">cov_kwds</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_get_robustcov_results</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cov_type</span><span class="o">=</span><span class="s">&#39;opg&#39;</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Create new results instance with specified covariance estimator as</span>
+<span class="sd">        default</span>
+
+<span class="sd">        Note: creating new results instance currently not supported.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        cov_type : string</span>
+<span class="sd">            the type of covariance matrix estimator to use. See Notes below</span>
+<span class="sd">        kwargs : depends on cov_type</span>
+<span class="sd">            Required or optional arguments for covariance calculation.</span>
+<span class="sd">            See Notes below.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        results : results instance</span>
+<span class="sd">            This method creates a new results instance with the requested</span>
+<span class="sd">            covariance as the default covariance of the parameters.</span>
+<span class="sd">            Inferential statistics like p-values and hypothesis tests will be</span>
+<span class="sd">            based on this covariance matrix.</span>
+
+<span class="sd">        Notes</span>
+<span class="sd">        -----</span>
+<span class="sd">        The following covariance types and required or optional arguments are</span>
+<span class="sd">        currently available:</span>
+
+<span class="sd">        - &#39;opg&#39; for the outer product of gradient estimator</span>
+<span class="sd">        - &#39;oim&#39; for the observed information matrix estimator, calculated</span>
+<span class="sd">          using the method of Harvey (1989)</span>
+<span class="sd">        - &#39;cs&#39; for the observed information matrix estimator, calculated</span>
+<span class="sd">          using a numerical (complex step) approximation of the Hessian</span>
+<span class="sd">          matrix.</span>
+<span class="sd">        - &#39;delta&#39; for the observed information matrix estimator, calculated</span>
+<span class="sd">          using a numerical (complex step) approximation of the Hessian along</span>
+<span class="sd">          with the delta method (method of propagation of errors)</span>
+<span class="sd">          applied to the parameter transformation function `transform_params`.</span>
+<span class="sd">        - &#39;robust&#39; for an approximate (quasi-maximum likelihood) covariance</span>
+<span class="sd">          matrix that may be valid even in the presense of some</span>
+<span class="sd">          misspecifications. Intermediate calculations use the &#39;oim&#39;</span>
+<span class="sd">          method.</span>
+<span class="sd">        - &#39;robust_cs&#39; is the same as &#39;robust&#39; except that the intermediate</span>
+<span class="sd">          calculations use the &#39;cs&#39; method.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="kn">import</span> <span class="nn">statsmodels.stats.sandwich_covariance</span> <span class="kn">as</span> <span class="nn">sw</span>
+
+        <span class="n">use_self</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s">&#39;use_self&#39;</span><span class="p">,</span> <span class="bp">False</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">use_self</span><span class="p">:</span>
+            <span class="n">res</span> <span class="o">=</span> <span class="bp">self</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">NotImplementedError</span>
+            <span class="n">res</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">__class__</span><span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">params</span><span class="p">,</span>
+                <span class="n">normalized_cov_params</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">normalized_cov_params</span><span class="p">,</span>
+                <span class="n">scale</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">scale</span><span class="p">)</span>
+
+        <span class="c"># Set the new covariance type</span>
+        <span class="n">res</span><span class="o">.</span><span class="n">cov_type</span> <span class="o">=</span> <span class="n">cov_type</span>
+        <span class="n">res</span><span class="o">.</span><span class="n">cov_kwds</span> <span class="o">=</span> <span class="p">{}</span>
+
+        <span class="c"># Calculate the new covariance matrix</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">cov_type</span> <span class="o">==</span> <span class="s">&#39;cs&#39;</span><span class="p">:</span>
+            <span class="n">res</span><span class="o">.</span><span class="n">cov_params_default</span> <span class="o">=</span> <span class="n">res</span><span class="o">.</span><span class="n">cov_params_cs</span>
+            <span class="n">res</span><span class="o">.</span><span class="n">cov_kwds</span><span class="p">[</span><span class="s">&#39;description&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="s">&#39;Covariance matrix calculated using numerical (complex-step)&#39;</span>
+                <span class="s">&#39; differentiation.&#39;</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">cov_type</span> <span class="o">==</span> <span class="s">&#39;delta&#39;</span><span class="p">:</span>
+            <span class="n">res</span><span class="o">.</span><span class="n">cov_params_default</span> <span class="o">=</span> <span class="n">res</span><span class="o">.</span><span class="n">cov_params_delta</span>
+            <span class="n">res</span><span class="o">.</span><span class="n">cov_kwds</span><span class="p">[</span><span class="s">&#39;description&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="s">&#39;Covariance matrix calculated using numerical differentiation&#39;</span>
+                <span class="s">&#39; and the delta method (method of propagation of errors)&#39;</span>
+                <span class="s">&#39; applied to the parameter transformation function.&#39;</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">cov_type</span> <span class="o">==</span> <span class="s">&#39;oim&#39;</span><span class="p">:</span>
+            <span class="n">res</span><span class="o">.</span><span class="n">cov_params_default</span> <span class="o">=</span> <span class="n">res</span><span class="o">.</span><span class="n">cov_params_oim</span>
+            <span class="n">res</span><span class="o">.</span><span class="n">cov_kwds</span><span class="p">[</span><span class="s">&#39;description&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="s">&#39;Covariance matrix calculated using the observed information&#39;</span>
+                <span class="s">&#39; matrix described in Harvey (1989).&#39;</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">cov_type</span> <span class="o">==</span> <span class="s">&#39;opg&#39;</span><span class="p">:</span>
+            <span class="n">res</span><span class="o">.</span><span class="n">cov_params_default</span> <span class="o">=</span> <span class="n">res</span><span class="o">.</span><span class="n">cov_params_opg</span>
+            <span class="n">res</span><span class="o">.</span><span class="n">cov_kwds</span><span class="p">[</span><span class="s">&#39;description&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="s">&#39;Covariance matrix calculated using the outer product of&#39;</span>
+                <span class="s">&#39; gradients.&#39;</span>
+            <span class="p">)</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">cov_type</span> <span class="o">==</span> <span class="s">&#39;robust&#39;</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">cov_type</span> <span class="o">==</span> <span class="s">&#39;robust_oim&#39;</span><span class="p">:</span>
+            <span class="n">res</span><span class="o">.</span><span class="n">cov_params_default</span> <span class="o">=</span> <span class="n">res</span><span class="o">.</span><span class="n">cov_params_robust_oim</span>
+            <span class="n">res</span><span class="o">.</span><span class="n">cov_kwds</span><span class="p">[</span><span class="s">&#39;description&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="s">&#39;Quasi-maximum likelihood covariance matrix used for&#39;</span>
+                <span class="s">&#39; robustness to some misspecifications; calculated using the&#39;</span>
+                <span class="s">&#39; observed information matrix described in Harvey (1989).&#39;</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">cov_type</span> <span class="o">==</span> <span class="s">&#39;robust_cs&#39;</span><span class="p">:</span>
+            <span class="n">res</span><span class="o">.</span><span class="n">cov_params_default</span> <span class="o">=</span> <span class="n">res</span><span class="o">.</span><span class="n">cov_params_robust_cs</span>
+            <span class="n">res</span><span class="o">.</span><span class="n">cov_kwds</span><span class="p">[</span><span class="s">&#39;description&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="s">&#39;Quasi-maximum likelihood covariance matrix used for&#39;</span>
+                <span class="s">&#39; robustness to some misspecifications; calculated using&#39;</span>
+                <span class="s">&#39; numerical (complex-step) differentiation.&#39;</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span><span class="s">&#39;Invalid covariance matrix type.&#39;</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">res</span>
+
+    <span class="nd">@cache_readonly</span>
+<div class="viewcode-block" id="MLEResults.aic"><a class="viewcode-back" href="../../../../generated/statsmodels.tsa.statespace.mlemodel.MLEResults.aic.html#statsmodels.tsa.statespace.mlemodel.MLEResults.aic">[docs]</a>    <span class="k">def</span> <span class="nf">aic</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        (float) Akaike Information Criterion</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c"># return -2*self.llf + 2*self.params.shape[0]</span>
+        <span class="k">return</span> <span class="n">aic</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">llf</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">params</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+</div>
+    <span class="nd">@cache_readonly</span>
+<div class="viewcode-block" id="MLEResults.bic"><a class="viewcode-back" href="../../../../generated/statsmodels.tsa.statespace.mlemodel.MLEResults.bic.html#statsmodels.tsa.statespace.mlemodel.MLEResults.bic">[docs]</a>    <span class="k">def</span> <span class="nf">bic</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        (float) Bayes Information Criterion</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c"># return -2*self.llf + self.params.shape[0]*np.log(self.nobs)</span>
+        <span class="k">return</span> <span class="n">bic</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">llf</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">params</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+</div>
+    <span class="nd">@cache_readonly</span>
+<div class="viewcode-block" id="MLEResults.cov_params_cs"><a class="viewcode-back" href="../../../../generated/statsmodels.tsa.statespace.mlemodel.MLEResults.cov_params_cs.html#statsmodels.tsa.statespace.mlemodel.MLEResults.cov_params_cs">[docs]</a>    <span class="k">def</span> <span class="nf">cov_params_cs</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        (array) The variance / covariance matrix. Computed using the numerical</span>
+<span class="sd">        Hessian computed without using parameter transformations.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">nobs</span> <span class="o">=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">nobs</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">filter_results</span><span class="o">.</span><span class="n">loglikelihood_burn</span><span class="p">)</span>
+        <span class="c"># When using complex-step methods, cannot rely on Cholesky inversion</span>
+        <span class="c"># because variance parameters will then have a complex component which</span>
+        <span class="c"># which implies non-positive-definiteness.</span>
+        <span class="n">inversion_method</span> <span class="o">=</span> <span class="n">INVERT_UNIVARIATE</span> <span class="o">|</span> <span class="n">SOLVE_LU</span>
+        <span class="n">evaluated_hessian</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">_hessian_cs</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">params</span><span class="p">,</span> <span class="n">transformed</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">inversion_method</span><span class="o">=</span><span class="n">inversion_method</span>
+        <span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">params</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="o">-</span><span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">inv</span><span class="p">(</span><span class="n">nobs</span> <span class="o">*</span> <span class="n">evaluated_hessian</span><span class="p">)</span>
+</div>
+    <span class="nd">@cache_readonly</span>
+<div class="viewcode-block" id="MLEResults.cov_params_delta"><a class="viewcode-back" href="../../../../generated/statsmodels.tsa.statespace.mlemodel.MLEResults.cov_params_delta.html#statsmodels.tsa.statespace.mlemodel.MLEResults.cov_params_delta">[docs]</a>    <span class="k">def</span> <span class="nf">cov_params_delta</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        (array) The variance / covariance matrix. Computed using the numerical</span>
+<span class="sd">        Hessian computed using parameter transformations and the Delta method</span>
+<span class="sd">        (method of propagation of errors).</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">nobs</span> <span class="o">=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">nobs</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">filter_results</span><span class="o">.</span><span class="n">loglikelihood_burn</span><span class="p">)</span>
+
+        <span class="n">unconstrained</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">untransform_params</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">params</span><span class="p">)</span>
+        <span class="n">jacobian</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">transform_jacobian</span><span class="p">(</span><span class="n">unconstrained</span><span class="p">)</span>
+        <span class="n">cov_cs</span> <span class="o">=</span> <span class="o">-</span><span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">inv</span><span class="p">(</span>
+            <span class="n">nobs</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">_hessian_cs</span><span class="p">(</span><span class="n">unconstrained</span><span class="p">,</span> <span class="n">transformed</span><span class="o">=</span><span class="bp">False</span><span class="p">)</span>
+        <span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">jacobian</span><span class="p">,</span> <span class="n">cov_cs</span><span class="p">),</span> <span class="n">jacobian</span><span class="o">.</span><span class="n">transpose</span><span class="p">())</span>
+</div>
+    <span class="nd">@cache_readonly</span>
+<div class="viewcode-block" id="MLEResults.cov_params_oim"><a class="viewcode-back" href="../../../../generated/statsmodels.tsa.statespace.mlemodel.MLEResults.cov_params_oim.html#statsmodels.tsa.statespace.mlemodel.MLEResults.cov_params_oim">[docs]</a>    <span class="k">def</span> <span class="nf">cov_params_oim</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        (array) The variance / covariance matrix. Computed using the method</span>
+<span class="sd">        from Harvey (1989).</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">nobs</span> <span class="o">=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">nobs</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">filter_results</span><span class="o">.</span><span class="n">loglikelihood_burn</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">inv</span><span class="p">(</span>
+            <span class="n">nobs</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">observed_information_matrix</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">params</span><span class="p">)</span>
+        <span class="p">)</span>
+</div>
+    <span class="nd">@cache_readonly</span>
+<div class="viewcode-block" id="MLEResults.cov_params_opg"><a class="viewcode-back" href="../../../../generated/statsmodels.tsa.statespace.mlemodel.MLEResults.cov_params_opg.html#statsmodels.tsa.statespace.mlemodel.MLEResults.cov_params_opg">[docs]</a>    <span class="k">def</span> <span class="nf">cov_params_opg</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        (array) The variance / covariance matrix. Computed using the outer</span>
+<span class="sd">        product of gradients method.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">nobs</span> <span class="o">=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">nobs</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">filter_results</span><span class="o">.</span><span class="n">loglikelihood_burn</span><span class="p">)</span>
+        <span class="c"># When using complex-step methods, cannot rely on Cholesky inversion</span>
+        <span class="c"># because variance parameters will then have a complex component which</span>
+        <span class="c"># which implies non-positive-definiteness.</span>
+        <span class="n">inversion_method</span> <span class="o">=</span> <span class="n">INVERT_UNIVARIATE</span> <span class="o">|</span> <span class="n">SOLVE_LU</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">inv</span><span class="p">(</span>
+            <span class="n">nobs</span> <span class="o">*</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">opg_information_matrix</span><span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">params</span><span class="p">,</span> <span class="n">inversion_method</span><span class="o">=</span><span class="n">inversion_method</span>
+            <span class="p">)</span>
+        <span class="p">)</span>
+</div>
+    <span class="nd">@cache_readonly</span>
+<div class="viewcode-block" id="MLEResults.cov_params_robust"><a class="viewcode-back" href="../../../../generated/statsmodels.tsa.statespace.mlemodel.MLEResults.cov_params_robust.html#statsmodels.tsa.statespace.mlemodel.MLEResults.cov_params_robust">[docs]</a>    <span class="k">def</span> <span class="nf">cov_params_robust</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        (array) The QMLE variance / covariance matrix. Alias for</span>
+<span class="sd">        `cov_params_robust_oim`</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">cov_params_robust_oim</span>
+</div>
+    <span class="nd">@cache_readonly</span>
+<div class="viewcode-block" id="MLEResults.cov_params_robust_oim"><a class="viewcode-back" href="../../../../generated/statsmodels.tsa.statespace.mlemodel.MLEResults.cov_params_robust_oim.html#statsmodels.tsa.statespace.mlemodel.MLEResults.cov_params_robust_oim">[docs]</a>    <span class="k">def</span> <span class="nf">cov_params_robust_oim</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        (array) The QMLE variance / covariance matrix. Computed using the</span>
+<span class="sd">        method from Harvey (1989) as the evaluated hessian.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">nobs</span> <span class="o">=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">nobs</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">filter_results</span><span class="o">.</span><span class="n">loglikelihood_burn</span><span class="p">)</span>
+        <span class="n">cov_opg</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">cov_params_opg</span>
+        <span class="n">evaluated_hessian</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="n">nobs</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">observed_information_matrix</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">params</span><span class="p">)</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">inv</span><span class="p">(</span>
+            <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">evaluated_hessian</span><span class="p">,</span> <span class="n">cov_opg</span><span class="p">),</span> <span class="n">evaluated_hessian</span><span class="p">)</span>
+        <span class="p">)</span>
+</div>
+    <span class="nd">@cache_readonly</span>
+<div class="viewcode-block" id="MLEResults.cov_params_robust_cs"><a class="viewcode-back" href="../../../../generated/statsmodels.tsa.statespace.mlemodel.MLEResults.cov_params_robust_cs.html#statsmodels.tsa.statespace.mlemodel.MLEResults.cov_params_robust_cs">[docs]</a>    <span class="k">def</span> <span class="nf">cov_params_robust_cs</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        (array) The QMLE variance / covariance matrix. Computed using the</span>
+<span class="sd">        numerical Hessian computed without using parameter transformations as</span>
+<span class="sd">        the evaluated hessian.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">nobs</span> <span class="o">=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">nobs</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">filter_results</span><span class="o">.</span><span class="n">loglikelihood_burn</span><span class="p">)</span>
+        <span class="n">cov_opg</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">cov_params_opg</span>
+        <span class="c"># When using complex-step methods, cannot rely on Cholesky inversion</span>
+        <span class="c"># because variance parameters will then have a complex component which</span>
+        <span class="c"># which implies non-positive-definiteness.</span>
+        <span class="n">inversion_method</span> <span class="o">=</span> <span class="n">INVERT_UNIVARIATE</span> <span class="o">|</span> <span class="n">SOLVE_LU</span>
+        <span class="n">evaluated_hessian</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="n">nobs</span> <span class="o">*</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">_hessian_cs</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">params</span><span class="p">,</span> <span class="n">transformed</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span>
+                                   <span class="n">inversion_method</span><span class="o">=</span><span class="n">inversion_method</span><span class="p">)</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">inv</span><span class="p">(</span>
+            <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">evaluated_hessian</span><span class="p">,</span> <span class="n">cov_opg</span><span class="p">),</span> <span class="n">evaluated_hessian</span><span class="p">)</span>
+        <span class="p">)</span>
+</div>
+<div class="viewcode-block" id="MLEResults.fittedvalues"><a class="viewcode-back" href="../../../../generated/statsmodels.tsa.statespace.mlemodel.MLEResults.fittedvalues.html#statsmodels.tsa.statespace.mlemodel.MLEResults.fittedvalues">[docs]</a>    <span class="k">def</span> <span class="nf">fittedvalues</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        (array) The predicted values of the model.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">filter_results</span><span class="o">.</span><span class="n">forecasts</span>
+</div>
+    <span class="nd">@cache_readonly</span>
+<div class="viewcode-block" id="MLEResults.hqic"><a class="viewcode-back" href="../../../../generated/statsmodels.tsa.statespace.mlemodel.MLEResults.hqic.html#statsmodels.tsa.statespace.mlemodel.MLEResults.hqic">[docs]</a>    <span class="k">def</span> <span class="nf">hqic</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        (float) Hannan-Quinn Information Criterion</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c"># return -2*self.llf + 2*np.log(np.log(self.nobs))*self.params.shape[0]</span>
+        <span class="k">return</span> <span class="n">hqic</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">llf</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">params</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+</div>
+    <span class="nd">@cache_readonly</span>
+<div class="viewcode-block" id="MLEResults.llf_obs"><a class="viewcode-back" href="../../../../generated/statsmodels.tsa.statespace.mlemodel.MLEResults.llf_obs.html#statsmodels.tsa.statespace.mlemodel.MLEResults.llf_obs">[docs]</a>    <span class="k">def</span> <span class="nf">llf_obs</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        (float) The value of the log-likelihood function evaluated at `params`.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">loglikeobs</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">params</span><span class="p">)</span>
+</div>
+    <span class="nd">@cache_readonly</span>
+<div class="viewcode-block" id="MLEResults.llf"><a class="viewcode-back" href="../../../../generated/statsmodels.tsa.statespace.mlemodel.MLEResults.llf.html#statsmodels.tsa.statespace.mlemodel.MLEResults.llf">[docs]</a>    <span class="k">def</span> <span class="nf">llf</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        (float) The value of the log-likelihood function evaluated at `params`.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">llf_obs</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">filter_results</span><span class="o">.</span><span class="n">loglikelihood_burn</span><span class="p">:]</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
+</div>
+    <span class="nd">@cache_readonly</span>
+<div class="viewcode-block" id="MLEResults.loglikelihood_burn"><a class="viewcode-back" href="../../../../generated/statsmodels.tsa.statespace.mlemodel.MLEResults.loglikelihood_burn.html#statsmodels.tsa.statespace.mlemodel.MLEResults.loglikelihood_burn">[docs]</a>    <span class="k">def</span> <span class="nf">loglikelihood_burn</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        (float) The number of observations during which the likelihood is not</span>
+<span class="sd">        evaluated.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">filter_results</span><span class="o">.</span><span class="n">loglikelihood_burn</span>
+</div>
+    <span class="nd">@cache_readonly</span>
+<div class="viewcode-block" id="MLEResults.pvalues"><a class="viewcode-back" href="../../../../generated/statsmodels.tsa.statespace.mlemodel.MLEResults.pvalues.html#statsmodels.tsa.statespace.mlemodel.MLEResults.pvalues">[docs]</a>    <span class="k">def</span> <span class="nf">pvalues</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        (array) The p-values associated with the z-statistics of the</span>
+<span class="sd">        coefficients. Note that the coefficients are assumed to have a Normal</span>
+<span class="sd">        distribution.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">norm</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">zvalues</span><span class="p">))</span> <span class="o">*</span> <span class="mi">2</span>
+</div>
+<div class="viewcode-block" id="MLEResults.resid"><a class="viewcode-back" href="../../../../generated/statsmodels.tsa.statespace.mlemodel.MLEResults.resid.html#statsmodels.tsa.statespace.mlemodel.MLEResults.resid">[docs]</a>    <span class="k">def</span> <span class="nf">resid</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        (array) The model residuals.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">filter_results</span><span class="o">.</span><span class="n">forecasts_error</span>
+</div>
+    <span class="nd">@cache_readonly</span>
+<div class="viewcode-block" id="MLEResults.zvalues"><a class="viewcode-back" href="../../../../generated/statsmodels.tsa.statespace.mlemodel.MLEResults.zvalues.html#statsmodels.tsa.statespace.mlemodel.MLEResults.zvalues">[docs]</a>    <span class="k">def</span> <span class="nf">zvalues</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        (array) The z-statistics for the coefficients.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">params</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">bse</span>
+</div>
+<div class="viewcode-block" id="MLEResults.predict"><a class="viewcode-back" href="../../../../generated/statsmodels.tsa.statespace.mlemodel.MLEResults.predict.html#statsmodels.tsa.statespace.mlemodel.MLEResults.predict">[docs]</a>    <span class="k">def</span> <span class="nf">predict</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">start</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">end</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">dynamic</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span> <span class="n">full_results</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span>
+                <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        In-sample prediction and out-of-sample forecasting</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        start : int, str, or datetime, optional</span>
+<span class="sd">            Zero-indexed observation number at which to start forecasting, ie.,</span>
+<span class="sd">            the first forecast is start. Can also be a date string to</span>
+<span class="sd">            parse or a datetime type. Default is the the zeroth observation.</span>
+<span class="sd">        end : int, str, or datetime, optional</span>
+<span class="sd">            Zero-indexed observation number at which to end forecasting, ie.,</span>
+<span class="sd">            the first forecast is start. Can also be a date string to</span>
+<span class="sd">            parse or a datetime type. However, if the dates index does not</span>
+<span class="sd">            have a fixed frequency, end must be an integer index if you</span>
+<span class="sd">            want out of sample prediction. Default is the last observation in</span>
+<span class="sd">            the sample.</span>
+<span class="sd">        dynamic : boolean, int, str, or datetime, optional</span>
+<span class="sd">            Integer offset relative to `start` at which to begin dynamic</span>
+<span class="sd">            prediction. Can also be an absolute date string to parse or a</span>
+<span class="sd">            datetime type (these are not interpreted as offsets).</span>
+<span class="sd">            Prior to this observation, true endogenous values will be used for</span>
+<span class="sd">            prediction; starting with this observation and continuing through</span>
+<span class="sd">            the end of prediction, forecasted endogenous values will be used</span>
+<span class="sd">            instead.</span>
+<span class="sd">        full_results : boolean, optional</span>
+<span class="sd">            If True, returns a FilterResults instance; if False returns a</span>
+<span class="sd">            tuple with forecasts, the forecast errors, and the forecast error</span>
+<span class="sd">            covariance matrices. Default is False.</span>
+<span class="sd">        **kwargs</span>
+<span class="sd">            Additional arguments may required for forecasting beyond the end</span>
+<span class="sd">            of the sample. See `FilterResults.predict` for more details.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        forecast : array</span>
+<span class="sd">            Array of out of sample forecasts.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">start</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">start</span> <span class="o">=</span> <span class="mi">0</span>
+
+        <span class="c"># Handle start and end (e.g. dates)</span>
+        <span class="n">start</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">_get_predict_start</span><span class="p">(</span><span class="n">start</span><span class="p">)</span>
+        <span class="n">end</span><span class="p">,</span> <span class="n">out_of_sample</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">_get_predict_end</span><span class="p">(</span><span class="n">end</span><span class="p">)</span>
+
+        <span class="c"># Handle string dynamic</span>
+        <span class="n">dates</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">dates</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">dynamic</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">dates</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&quot;Got a string for dynamic and dates is None&quot;</span><span class="p">)</span>
+            <span class="n">dtdynamic</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">_str_to_date</span><span class="p">(</span><span class="n">dynamic</span><span class="p">)</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">dynamic_start</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">_get_dates_loc</span><span class="p">(</span><span class="n">dates</span><span class="p">,</span> <span class="n">dtdynamic</span><span class="p">)</span>
+
+                <span class="n">dynamic</span> <span class="o">=</span> <span class="n">dynamic_start</span> <span class="o">-</span> <span class="n">start</span>
+            <span class="k">except</span> <span class="ne">KeyError</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&quot;Dynamic must be in dates. Got </span><span class="si">%s</span><span class="s"> | </span><span class="si">%s</span><span class="s">&quot;</span> <span class="o">%</span>
+                                 <span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">dynamic</span><span class="p">),</span> <span class="nb">str</span><span class="p">(</span><span class="n">dtdynamic</span><span class="p">)))</span>
+
+        <span class="c"># Perform the prediction</span>
+        <span class="n">results</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">filter_results</span><span class="o">.</span><span class="n">predict</span><span class="p">(</span>
+            <span class="n">start</span><span class="p">,</span> <span class="n">end</span><span class="o">+</span><span class="n">out_of_sample</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span> <span class="n">dynamic</span><span class="p">,</span> <span class="n">full_results</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span>
+        <span class="p">)</span>
+
+        <span class="c"># Note: to be consistent with Statsmodels, return only the forecasts</span>
+        <span class="c"># unless full_results is specified. Confidence intervals and the date</span>
+        <span class="c"># indices are left out for now, but will likely be moved to a separate</span>
+        <span class="c"># function in the future.</span>
+        <span class="k">if</span> <span class="n">full_results</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">results</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">forecasts</span> <span class="o">=</span> <span class="n">results</span>
+
+        <span class="k">return</span> <span class="n">forecasts</span>
+</div>
+<div class="viewcode-block" id="MLEResults.forecast"><a class="viewcode-back" href="../../../../generated/statsmodels.tsa.statespace.mlemodel.MLEResults.forecast.html#statsmodels.tsa.statespace.mlemodel.MLEResults.forecast">[docs]</a>    <span class="k">def</span> <span class="nf">forecast</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">steps</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Out-of-sample forecasts</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        steps : int, optional</span>
+<span class="sd">            The number of out of sample forecasts from the end of the</span>
+<span class="sd">            sample. Default is 1.</span>
+<span class="sd">        **kwargs</span>
+<span class="sd">            Additional arguments may required for forecasting beyond the end</span>
+<span class="sd">            of the sample. See `FilterResults.predict` for more details.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        forecast : array</span>
+<span class="sd">            Array of out of sample forecasts.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">predict</span><span class="p">(</span><span class="n">start</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">nobs</span><span class="p">,</span> <span class="n">end</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">nobs</span><span class="o">+</span><span class="n">steps</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="MLEResults.summary"><a class="viewcode-back" href="../../../../generated/statsmodels.tsa.statespace.mlemodel.MLEResults.summary.html#statsmodels.tsa.statespace.mlemodel.MLEResults.summary">[docs]</a>    <span class="k">def</span> <span class="nf">summary</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=.</span><span class="mo">05</span><span class="p">,</span> <span class="n">start</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">model_name</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Summarize the Model</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        alpha : float, optional</span>
+<span class="sd">            Significance level for the confidence intervals. Default is 0.05.</span>
+<span class="sd">        start : int, optional</span>
+<span class="sd">            Integer of the start observation. Default is 0.</span>
+<span class="sd">        model_name : string</span>
+<span class="sd">            The name of the model used. Default is to use model class name.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        summary : Summary instance</span>
+<span class="sd">            This holds the summary table and text, which can be printed or</span>
+<span class="sd">            converted to various output formats.</span>
+
+<span class="sd">        See Also</span>
+<span class="sd">        --------</span>
+<span class="sd">        statsmodels.iolib.summary.Summary</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="kn">from</span> <span class="nn">statsmodels.iolib.summary</span> <span class="kn">import</span> <span class="n">Summary</span>
+        <span class="n">model</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span>
+        <span class="n">title</span> <span class="o">=</span> <span class="s">&#39;Statespace Model Results&#39;</span>
+
+        <span class="k">if</span> <span class="n">start</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">start</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">dates</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">dates</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">dates</span>
+            <span class="n">d</span> <span class="o">=</span> <span class="n">dates</span><span class="p">[</span><span class="n">start</span><span class="p">]</span>
+            <span class="n">sample</span> <span class="o">=</span> <span class="p">[</span><span class="s">&#39;</span><span class="si">%02d</span><span class="s">-</span><span class="si">%02d</span><span class="s">-</span><span class="si">%02d</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">d</span><span class="o">.</span><span class="n">month</span><span class="p">,</span> <span class="n">d</span><span class="o">.</span><span class="n">day</span><span class="p">,</span> <span class="n">d</span><span class="o">.</span><span class="n">year</span><span class="p">)]</span>
+            <span class="n">d</span> <span class="o">=</span> <span class="n">dates</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+            <span class="n">sample</span> <span class="o">+=</span> <span class="p">[</span><span class="s">&#39;- &#39;</span> <span class="o">+</span> <span class="s">&#39;</span><span class="si">%02d</span><span class="s">-</span><span class="si">%02d</span><span class="s">-</span><span class="si">%02d</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">d</span><span class="o">.</span><span class="n">month</span><span class="p">,</span> <span class="n">d</span><span class="o">.</span><span class="n">day</span><span class="p">,</span> <span class="n">d</span><span class="o">.</span><span class="n">year</span><span class="p">)]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">sample</span> <span class="o">=</span> <span class="p">[</span><span class="nb">str</span><span class="p">(</span><span class="n">start</span><span class="p">),</span> <span class="s">&#39; - &#39;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">nobs</span><span class="p">)]</span>
+
+        <span class="k">if</span> <span class="n">model_name</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">model_name</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">__class__</span><span class="o">.</span><span class="n">__name__</span>
+
+        <span class="n">top_left</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="p">(</span><span class="s">&#39;Dep. Variable:&#39;</span><span class="p">,</span> <span class="bp">None</span><span class="p">),</span>
+            <span class="p">(</span><span class="s">&#39;Model:&#39;</span><span class="p">,</span> <span class="p">[</span><span class="n">model_name</span><span class="p">]),</span>
+            <span class="p">(</span><span class="s">&#39;Date:&#39;</span><span class="p">,</span> <span class="bp">None</span><span class="p">),</span>
+            <span class="p">(</span><span class="s">&#39;Time:&#39;</span><span class="p">,</span> <span class="bp">None</span><span class="p">),</span>
+            <span class="p">(</span><span class="s">&#39;Sample:&#39;</span><span class="p">,</span> <span class="p">[</span><span class="n">sample</span><span class="p">[</span><span class="mi">0</span><span class="p">]]),</span>
+            <span class="p">(</span><span class="s">&#39;&#39;</span><span class="p">,</span> <span class="p">[</span><span class="n">sample</span><span class="p">[</span><span class="mi">1</span><span class="p">]])</span>
+        <span class="p">]</span>
+
+        <span class="n">top_right</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="p">(</span><span class="s">&#39;No. Observations:&#39;</span><span class="p">,</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">nobs</span><span class="p">]),</span>
+            <span class="p">(</span><span class="s">&#39;Log Likelihood&#39;</span><span class="p">,</span> <span class="p">[</span><span class="s">&quot;</span><span class="si">%#5.3f</span><span class="s">&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">llf</span><span class="p">]),</span>
+            <span class="p">(</span><span class="s">&#39;AIC&#39;</span><span class="p">,</span> <span class="p">[</span><span class="s">&quot;</span><span class="si">%#5.3f</span><span class="s">&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">aic</span><span class="p">]),</span>
+            <span class="p">(</span><span class="s">&#39;BIC&#39;</span><span class="p">,</span> <span class="p">[</span><span class="s">&quot;</span><span class="si">%#5.3f</span><span class="s">&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">bic</span><span class="p">]),</span>
+            <span class="p">(</span><span class="s">&#39;HQIC&#39;</span><span class="p">,</span> <span class="p">[</span><span class="s">&quot;</span><span class="si">%#5.3f</span><span class="s">&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">hqic</span><span class="p">])</span>
+        <span class="p">]</span>
+
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s">&#39;cov_type&#39;</span><span class="p">):</span>
+            <span class="n">top_left</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="s">&#39;Covariance Type:&#39;</span><span class="p">,</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">cov_type</span><span class="p">]))</span>
+
+        <span class="n">summary</span> <span class="o">=</span> <span class="n">Summary</span><span class="p">()</span>
+        <span class="n">summary</span><span class="o">.</span><span class="n">add_table_2cols</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">gleft</span><span class="o">=</span><span class="n">top_left</span><span class="p">,</span> <span class="n">gright</span><span class="o">=</span><span class="n">top_right</span><span class="p">,</span>
+                                <span class="n">title</span><span class="o">=</span><span class="n">title</span><span class="p">)</span>
+        <span class="n">summary</span><span class="o">.</span><span class="n">add_table_params</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="n">alpha</span><span class="p">,</span>
+                                 <span class="n">xname</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">param_names</span><span class="p">,</span> <span class="n">use_t</span><span class="o">=</span><span class="bp">False</span><span class="p">)</span>
+
+        <span class="c"># Add warnings/notes, added to text format only</span>
+        <span class="n">etext</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s">&#39;cov_type&#39;</span><span class="p">)</span> <span class="ow">and</span> <span class="s">&#39;description&#39;</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">cov_kwds</span><span class="p">:</span>
+            <span class="n">etext</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">cov_kwds</span><span class="p">[</span><span class="s">&#39;description&#39;</span><span class="p">])</span>
+
+        <span class="k">if</span> <span class="n">etext</span><span class="p">:</span>
+            <span class="n">etext</span> <span class="o">=</span> <span class="p">[</span><span class="s">&quot;[{0}] {1}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="n">text</span><span class="p">)</span>
+                     <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">text</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">etext</span><span class="p">)]</span>
+            <span class="n">etext</span><span class="o">.</span><span class="n">insert</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="s">&quot;Warnings:&quot;</span><span class="p">)</span>
+            <span class="n">summary</span><span class="o">.</span><span class="n">add_extra_txt</span><span class="p">(</span><span class="n">etext</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">summary</span>
+
+</div></div>
+<span class="k">class</span> <span class="nc">MLEResultsWrapper</span><span class="p">(</span><span class="n">wrap</span><span class="o">.</span><span class="n">ResultsWrapper</span><span class="p">):</span>
+    <span class="n">_attrs</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="n">_wrap_attrs</span> <span class="o">=</span> <span class="n">wrap</span><span class="o">.</span><span class="n">union_dicts</span><span class="p">(</span><span class="n">tsbase</span><span class="o">.</span><span class="n">TimeSeriesResultsWrapper</span><span class="o">.</span><span class="n">_wrap_attrs</span><span class="p">,</span>
+                                   <span class="n">_attrs</span><span class="p">)</span>
+    <span class="c"># TODO right now, predict with full_results=True can return something other</span>
+    <span class="c"># than a time series, so the `attach_dates` call will fail if we have</span>
+    <span class="c"># &#39;predict&#39;: &#39;dates&#39; here. In the future, remove `full_results` and replace</span>
+    <span class="c"># it with new methods, e.g. get_prediction, get_forecast, and likely will</span>
+    <span class="c"># want those to be a subclass of FilterResults with e.g. confidence</span>
+    <span class="c"># intervals calculated and dates attached.</span>
+    <span class="c"># Also, need to modify `attach_dates` to account for DataFrames.</span>
+    <span class="n">_methods</span> <span class="o">=</span> <span class="p">{</span><span class="s">&#39;predict&#39;</span><span class="p">:</span> <span class="bp">None</span><span class="p">}</span>
+    <span class="n">_wrap_methods</span> <span class="o">=</span> <span class="n">wrap</span><span class="o">.</span><span class="n">union_dicts</span><span class="p">(</span><span class="n">tsbase</span><span class="o">.</span><span class="n">TimeSeriesResultsWrapper</span><span class="o">.</span><span class="n">_wrap_methods</span><span class="p">,</span>
+                                     <span class="n">_methods</span><span class="p">)</span>
+<span class="n">wrap</span><span class="o">.</span><span class="n">populate_wrapper</span><span class="p">(</span><span class="n">MLEResultsWrapper</span><span class="p">,</span> <span class="n">MLEResults</span><span class="p">)</span>
+</pre></div>
+
+
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <form class="search" action="../../../../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer" role="contentinfo">
+        &copy; Copyright 2009-2013, Josef Perktold, Skipper Seabold, Jonathan Taylor, statsmodels-developers.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.3.1.
+    </div>
+  </body>
+</html>
