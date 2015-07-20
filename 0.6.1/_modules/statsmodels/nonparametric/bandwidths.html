@@ -1,0 +1,286 @@
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>statsmodels.nonparametric.bandwidths &mdash; statsmodels 0.6.1 documentation</title>
+    
+    <link rel="stylesheet" href="../../../_static/nature.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../../',
+        VERSION:     '0.6.1',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <link rel="shortcut icon" href="../../../_static/statsmodels_hybi_favico.ico"/>
+    <link rel="author" title="About these documents" href="../../../about.html" />
+    <link rel="top" title="statsmodels 0.6.1 documentation" href="../../../index.html" />
+    <link rel="up" title="Module code" href="../../index.html" />
+<link rel="stylesheet" href="../../_static/facebox.css" type="text/css" />
+<link rel="stylesheet" href="../_static/examples.css" type="text/css" />
+<script type="text/javascript" src="../../../_static/scripts.js">
+</script>
+<script type="text/javascript" src="../../../_static/facebox.js">
+</script>
+
+  </head>
+  <body role="document">
+<div class="headerwrap">
+    <div class = "header">
+        
+        <a href = "../../../index.html">
+<img src="../../../_static/statsmodels_hybi_banner.png" alt="Logo"
+    style="padding-left: 15px"/></a>
+        
+    </div>
+</div>
+
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+<li><a href ="../../../install.html">Install</a></li> &nbsp;|&nbsp;
+<li><a href="https://groups.google.com/group/pystatsmodels?hl=en">Support</a></li> &nbsp;|&nbsp;
+<li><a href="https://github.com/statsmodels/statsmodels/issues">Bugs</a></li> &nbsp;|&nbsp;
+<li><a href="../../../dev/index.html">Develop</a></li> &nbsp;|&nbsp;
+<li><a href="../../../examples/index.html">Examples</a></li> &nbsp;|&nbsp;
+<li><a href="../../../faq.html">FAQ</a></li> &nbsp;|&nbsp;
+
+          <li class="nav-item nav-item-1"><a href="../../index.html" accesskey="U">Module code</a> |</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+
+
+
+
+  <h1>Source code for statsmodels.nonparametric.bandwidths</h1><div class="highlight"><pre>
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="kn">as</span> <span class="nn">np</span>
+<span class="kn">from</span> <span class="nn">scipy.stats</span> <span class="kn">import</span> <span class="n">scoreatpercentile</span> <span class="k">as</span> <span class="n">sap</span>
+<span class="kn">from</span> <span class="nn">statsmodels.sandbox.nonparametric</span> <span class="kn">import</span> <span class="n">kernels</span>
+
+<span class="c">#from scipy.stats import norm</span>
+
+<span class="k">def</span> <span class="nf">_select_sigma</span><span class="p">(</span><span class="n">X</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Returns the smaller of std(X, ddof=1) or normalized IQR(X) over axis 0.</span>
+
+<span class="sd">    References</span>
+<span class="sd">    ----------</span>
+<span class="sd">    Silverman (1986) p.47</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+<span class="c">#    normalize = norm.ppf(.75) - norm.ppf(.25)</span>
+    <span class="n">normalize</span> <span class="o">=</span> <span class="mf">1.349</span>
+<span class="c">#    IQR = np.subtract.reduce(percentile(X, [75,25],</span>
+<span class="c">#                             axis=axis), axis=axis)/normalize</span>
+    <span class="n">IQR</span> <span class="o">=</span> <span class="p">(</span><span class="n">sap</span><span class="p">(</span><span class="n">X</span><span class="p">,</span> <span class="mi">75</span><span class="p">)</span> <span class="o">-</span> <span class="n">sap</span><span class="p">(</span><span class="n">X</span><span class="p">,</span> <span class="mi">25</span><span class="p">))</span><span class="o">/</span><span class="n">normalize</span>
+    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">minimum</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">std</span><span class="p">(</span><span class="n">X</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">ddof</span><span class="o">=</span><span class="mi">1</span><span class="p">),</span> <span class="n">IQR</span><span class="p">)</span>
+
+
+<span class="c">## Univariate Rule of Thumb Bandwidths ##</span>
+<div class="viewcode-block" id="bw_scott"><a class="viewcode-back" href="../../../generated/statsmodels.nonparametric.bandwidths.bw_scott.html#statsmodels.nonparametric.bandwidths.bw_scott">[docs]</a><span class="k">def</span> <span class="nf">bw_scott</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">kernel</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Scott&#39;s Rule of Thumb</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    x : array-like</span>
+<span class="sd">        Array for which to get the bandwidth</span>
+<span class="sd">    kernel : CustomKernel object</span>
+<span class="sd">        Unused</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    bw : float</span>
+<span class="sd">        The estimate of the bandwidth</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    Returns 1.059 * A * n ** (-1/5.) where ::</span>
+
+<span class="sd">       A = min(std(x, ddof=1), IQR/1.349)</span>
+<span class="sd">       IQR = np.subtract.reduce(np.percentile(x, [75,25]))</span>
+
+<span class="sd">    References</span>
+<span class="sd">    ----------</span>
+
+<span class="sd">    Scott, D.W. (1992) Multivariate Density Estimation: Theory, Practice, and</span>
+<span class="sd">        Visualization.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">A</span> <span class="o">=</span> <span class="n">_select_sigma</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+    <span class="n">n</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+    <span class="k">return</span> <span class="mf">1.059</span> <span class="o">*</span> <span class="n">A</span> <span class="o">*</span> <span class="n">n</span> <span class="o">**</span> <span class="p">(</span><span class="o">-</span><span class="mf">0.2</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="bw_silverman"><a class="viewcode-back" href="../../../generated/statsmodels.nonparametric.bandwidths.bw_silverman.html#statsmodels.nonparametric.bandwidths.bw_silverman">[docs]</a><span class="k">def</span> <span class="nf">bw_silverman</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">kernel</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Silverman&#39;s Rule of Thumb</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    x : array-like</span>
+<span class="sd">        Array for which to get the bandwidth</span>
+<span class="sd">    kernel : CustomKernel object</span>
+<span class="sd">        Unused</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    bw : float</span>
+<span class="sd">        The estimate of the bandwidth</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    Returns .9 * A * n ** (-1/5.) where ::</span>
+
+<span class="sd">       A = min(std(x, ddof=1), IQR/1.349)</span>
+<span class="sd">       IQR = np.subtract.reduce(np.percentile(x, [75,25]))</span>
+
+<span class="sd">    References</span>
+<span class="sd">    ----------</span>
+
+<span class="sd">    Silverman, B.W. (1986) `Density Estimation.`</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">A</span> <span class="o">=</span> <span class="n">_select_sigma</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+    <span class="n">n</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+    <span class="k">return</span> <span class="o">.</span><span class="mi">9</span> <span class="o">*</span> <span class="n">A</span> <span class="o">*</span> <span class="n">n</span> <span class="o">**</span> <span class="p">(</span><span class="o">-</span><span class="mf">0.2</span><span class="p">)</span>
+
+</div>
+<span class="k">def</span> <span class="nf">bw_normal_reference</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">kernel</span><span class="o">=</span><span class="n">kernels</span><span class="o">.</span><span class="n">Gaussian</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Plug-in bandwidth with kernel specific constant based on normal reference.</span>
+
+<span class="sd">    This bandwidth minimizes the mean integrated square error if the true</span>
+<span class="sd">    distribution is the normal. This choice is an appropriate bandwidth for</span>
+<span class="sd">    single peaked distributions that are similar to the normal distribution.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    x : array-like</span>
+<span class="sd">        Array for which to get the bandwidth</span>
+<span class="sd">    kernel : CustomKernel object</span>
+<span class="sd">        Used to calculate the constant for the plug-in bandwidth.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    bw : float</span>
+<span class="sd">        The estimate of the bandwidth</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    Returns C * A * n ** (-1/5.) where ::</span>
+
+<span class="sd">       A = min(std(x, ddof=1), IQR/1.349)</span>
+<span class="sd">       IQR = np.subtract.reduce(np.percentile(x, [75,25]))</span>
+<span class="sd">       C = constant from Hansen (2009)</span>
+
+<span class="sd">    When using a Gaussian kernel this is equivalent to the &#39;scott&#39; bandwidth up</span>
+<span class="sd">    to two decimal places. This is the accuracy to which the &#39;scott&#39; constant is</span>
+<span class="sd">    specified.</span>
+
+<span class="sd">    References</span>
+<span class="sd">    ----------</span>
+
+<span class="sd">    Silverman, B.W. (1986) `Density Estimation.`</span>
+<span class="sd">    Hansen, B.E. (2009) `Lecture Notes on Nonparametrics.`</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">C</span> <span class="o">=</span> <span class="n">kernel</span><span class="o">.</span><span class="n">normal_reference_constant</span>
+    <span class="n">A</span> <span class="o">=</span> <span class="n">_select_sigma</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+    <span class="n">n</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">C</span> <span class="o">*</span> <span class="n">A</span> <span class="o">*</span> <span class="n">n</span> <span class="o">**</span> <span class="p">(</span><span class="o">-</span><span class="mf">0.2</span><span class="p">)</span>
+
+<span class="c">## Plug-In Methods ##</span>
+
+<span class="c">## Least Squares Cross-Validation ##</span>
+
+<span class="c">## Helper Functions ##</span>
+
+<span class="n">bandwidth_funcs</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s">&quot;scott&quot;</span><span class="p">:</span> <span class="n">bw_scott</span><span class="p">,</span>
+    <span class="s">&quot;silverman&quot;</span><span class="p">:</span> <span class="n">bw_silverman</span><span class="p">,</span>
+    <span class="s">&quot;normal_reference&quot;</span><span class="p">:</span> <span class="n">bw_normal_reference</span><span class="p">,</span>
+<span class="p">}</span>
+
+
+<div class="viewcode-block" id="select_bandwidth"><a class="viewcode-back" href="../../../generated/statsmodels.nonparametric.bandwidths.select_bandwidth.html#statsmodels.nonparametric.bandwidths.select_bandwidth">[docs]</a><span class="k">def</span> <span class="nf">select_bandwidth</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">bw</span><span class="p">,</span> <span class="n">kernel</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Selects bandwidth for a selection rule bw</span>
+
+<span class="sd">    this is a wrapper around existing bandwidth selection rules</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    x : array-like</span>
+<span class="sd">        Array for which to get the bandwidth</span>
+<span class="sd">    bw : string</span>
+<span class="sd">        name of bandwidth selection rule, currently supported are:</span>
+<span class="sd">        %s</span>
+<span class="sd">    kernel : not used yet</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    bw : float</span>
+<span class="sd">        The estimate of the bandwidth</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">bw</span> <span class="o">=</span> <span class="n">bw</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">bw</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">bandwidth_funcs</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&quot;Bandwidth </span><span class="si">%s</span><span class="s"> not understood&quot;</span> <span class="o">%</span> <span class="n">bw</span><span class="p">)</span>
+<span class="c">#TODO: uncomment checks when we have non-rule of thumb bandwidths for diff. kernels</span>
+<span class="c">#    if kernel == &quot;gauss&quot;:</span>
+    <span class="k">return</span> <span class="n">bandwidth_funcs</span><span class="p">[</span><span class="n">bw</span><span class="p">](</span><span class="n">x</span><span class="p">,</span> <span class="n">kernel</span><span class="p">)</span>
+<span class="c">#    else:</span>
+<span class="c">#        raise ValueError(&quot;Only Gaussian Kernels are currently supported&quot;)</span>
+
+<span class="c"># Interpolate docstring to plugin supported bandwidths</span></div>
+<span class="n">select_bandwidth</span><span class="o">.</span><span class="n">__doc__</span> <span class="o">%=</span>  <span class="p">(</span><span class="s">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="nb">sorted</span><span class="p">(</span><span class="n">bandwidth_funcs</span><span class="o">.</span><span class="n">keys</span><span class="p">())),)</span>
+</pre></div>
+
+
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <form class="search" action="../../../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer" role="contentinfo">
+        &copy; Copyright 2009-2013, Josef Perktold, Skipper Seabold, Jonathan Taylor, statsmodels-developers.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.3.1.
+    </div>
+  </body>
+</html>
