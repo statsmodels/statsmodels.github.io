@@ -1,0 +1,496 @@
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>statsmodels.tsa.statespace.tools &mdash; statsmodels 0.7.0 documentation</title>
+    
+    <link rel="stylesheet" href="../../../../_static/nature.css" type="text/css" />
+    <link rel="stylesheet" href="../../../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../../../',
+        VERSION:     '0.7.0',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../../_static/doctools.js"></script>
+    <link rel="shortcut icon" href="../../../../_static/statsmodels_hybi_favico.ico"/>
+    <link rel="author" title="About these documents" href="../../../../about.html" />
+    <link rel="top" title="statsmodels 0.7.0 documentation" href="../../../../index.html" />
+    <link rel="up" title="Module code" href="../../../index.html" />
+<link rel="stylesheet" href="../../_static/facebox.css" type="text/css" />
+<link rel="stylesheet" href="../_static/examples.css" type="text/css" />
+<script type="text/javascript" src="../../../../_static/scripts.js">
+</script>
+<script type="text/javascript" src="../../../../_static/facebox.js">
+</script>
+
+  </head>
+  <body role="document">
+<div class="headerwrap">
+    <div class = "header">
+        
+        <a href = "../../../../index.html">
+<img src="../../../../_static/statsmodels_hybi_banner.png" alt="Logo"
+    style="padding-left: 15px"/></a>
+        
+    </div>
+</div>
+
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+<li><a href ="../../../../install.html">Install</a></li> &nbsp;|&nbsp;
+<li><a href="https://groups.google.com/group/pystatsmodels?hl=en">Support</a></li> &nbsp;|&nbsp;
+<li><a href="https://github.com/statsmodels/statsmodels/issues">Bugs</a></li> &nbsp;|&nbsp;
+<li><a href="../../../../dev/index.html">Develop</a></li> &nbsp;|&nbsp;
+<li><a href="../../../../examples/index.html">Examples</a></li> &nbsp;|&nbsp;
+<li><a href="../../../../faq.html">FAQ</a></li> &nbsp;|&nbsp;
+
+          <li class="nav-item nav-item-1"><a href="../../../index.html" accesskey="U">Module code</a> |</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+
+
+
+
+  <h1>Source code for statsmodels.tsa.statespace.tools</h1><div class="highlight"><pre>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Statespace Tools</span>
+
+<span class="sd">Author: Chad Fulton</span>
+<span class="sd">License: Simplified-BSD</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="kn">from</span> <span class="nn">__future__</span> <span class="kn">import</span> <span class="n">division</span><span class="p">,</span> <span class="n">absolute_import</span><span class="p">,</span> <span class="n">print_function</span>
+
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="kn">as</span> <span class="nn">np</span>
+<span class="kn">from</span> <span class="nn">statsmodels.tools.data</span> <span class="kn">import</span> <span class="n">_is_using_pandas</span>
+<span class="kn">from</span> <span class="nn">.</span> <span class="kn">import</span> <span class="n">_statespace</span>
+
+<span class="k">try</span><span class="p">:</span>
+    <span class="kn">from</span> <span class="nn">scipy.linalg.blas</span> <span class="kn">import</span> <span class="n">find_best_blas_type</span>
+<span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span>  <span class="c"># pragma: no cover</span>
+    <span class="c"># Shim for SciPy 0.11, derived from tag=0.11 scipy.linalg.blas</span>
+    <span class="n">_type_conv</span> <span class="o">=</span> <span class="p">{</span><span class="s">&#39;f&#39;</span><span class="p">:</span> <span class="s">&#39;s&#39;</span><span class="p">,</span> <span class="s">&#39;d&#39;</span><span class="p">:</span> <span class="s">&#39;d&#39;</span><span class="p">,</span> <span class="s">&#39;F&#39;</span><span class="p">:</span> <span class="s">&#39;c&#39;</span><span class="p">,</span> <span class="s">&#39;D&#39;</span><span class="p">:</span> <span class="s">&#39;z&#39;</span><span class="p">,</span> <span class="s">&#39;G&#39;</span><span class="p">:</span> <span class="s">&#39;z&#39;</span><span class="p">}</span>
+
+    <span class="k">def</span> <span class="nf">find_best_blas_type</span><span class="p">(</span><span class="n">arrays</span><span class="p">):</span>
+        <span class="n">dtype</span><span class="p">,</span> <span class="n">index</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span>
+            <span class="p">[(</span><span class="n">ar</span><span class="o">.</span><span class="n">dtype</span><span class="p">,</span> <span class="n">i</span><span class="p">)</span> <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">ar</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">arrays</span><span class="p">)])</span>
+        <span class="n">prefix</span> <span class="o">=</span> <span class="n">_type_conv</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">dtype</span><span class="o">.</span><span class="n">char</span><span class="p">,</span> <span class="s">&#39;d&#39;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">prefix</span><span class="p">,</span> <span class="n">dtype</span><span class="p">,</span> <span class="bp">None</span>
+
+
+<span class="n">prefix_dtype_map</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s">&#39;s&#39;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">,</span> <span class="s">&#39;d&#39;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">,</span> <span class="s">&#39;c&#39;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">complex64</span><span class="p">,</span> <span class="s">&#39;z&#39;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">complex128</span>
+<span class="p">}</span>
+<span class="n">prefix_statespace_map</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s">&#39;s&#39;</span><span class="p">:</span> <span class="n">_statespace</span><span class="o">.</span><span class="n">sStatespace</span><span class="p">,</span> <span class="s">&#39;d&#39;</span><span class="p">:</span> <span class="n">_statespace</span><span class="o">.</span><span class="n">dStatespace</span><span class="p">,</span>
+    <span class="s">&#39;c&#39;</span><span class="p">:</span> <span class="n">_statespace</span><span class="o">.</span><span class="n">cStatespace</span><span class="p">,</span> <span class="s">&#39;z&#39;</span><span class="p">:</span> <span class="n">_statespace</span><span class="o">.</span><span class="n">zStatespace</span>
+<span class="p">}</span>
+<span class="n">prefix_kalman_filter_map</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s">&#39;s&#39;</span><span class="p">:</span> <span class="n">_statespace</span><span class="o">.</span><span class="n">sKalmanFilter</span><span class="p">,</span> <span class="s">&#39;d&#39;</span><span class="p">:</span> <span class="n">_statespace</span><span class="o">.</span><span class="n">dKalmanFilter</span><span class="p">,</span>
+    <span class="s">&#39;c&#39;</span><span class="p">:</span> <span class="n">_statespace</span><span class="o">.</span><span class="n">cKalmanFilter</span><span class="p">,</span> <span class="s">&#39;z&#39;</span><span class="p">:</span> <span class="n">_statespace</span><span class="o">.</span><span class="n">zKalmanFilter</span>
+<span class="p">}</span>
+
+
+<div class="viewcode-block" id="companion_matrix"><a class="viewcode-back" href="../../../../generated/statsmodels.tsa.statespace.tools.companion_matrix.html#statsmodels.tsa.statespace.tools.companion_matrix">[docs]</a><span class="k">def</span> <span class="nf">companion_matrix</span><span class="p">(</span><span class="n">polynomial</span><span class="p">):</span>
+    <span class="sd">r&quot;&quot;&quot;</span>
+<span class="sd">    Create a companion matrix</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    polynomial : array_like, optional.</span>
+<span class="sd">        If an iterable, interpreted as the coefficients of the polynomial from</span>
+<span class="sd">        which to form the companion matrix. Polynomial coefficients are in</span>
+<span class="sd">        order of increasing degree. If an integer, the size of the companion</span>
+<span class="sd">        matrix (the polynomial coefficients are then set to zeros).</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    companion_matrix : array</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+
+<span class="sd">    Returns a matrix of the form</span>
+
+<span class="sd">    .. math::</span>
+<span class="sd">        \begin{bmatrix}</span>
+<span class="sd">            \phi_1 &amp; 1      &amp; 0 &amp; \cdots &amp; 0 \\</span>
+<span class="sd">            \phi_2 &amp; 0      &amp; 1 &amp;        &amp; 0 \\</span>
+<span class="sd">            \vdots &amp;        &amp;   &amp; \ddots &amp; 0 \\</span>
+<span class="sd">                   &amp;        &amp;   &amp;        &amp; 1 \\</span>
+<span class="sd">            \phi_n &amp; 0      &amp; 0 &amp; \cdots &amp; 0 \\</span>
+<span class="sd">        \end{bmatrix}</span>
+
+<span class="sd">    where some or all of the :math:`\phi_i` may be non-zero (if `polynomial` is</span>
+<span class="sd">    None, then all are equal to zero).</span>
+
+<span class="sd">    If the coefficients provided are :math:`(c_0, c_1, \dots, c_{n})`,</span>
+<span class="sd">    then the companion matrix is an :math:`n \times n` matrix formed with the</span>
+<span class="sd">    elements in the first column defined as</span>
+<span class="sd">    :math:`\phi_i = -\frac{c_i}{c_0}, i \in 1, \dots, n`.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">polynomial</span><span class="p">,</span> <span class="nb">int</span><span class="p">):</span>
+        <span class="n">n</span> <span class="o">=</span> <span class="n">polynomial</span>
+        <span class="n">polynomial</span> <span class="o">=</span> <span class="bp">None</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">n</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">polynomial</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span>
+        <span class="n">polynomial</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asanyarray</span><span class="p">(</span><span class="n">polynomial</span><span class="p">)</span>
+
+    <span class="n">matrix</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n</span><span class="p">,</span> <span class="n">n</span><span class="p">))</span>
+    <span class="n">idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">diag_indices</span><span class="p">(</span><span class="n">n</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
+    <span class="n">idx</span> <span class="o">=</span> <span class="p">(</span><span class="n">idx</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">idx</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span>
+    <span class="n">matrix</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span>
+    <span class="k">if</span> <span class="n">polynomial</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span> <span class="ow">and</span> <span class="n">n</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="n">matrix</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="n">polynomial</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span> <span class="o">/</span> <span class="n">polynomial</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="k">return</span> <span class="n">matrix</span>
+
+</div>
+<div class="viewcode-block" id="diff"><a class="viewcode-back" href="../../../../generated/statsmodels.tsa.statespace.tools.diff.html#statsmodels.tsa.statespace.tools.diff">[docs]</a><span class="k">def</span> <span class="nf">diff</span><span class="p">(</span><span class="n">series</span><span class="p">,</span> <span class="n">k_diff</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">k_seasonal_diff</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">k_seasons</span><span class="o">=</span><span class="mi">1</span><span class="p">):</span>
+    <span class="sd">r&quot;&quot;&quot;</span>
+<span class="sd">    Difference a series simply and/or seasonally along the zero-th axis.</span>
+
+<span class="sd">    Given a series (denoted :math:`y_t`), performs the differencing operation</span>
+
+<span class="sd">    .. math::</span>
+
+<span class="sd">        \Delta^d \Delta_s^D y_t</span>
+
+<span class="sd">    where :math:`d =` `diff`, :math:`s =` `k_seasons`,</span>
+<span class="sd">    :math:`D =` `seasonal\_diff`, and :math:`\Delta` is the difference</span>
+<span class="sd">    operator.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    series : array_like</span>
+<span class="sd">        The series to be differenced.</span>
+<span class="sd">    diff : int, optional</span>
+<span class="sd">        The number of simple differences to perform. Default is 1.</span>
+<span class="sd">    seasonal_diff : int or None, optional</span>
+<span class="sd">        The number of seasonal differences to perform. Default is no seasonal</span>
+<span class="sd">        differencing.</span>
+<span class="sd">    k_seasons : int, optional</span>
+<span class="sd">        The seasonal lag. Default is 1. Unused if there is no seasonal</span>
+<span class="sd">        differencing.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    differenced : array</span>
+<span class="sd">        The differenced array.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">pandas</span> <span class="o">=</span> <span class="n">_is_using_pandas</span><span class="p">(</span><span class="n">series</span><span class="p">,</span> <span class="bp">None</span><span class="p">)</span>
+    <span class="n">differenced</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asanyarray</span><span class="p">(</span><span class="n">series</span><span class="p">)</span> <span class="k">if</span> <span class="ow">not</span> <span class="n">pandas</span> <span class="k">else</span> <span class="n">series</span>
+
+    <span class="c"># Seasonal differencing</span>
+    <span class="k">if</span> <span class="n">k_seasonal_diff</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+        <span class="k">while</span> <span class="n">k_seasonal_diff</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">pandas</span><span class="p">:</span>
+                <span class="n">differenced</span> <span class="o">=</span> <span class="p">(</span>
+                    <span class="n">differenced</span><span class="p">[</span><span class="n">k_seasons</span><span class="p">:]</span> <span class="o">-</span> <span class="n">differenced</span><span class="p">[:</span><span class="o">-</span><span class="n">k_seasons</span><span class="p">]</span>
+                <span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">differenced</span> <span class="o">=</span> <span class="n">differenced</span><span class="o">.</span><span class="n">diff</span><span class="p">(</span><span class="n">k_seasons</span><span class="p">)[</span><span class="n">k_seasons</span><span class="p">:]</span>
+            <span class="n">k_seasonal_diff</span> <span class="o">-=</span> <span class="mi">1</span>
+
+    <span class="c"># Simple differencing</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">pandas</span><span class="p">:</span>
+        <span class="n">differenced</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">diff</span><span class="p">(</span><span class="n">differenced</span><span class="p">,</span> <span class="n">k_diff</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">while</span> <span class="n">k_diff</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">differenced</span> <span class="o">=</span> <span class="n">differenced</span><span class="o">.</span><span class="n">diff</span><span class="p">()[</span><span class="mi">1</span><span class="p">:]</span>
+            <span class="n">k_diff</span> <span class="o">-=</span> <span class="mi">1</span>
+    <span class="k">return</span> <span class="n">differenced</span>
+
+</div>
+<div class="viewcode-block" id="is_invertible"><a class="viewcode-back" href="../../../../generated/statsmodels.tsa.statespace.tools.is_invertible.html#statsmodels.tsa.statespace.tools.is_invertible">[docs]</a><span class="k">def</span> <span class="nf">is_invertible</span><span class="p">(</span><span class="n">polynomial</span><span class="p">,</span> <span class="n">threshold</span><span class="o">=</span><span class="mf">1.</span><span class="p">):</span>
+    <span class="sd">r&quot;&quot;&quot;</span>
+<span class="sd">    Determine if a polynomial is invertible.</span>
+
+<span class="sd">    Requires all roots of the polynomial lie inside the unit circle.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    polynomial : array_like</span>
+<span class="sd">        Coefficients of a polynomial, in order of increasing degree.</span>
+<span class="sd">        For example, `polynomial=[1, -0.5]` corresponds to the polynomial</span>
+<span class="sd">        :math:`1 - 0.5x` which has root :math:`2`.</span>
+<span class="sd">    threshold : number</span>
+<span class="sd">        Allowed threshold for `is_invertible` to return True. Default is 1.</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+
+<span class="sd">    If the coefficients provided are :math:`(c_0, c_1, \dots, c_n)`, then</span>
+<span class="sd">    the corresponding polynomial is :math:`c_0 + c_1 L + \dots + c_n L^n`.</span>
+
+<span class="sd">    There are three equivalent methods of determining if the polynomial</span>
+<span class="sd">    represented by the coefficients is invertible:</span>
+
+<span class="sd">    The first method factorizes the polynomial into:</span>
+
+<span class="sd">    .. math::</span>
+
+<span class="sd">        C(L) &amp; = c_0 + c_1 L + \dots + c_n L^n \\</span>
+<span class="sd">             &amp; = constant (1 - \lambda_1 L)</span>
+<span class="sd">                 (1 - \lambda_2 L) \dots (1 - \lambda_n L)</span>
+
+<span class="sd">    In order for :math:`C(L)` to be invertible, it must be that each factor</span>
+<span class="sd">    :math:`(1 - \lambda_i L)` is invertible; the condition is then that</span>
+<span class="sd">    :math:`|\lambda_i| &lt; 1`, where :math:`\lambda_i` is a root of the</span>
+<span class="sd">    polynomial.</span>
+
+<span class="sd">    The second method factorizes the polynomial into:</span>
+
+<span class="sd">    .. math::</span>
+
+<span class="sd">        C(L) &amp; = c_0 + c_1 L + \dots + c_n L^n \\</span>
+<span class="sd">             &amp; = constant (L - \zeta_1 L) (L - \zeta_2) \dots (L - \zeta_3)</span>
+
+<span class="sd">    The condition is now :math:`|\zeta_i| &gt; 1`, where :math:`\zeta_i` is a root</span>
+<span class="sd">    of the polynomial with reversed coefficients and</span>
+<span class="sd">    :math:`\lambda_i = \frac{1}{\zeta_i}`.</span>
+
+<span class="sd">    Finally, a companion matrix can be formed using the coefficients of the</span>
+<span class="sd">    polynomial. Then the eigenvalues of that matrix give the roots of the</span>
+<span class="sd">    polynomial. This last method is the one actually used.</span>
+
+<span class="sd">    See Also</span>
+<span class="sd">    --------</span>
+<span class="sd">    companion_matrix</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c"># First method:</span>
+    <span class="c"># np.all(np.abs(np.roots(np.r_[1, params])) &lt; 1)</span>
+    <span class="c"># Second method:</span>
+    <span class="c"># np.all(np.abs(np.roots(np.r_[1, params][::-1])) &gt; 1)</span>
+    <span class="c"># Final method:</span>
+    <span class="n">eigvals</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">eigvals</span><span class="p">(</span><span class="n">companion_matrix</span><span class="p">(</span><span class="n">polynomial</span><span class="p">))</span>
+    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">eigvals</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">threshold</span><span class="p">)</span>
+
+</div>
+<div class="viewcode-block" id="constrain_stationary_univariate"><a class="viewcode-back" href="../../../../generated/statsmodels.tsa.statespace.tools.constrain_stationary_univariate.html#statsmodels.tsa.statespace.tools.constrain_stationary_univariate">[docs]</a><span class="k">def</span> <span class="nf">constrain_stationary_univariate</span><span class="p">(</span><span class="n">unconstrained</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Transform unconstrained parameters used by the optimizer to constrained</span>
+<span class="sd">    parameters used in likelihood evaluation</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    unconstrained : array</span>
+<span class="sd">        Unconstrained parameters used by the optimizer, to be transformed to</span>
+<span class="sd">        stationary coefficients of, e.g., an autoregressive or moving average</span>
+<span class="sd">        component.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    constrained : array</span>
+<span class="sd">        Constrained parameters of, e.g., an autoregressive or moving average</span>
+<span class="sd">        component, to be transformed to arbitrary parameters used by the</span>
+<span class="sd">        optimizer.</span>
+
+<span class="sd">    References</span>
+<span class="sd">    ----------</span>
+
+<span class="sd">    Monahan, John F. 1984.</span>
+<span class="sd">    &quot;A Note on Enforcing Stationarity in</span>
+<span class="sd">    Autoregressive-moving Average Models.&quot;</span>
+<span class="sd">    Biometrika 71 (2) (August 1): 403-404.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">n</span> <span class="o">=</span> <span class="n">unconstrained</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">y</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n</span><span class="p">,</span> <span class="n">n</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">unconstrained</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span>
+    <span class="n">r</span> <span class="o">=</span> <span class="n">unconstrained</span><span class="o">/</span><span class="p">((</span><span class="mi">1</span> <span class="o">+</span> <span class="n">unconstrained</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span><span class="o">**</span><span class="mf">0.5</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">k</span><span class="p">):</span>
+            <span class="n">y</span><span class="p">[</span><span class="n">k</span><span class="p">,</span> <span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">y</span><span class="p">[</span><span class="n">k</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span> <span class="n">i</span><span class="p">]</span> <span class="o">+</span> <span class="n">r</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="o">*</span> <span class="n">y</span><span class="p">[</span><span class="n">k</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span> <span class="n">k</span> <span class="o">-</span> <span class="n">i</span> <span class="o">-</span> <span class="mi">1</span><span class="p">]</span>
+        <span class="n">y</span><span class="p">[</span><span class="n">k</span><span class="p">,</span> <span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="n">r</span><span class="p">[</span><span class="n">k</span><span class="p">]</span>
+    <span class="k">return</span> <span class="o">-</span><span class="n">y</span><span class="p">[</span><span class="n">n</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span> <span class="p">:]</span>
+
+</div>
+<div class="viewcode-block" id="unconstrain_stationary_univariate"><a class="viewcode-back" href="../../../../generated/statsmodels.tsa.statespace.tools.unconstrain_stationary_univariate.html#statsmodels.tsa.statespace.tools.unconstrain_stationary_univariate">[docs]</a><span class="k">def</span> <span class="nf">unconstrain_stationary_univariate</span><span class="p">(</span><span class="n">constrained</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Transform constrained parameters used in likelihood evaluation</span>
+<span class="sd">    to unconstrained parameters used by the optimizer</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    constrained : array</span>
+<span class="sd">        Constrained parameters of, e.g., an autoregressive or moving average</span>
+<span class="sd">        component, to be transformed to arbitrary parameters used by the</span>
+<span class="sd">        optimizer.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    unconstrained : array</span>
+<span class="sd">        Unconstrained parameters used by the optimizer, to be transformed to</span>
+<span class="sd">        stationary coefficients of, e.g., an autoregressive or moving average</span>
+<span class="sd">        component.</span>
+
+<span class="sd">    References</span>
+<span class="sd">    ----------</span>
+
+<span class="sd">    Monahan, John F. 1984.</span>
+<span class="sd">    &quot;A Note on Enforcing Stationarity in</span>
+<span class="sd">    Autoregressive-moving Average Models.&quot;</span>
+<span class="sd">    Biometrika 71 (2) (August 1): 403-404.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">n</span> <span class="o">=</span> <span class="n">constrained</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">y</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n</span><span class="p">,</span> <span class="n">n</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">constrained</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span>
+    <span class="n">y</span><span class="p">[</span><span class="n">n</span><span class="o">-</span><span class="mi">1</span><span class="p">:]</span> <span class="o">=</span> <span class="o">-</span><span class="n">constrained</span>
+    <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">k</span><span class="p">):</span>
+            <span class="n">y</span><span class="p">[</span><span class="n">k</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">y</span><span class="p">[</span><span class="n">k</span><span class="p">,</span> <span class="n">i</span><span class="p">]</span> <span class="o">-</span> <span class="n">y</span><span class="p">[</span><span class="n">k</span><span class="p">,</span> <span class="n">k</span><span class="p">]</span><span class="o">*</span><span class="n">y</span><span class="p">[</span><span class="n">k</span><span class="p">,</span> <span class="n">k</span><span class="o">-</span><span class="n">i</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span> <span class="o">/</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">y</span><span class="p">[</span><span class="n">k</span><span class="p">,</span> <span class="n">k</span><span class="p">]</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span>
+    <span class="n">r</span> <span class="o">=</span> <span class="n">y</span><span class="o">.</span><span class="n">diagonal</span><span class="p">()</span>
+    <span class="n">x</span> <span class="o">=</span> <span class="n">r</span> <span class="o">/</span> <span class="p">((</span><span class="mi">1</span> <span class="o">-</span> <span class="n">r</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span><span class="o">**</span><span class="mf">0.5</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">x</span>
+
+</div>
+<div class="viewcode-block" id="validate_matrix_shape"><a class="viewcode-back" href="../../../../generated/statsmodels.tsa.statespace.tools.validate_matrix_shape.html#statsmodels.tsa.statespace.tools.validate_matrix_shape">[docs]</a><span class="k">def</span> <span class="nf">validate_matrix_shape</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">shape</span><span class="p">,</span> <span class="n">nrows</span><span class="p">,</span> <span class="n">ncols</span><span class="p">,</span> <span class="n">nobs</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Validate the shape of a possibly time-varying matrix, or raise an exception</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    name : str</span>
+<span class="sd">        The name of the matrix being validated (used in exception messages)</span>
+<span class="sd">    shape : array_like</span>
+<span class="sd">        The shape of the matrix to be validated. May be of size 2 or (if</span>
+<span class="sd">        the matrix is time-varying) 3.</span>
+<span class="sd">    nrows : int</span>
+<span class="sd">        The expected number of rows.</span>
+<span class="sd">    ncols : int</span>
+<span class="sd">        The expected number of columns.</span>
+<span class="sd">    nobs : int</span>
+<span class="sd">        The number of observations (used to validate the last dimension of a</span>
+<span class="sd">        time-varying matrix)</span>
+
+<span class="sd">    Raises</span>
+<span class="sd">    ------</span>
+<span class="sd">    ValueError</span>
+<span class="sd">        If the matrix is not of the desired shape.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">ndim</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">shape</span><span class="p">)</span>
+
+    <span class="c"># Enforce dimension</span>
+    <span class="k">if</span> <span class="n">ndim</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">[</span><span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">]:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&#39;Invalid value for </span><span class="si">%s</span><span class="s"> matrix. Requires a&#39;</span>
+                         <span class="s">&#39; 2- or 3-dimensional array, got </span><span class="si">%d</span><span class="s"> dimensions&#39;</span> <span class="o">%</span>
+                         <span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">ndim</span><span class="p">))</span>
+    <span class="c"># Enforce the shape of the matrix</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="n">nrows</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&#39;Invalid dimensions for </span><span class="si">%s</span><span class="s"> matrix: requires </span><span class="si">%d</span><span class="s">&#39;</span>
+                         <span class="s">&#39; rows, got </span><span class="si">%d</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">nrows</span><span class="p">,</span> <span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]))</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="n">ncols</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&#39;Invalid dimensions for </span><span class="si">%s</span><span class="s"> matrix: requires </span><span class="si">%d</span><span class="s">&#39;</span>
+                         <span class="s">&#39; columns, got </span><span class="si">%d</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">ncols</span><span class="p">,</span> <span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]))</span>
+
+    <span class="c"># If we don&#39;t yet know `nobs`, don&#39;t allow time-varying arrays</span>
+    <span class="k">if</span> <span class="n">nobs</span> <span class="ow">is</span> <span class="bp">None</span> <span class="ow">and</span> <span class="ow">not</span> <span class="p">(</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">2</span> <span class="ow">or</span> <span class="n">shape</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="mi">1</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&#39;Invalid dimensions for </span><span class="si">%s</span><span class="s"> matrix: time-varying&#39;</span>
+                         <span class="s">&#39; matrices cannot be given unless `nobs` is specified&#39;</span>
+                         <span class="s">&#39; (implicitly when a dataset is bound or else set&#39;</span>
+                         <span class="s">&#39; explicity)&#39;</span> <span class="o">%</span> <span class="n">name</span><span class="p">)</span>
+
+    <span class="c"># Enforce time-varying array size</span>
+    <span class="k">if</span> <span class="n">ndim</span> <span class="o">==</span> <span class="mi">3</span> <span class="ow">and</span> <span class="n">nobs</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">shape</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="ow">in</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="n">nobs</span><span class="p">]:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&#39;Invalid dimensions for time-varying </span><span class="si">%s</span><span class="s">&#39;</span>
+                         <span class="s">&#39; matrix. Requires shape (*,*,</span><span class="si">%d</span><span class="s">), got </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span>
+                         <span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">nobs</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="n">shape</span><span class="p">)))</span>
+
+</div>
+<div class="viewcode-block" id="validate_vector_shape"><a class="viewcode-back" href="../../../../generated/statsmodels.tsa.statespace.tools.validate_vector_shape.html#statsmodels.tsa.statespace.tools.validate_vector_shape">[docs]</a><span class="k">def</span> <span class="nf">validate_vector_shape</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">shape</span><span class="p">,</span> <span class="n">nrows</span><span class="p">,</span> <span class="n">nobs</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Validate the shape of a possibly time-varying vector, or raise an exception</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    name : str</span>
+<span class="sd">        The name of the vector being validated (used in exception messages)</span>
+<span class="sd">    shape : array_like</span>
+<span class="sd">        The shape of the vector to be validated. May be of size 1 or (if</span>
+<span class="sd">        the vector is time-varying) 2.</span>
+<span class="sd">    nrows : int</span>
+<span class="sd">        The expected number of rows (elements of the vector).</span>
+<span class="sd">    nobs : int</span>
+<span class="sd">        The number of observations (used to validate the last dimension of a</span>
+<span class="sd">        time-varying vector)</span>
+
+<span class="sd">    Raises</span>
+<span class="sd">    ------</span>
+<span class="sd">    ValueError</span>
+<span class="sd">        If the vector is not of the desired shape.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">ndim</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">shape</span><span class="p">)</span>
+    <span class="c"># Enforce dimension</span>
+    <span class="k">if</span> <span class="n">ndim</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">]:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&#39;Invalid value for </span><span class="si">%s</span><span class="s"> vector. Requires a&#39;</span>
+                         <span class="s">&#39; 1- or 2-dimensional array, got </span><span class="si">%d</span><span class="s"> dimensions&#39;</span> <span class="o">%</span>
+                         <span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">ndim</span><span class="p">))</span>
+    <span class="c"># Enforce the shape of the vector</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="n">nrows</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&#39;Invalid dimensions for </span><span class="si">%s</span><span class="s"> vector: requires </span><span class="si">%d</span><span class="s">&#39;</span>
+                         <span class="s">&#39; rows, got </span><span class="si">%d</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">nrows</span><span class="p">,</span> <span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]))</span>
+
+    <span class="c"># If we don&#39;t yet know `nobs`, don&#39;t allow time-varying arrays</span>
+    <span class="k">if</span> <span class="n">nobs</span> <span class="ow">is</span> <span class="bp">None</span> <span class="ow">and</span> <span class="ow">not</span> <span class="p">(</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">1</span> <span class="ow">or</span> <span class="n">shape</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="mi">1</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&#39;Invalid dimensions for </span><span class="si">%s</span><span class="s"> vector: time-varying&#39;</span>
+                         <span class="s">&#39; vectors cannot be given unless `nobs` is specified&#39;</span>
+                         <span class="s">&#39; (implicitly when a dataset is bound or else set&#39;</span>
+                         <span class="s">&#39; explicity)&#39;</span> <span class="o">%</span> <span class="n">name</span><span class="p">)</span>
+
+    <span class="c"># Enforce time-varying array size</span>
+    <span class="k">if</span> <span class="n">ndim</span> <span class="o">==</span> <span class="mi">2</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="ow">in</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="n">nobs</span><span class="p">]:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&#39;Invalid dimensions for time-varying </span><span class="si">%s</span><span class="s">&#39;</span>
+                         <span class="s">&#39; vector. Requires shape (*,</span><span class="si">%d</span><span class="s">), got </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span>
+                         <span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">nobs</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="n">shape</span><span class="p">)))</span></div>
+</pre></div>
+
+
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <form class="search" action="../../../../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer" role="contentinfo">
+        &copy; Copyright 2009-2013, Josef Perktold, Skipper Seabold, Jonathan Taylor, statsmodels-developers.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.3.1.
+    </div>
+  </body>
+</html>
