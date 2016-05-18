@@ -79,6 +79,7 @@
 <span class="kn">import</span> <span class="nn">numpy</span> <span class="kn">as</span> <span class="nn">np</span>
 <span class="kn">from</span> <span class="nn">scipy</span> <span class="kn">import</span> <span class="n">stats</span>
 <span class="kn">from</span> <span class="nn">statsmodels.base.data</span> <span class="kn">import</span> <span class="n">handle_data</span>
+<span class="kn">from</span> <span class="nn">statsmodels.tools.data</span> <span class="kn">import</span> <span class="n">_is_using_pandas</span>
 <span class="kn">from</span> <span class="nn">statsmodels.tools.tools</span> <span class="kn">import</span> <span class="n">recipr</span><span class="p">,</span> <span class="n">nan_dot</span>
 <span class="kn">from</span> <span class="nn">statsmodels.stats.contrast</span> <span class="kn">import</span> <span class="n">ContrastResults</span><span class="p">,</span> <span class="n">WaldTestResults</span>
 <span class="kn">from</span> <span class="nn">statsmodels.tools.decorators</span> <span class="kn">import</span> <span class="n">resettable_cache</span><span class="p">,</span> <span class="n">cache_readonly</span>
@@ -811,10 +812,14 @@
 
 <span class="sd">        Returns</span>
 <span class="sd">        -------</span>
-<span class="sd">        prediction : ndarray or pandas.Series</span>
+<span class="sd">        prediction : ndarray, pandas.Series or pandas.DataFrame</span>
 <span class="sd">            See self.model.predict</span>
 
 <span class="sd">        &quot;&quot;&quot;</span>
+        <span class="kn">import</span> <span class="nn">pandas</span> <span class="kn">as</span> <span class="nn">pd</span>
+
+        <span class="n">exog_index</span> <span class="o">=</span> <span class="n">exog</span><span class="o">.</span><span class="n">index</span> <span class="k">if</span> <span class="n">_is_using_pandas</span><span class="p">(</span><span class="n">exog</span><span class="p">,</span> <span class="bp">None</span><span class="p">)</span> <span class="k">else</span> <span class="bp">None</span>
+
         <span class="k">if</span> <span class="n">transform</span> <span class="ow">and</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="p">,</span> <span class="s1">&#39;formula&#39;</span><span class="p">)</span> <span class="ow">and</span> <span class="n">exog</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
             <span class="kn">from</span> <span class="nn">patsy</span> <span class="kn">import</span> <span class="n">dmatrix</span>
             <span class="n">exog</span> <span class="o">=</span> <span class="n">dmatrix</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">design_info</span><span class="o">.</span><span class="n">builder</span><span class="p">,</span>
@@ -827,7 +832,22 @@
                 <span class="n">exog</span> <span class="o">=</span> <span class="n">exog</span><span class="p">[:,</span> <span class="bp">None</span><span class="p">]</span>
             <span class="n">exog</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">atleast_2d</span><span class="p">(</span><span class="n">exog</span><span class="p">)</span>  <span class="c1"># needed in count model shape[1]</span>
 
-        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">predict</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">params</span><span class="p">,</span> <span class="n">exog</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span></div></div>
+        <span class="n">predict_results</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">predict</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">params</span><span class="p">,</span> <span class="n">exog</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">exog_index</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span> <span class="ow">and</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">predict_results</span><span class="p">,</span> <span class="s1">&#39;predicted_values&#39;</span><span class="p">):</span>
+
+            <span class="k">if</span> <span class="n">predict_results</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">(</span><span class="n">predict_results</span><span class="p">,</span> <span class="n">index</span><span class="o">=</span><span class="n">exog_index</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">predict_results</span><span class="p">,</span> <span class="n">index</span><span class="o">=</span><span class="n">exog_index</span><span class="p">)</span>
+
+        <span class="k">else</span><span class="p">:</span>
+
+            <span class="k">return</span> <span class="n">predict_results</span></div>
+
+
+    <span class="k">def</span> <span class="nf">summary</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">pass</span></div>
 
 
 <span class="c1">#TODO: public method?</span>
@@ -1765,10 +1785,20 @@
 <span class="sd">        Not fully tested for time series models, tsa, and might delete too much</span>
 <span class="sd">        for prediction or not all that would be possible.</span>
 
-<span class="sd">        The list of arrays to delete is maintained as an attribute of the</span>
-<span class="sd">        result and model instance, except for cached values. These lists could</span>
-<span class="sd">        be changed before calling remove_data.</span>
+<span class="sd">        The lists of arrays to delete are maintained as attributes of</span>
+<span class="sd">        the result and model instance, except for cached values. These</span>
+<span class="sd">        lists could be changed before calling remove_data.</span>
 
+<span class="sd">        The attributes to remove are named in:</span>
+
+<span class="sd">        model._data_attr : arrays attached to both the model instance</span>
+<span class="sd">            and the results instance with the same attribute name.</span>
+
+<span class="sd">        result.data_in_cache : arrays that may exist as values in</span>
+<span class="sd">            result._cache (TODO : should privatize name)</span>
+
+<span class="sd">        result._data_attr_model : arrays attached to the model</span>
+<span class="sd">            instance but not to the results instance</span>
 <span class="sd">        &#39;&#39;&#39;</span>
         <span class="k">def</span> <span class="nf">wipe</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="n">att</span><span class="p">):</span>
             <span class="c1">#get to last element in attribute path</span>
@@ -1785,8 +1815,9 @@
             <span class="k">except</span> <span class="ne">AttributeError</span><span class="p">:</span>
                 <span class="k">pass</span>
 
+        <span class="n">model_only</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;model.&#39;</span> <span class="o">+</span> <span class="n">i</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;_data_attr_model&quot;</span><span class="p">,</span> <span class="p">[])]</span>
         <span class="n">model_attr</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;model.&#39;</span> <span class="o">+</span> <span class="n">i</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">_data_attr</span><span class="p">]</span>
-        <span class="k">for</span> <span class="n">att</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_data_attr</span> <span class="o">+</span> <span class="n">model_attr</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">att</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_data_attr</span> <span class="o">+</span> <span class="n">model_attr</span> <span class="o">+</span> <span class="n">model_only</span><span class="p">:</span>
             <span class="c1">#print(&#39;removing&#39;, att)</span>
             <span class="n">wipe</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">att</span><span class="p">)</span>
 
@@ -2115,9 +2146,6 @@
       <input type="hidden" name="check_keywords" value="yes" />
       <input type="hidden" name="area" value="default" />
     </form>
-    <p class="searchtip" style="font-size: 90%">
-    Enter search terms or a module, class or function name.
-    </p>
 </div>
 <script type="text/javascript">$('#searchbox').show(0);</script>
         </div>
@@ -2126,7 +2154,7 @@
     </div>
     <div class="footer" role="contentinfo">
         &copy; Copyright 2009-2013, Josef Perktold, Skipper Seabold, Jonathan Taylor, statsmodels-developers.
-      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.3.5.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.4.1.
     </div>
   </body>
 </html>

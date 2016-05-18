@@ -80,6 +80,7 @@
 <span class="kn">from</span> <span class="nn">statsmodels.tools.decorators</span> <span class="kn">import</span> <span class="n">cache_readonly</span>
 <span class="kn">from</span> <span class="nn">scipy.optimize</span> <span class="kn">import</span> <span class="n">brent</span>
 <span class="kn">from</span> <span class="nn">statsmodels.compat.numpy</span> <span class="kn">import</span> <span class="n">np_matrix_rank</span>
+<span class="kn">from</span> <span class="nn">statsmodels.compat.numpy</span> <span class="kn">import</span> <span class="n">np_new_unique</span>
 
 <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">Implementation of proportional hazards regression models for duration</span>
@@ -398,8 +399,10 @@
             <span class="bp">self</span><span class="o">.</span><span class="n">offset</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">offset</span><span class="p">)</span>
 
         <span class="bp">self</span><span class="o">.</span><span class="n">surv</span> <span class="o">=</span> <span class="n">PHSurvivalTime</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">endog</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">status</span><span class="p">,</span>
-                                   <span class="bp">self</span><span class="o">.</span><span class="n">exog</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">strata</span><span class="p">,</span>
-                                   <span class="bp">self</span><span class="o">.</span><span class="n">entry</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">offset</span><span class="p">)</span>
+                                    <span class="bp">self</span><span class="o">.</span><span class="n">exog</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">strata</span><span class="p">,</span>
+                                    <span class="bp">self</span><span class="o">.</span><span class="n">entry</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">offset</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">endog</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">groups</span> <span class="o">=</span> <span class="bp">None</span>
 
         <span class="c1"># TODO: not used?</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">missing</span> <span class="o">=</span> <span class="n">missing</span>
@@ -520,46 +523,36 @@
         <span class="k">return</span> <span class="n">results</span></div>
 
 
-<div class="viewcode-block" id="PHReg.fit_regularized"><a class="viewcode-back" href="../../../generated/statsmodels.duration.hazard_regression.PHReg.fit_regularized.html#statsmodels.duration.hazard_regression.PHReg.fit_regularized">[docs]</a>    <span class="k">def</span> <span class="nf">fit_regularized</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s2">&quot;coord_descent&quot;</span><span class="p">,</span> <span class="n">maxiter</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span>
-                        <span class="n">alpha</span><span class="o">=</span><span class="mf">0.</span><span class="p">,</span> <span class="n">L1_wt</span><span class="o">=</span><span class="mf">1.</span><span class="p">,</span> <span class="n">start_params</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
-                        <span class="n">cnvrg_tol</span><span class="o">=</span><span class="mf">1e-7</span><span class="p">,</span> <span class="n">zero_tol</span><span class="o">=</span><span class="mf">1e-8</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<div class="viewcode-block" id="PHReg.fit_regularized"><a class="viewcode-back" href="../../../generated/statsmodels.duration.hazard_regression.PHReg.fit_regularized.html#statsmodels.duration.hazard_regression.PHReg.fit_regularized">[docs]</a>    <span class="k">def</span> <span class="nf">fit_regularized</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s2">&quot;elastic_net&quot;</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="mf">0.</span><span class="p">,</span>
+                        <span class="n">start_params</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">refit</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Return a regularized fit to a linear regression model.</span>
 
 <span class="sd">        Parameters</span>
 <span class="sd">        ----------</span>
 <span class="sd">        method :</span>
-<span class="sd">            Only the coordinate descent algorithm is implemented.</span>
-<span class="sd">        maxiter : integer</span>
-<span class="sd">            The maximum number of iteration cycles (an iteration cycle</span>
-<span class="sd">            involves running coordinate descent on all variables).</span>
+<span class="sd">            Only the `elastic_net` approach is currently implemented.</span>
 <span class="sd">        alpha : scalar or array-like</span>
 <span class="sd">            The penalty weight.  If a scalar, the same penalty weight</span>
 <span class="sd">            applies to all variables in the model.  If a vector, it</span>
 <span class="sd">            must have the same length as `params`, and contains a</span>
 <span class="sd">            penalty weight for each coefficient.</span>
-<span class="sd">        L1_wt : scalar</span>
-<span class="sd">            The fraction of the penalty given to the L1 penalty term.</span>
-<span class="sd">            Must be between 0 and 1 (inclusive).  If 0, the fit is</span>
-<span class="sd">            a ridge fit, if 1 it is a lasso fit.</span>
 <span class="sd">        start_params : array-like</span>
 <span class="sd">            Starting values for `params`.</span>
-<span class="sd">        cnvrg_tol : scalar</span>
-<span class="sd">            If `params` changes by less than this amount (in sup-norm)</span>
-<span class="sd">            in once iteration cycle, the algorithm terminates with</span>
-<span class="sd">            convergence.</span>
-<span class="sd">        zero_tol : scalar</span>
-<span class="sd">            Any estimated coefficient smaller than this value is</span>
-<span class="sd">            replaced with zero.</span>
+<span class="sd">        refit : bool</span>
+<span class="sd">            If True, the model is refit using only the variables that</span>
+<span class="sd">            have non-zero coefficients in the regularized fit.  The</span>
+<span class="sd">            refitted model is not regularized.</span>
+
 
 <span class="sd">        Returns</span>
 <span class="sd">        -------</span>
-<span class="sd">        A PHregResults object, of the same type returned by `fit`.</span>
+<span class="sd">        A results object.</span>
 
 <span class="sd">        Notes</span>
 <span class="sd">        -----</span>
-<span class="sd">        The penalty is the&quot;elastic net&quot; penalty, which</span>
-<span class="sd">        is a convex combination of L1 and L2 penalties.</span>
+<span class="sd">        The penalty is the ``elastic net`` penalty, which is a</span>
+<span class="sd">        combination of L1 and L2 penalties.</span>
 
 <span class="sd">        The function that is minimized is: ..math::</span>
 
@@ -569,121 +562,35 @@
 
 <span class="sd">        Post-estimation results are based on the same data used to</span>
 <span class="sd">        select variables, hence may be subject to overfitting biases.</span>
+
+<span class="sd">        The elastic_net method uses the following keyword arguments:</span>
+
+<span class="sd">        maxiter : int</span>
+<span class="sd">            Maximum number of iterations</span>
+<span class="sd">        L1_wt  : float</span>
+<span class="sd">            Must be in [0, 1].  The L1 penalty has weight L1_wt and the</span>
+<span class="sd">            L2 penalty has weight 1 - L1_wt.</span>
+<span class="sd">        cnvrg_tol : float</span>
+<span class="sd">            Convergence threshold for line searches</span>
+<span class="sd">        zero_tol : float</span>
+<span class="sd">            Coefficients below this threshold are treated as zero.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
 
-        <span class="n">k_exog</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">exog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
-        <span class="n">n_exog</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">exog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="kn">from</span> <span class="nn">statsmodels.base.elastic_net</span> <span class="kn">import</span> <span class="n">fit_elasticnet</span>
 
-        <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">isscalar</span><span class="p">(</span><span class="n">alpha</span><span class="p">):</span>
-            <span class="n">alpha</span> <span class="o">=</span> <span class="n">alpha</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">k_exog</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">method</span> <span class="o">!=</span> <span class="s2">&quot;elastic_net&quot;</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;method for fit_regularied must be elastic_net&quot;</span><span class="p">)</span>
 
-        <span class="c1"># regularization cannot be used with groups</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">groups</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="n">defaults</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;maxiter&quot;</span> <span class="p">:</span> <span class="mi">50</span><span class="p">,</span> <span class="s2">&quot;L1_wt&quot;</span> <span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">&quot;cnvrg_tol&quot;</span> <span class="p">:</span> <span class="mf">1e-10</span><span class="p">,</span>
+                    <span class="s2">&quot;zero_tol&quot;</span> <span class="p">:</span> <span class="mf">1e-10</span><span class="p">}</span>
+        <span class="n">defaults</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">kwargs</span><span class="p">)</span>
 
-        <span class="c1"># Define starting params</span>
-        <span class="k">if</span> <span class="n">start_params</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
-            <span class="n">params</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">k_exog</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
-        <span class="k">else</span><span class="p">:</span>
-            <span class="n">params</span> <span class="o">=</span> <span class="n">start_params</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        <span class="k">return</span> <span class="n">fit_elasticnet</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="n">method</span><span class="p">,</span>
+                              <span class="n">alpha</span><span class="o">=</span><span class="n">alpha</span><span class="p">,</span>
+                              <span class="n">start_params</span><span class="o">=</span><span class="n">start_params</span><span class="p">,</span>
+                              <span class="n">refit</span><span class="o">=</span><span class="n">refit</span><span class="p">,</span>
+                              <span class="o">**</span><span class="n">defaults</span><span class="p">)</span></div>
 
-        <span class="c1"># Maybe could be a shallow copy, but just in case...</span>
-        <span class="kn">import</span> <span class="nn">copy</span>
-        <span class="n">surv</span> <span class="o">=</span> <span class="n">copy</span><span class="o">.</span><span class="n">deepcopy</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">surv</span><span class="p">)</span>
-
-        <span class="c1"># This is the base offset, onto which the effects of</span>
-        <span class="c1"># constrained variables are added.</span>
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">offset</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
-            <span class="n">offset_s_base</span> <span class="o">=</span> <span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">x</span><span class="p">))</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">surv</span><span class="o">.</span><span class="n">stratum_rows</span><span class="p">]</span>
-            <span class="n">surv</span><span class="o">.</span><span class="n">offset_s</span> <span class="o">=</span> <span class="p">[</span><span class="n">x</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">offset_s_base</span><span class="p">]</span>
-        <span class="k">else</span><span class="p">:</span>
-            <span class="n">offset_s_base</span> <span class="o">=</span> <span class="p">[</span><span class="n">x</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">surv</span><span class="o">.</span><span class="n">offset_s</span><span class="p">]</span>
-
-        <span class="c1"># Create a model instance for optimizing a single variable</span>
-        <span class="n">model_1var</span> <span class="o">=</span> <span class="n">copy</span><span class="o">.</span><span class="n">deepcopy</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
-        <span class="n">model_1var</span><span class="o">.</span><span class="n">surv</span> <span class="o">=</span> <span class="n">surv</span>
-        <span class="n">model_1var</span><span class="o">.</span><span class="n">ties</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ties</span>
-
-        <span class="c1"># All the negative penalized loglikeihood functions.</span>
-        <span class="k">def</span> <span class="nf">gen_npfuncs</span><span class="p">(</span><span class="n">k</span><span class="p">):</span>
-            <span class="k">def</span> <span class="nf">nploglike</span><span class="p">(</span><span class="n">params</span><span class="p">):</span>
-                <span class="n">pen</span> <span class="o">=</span> <span class="n">alpha</span><span class="p">[</span><span class="n">k</span><span class="p">]</span><span class="o">*</span><span class="p">((</span><span class="mi">1</span> <span class="o">-</span> <span class="n">L1_wt</span><span class="p">)</span><span class="o">*</span><span class="n">params</span><span class="o">**</span><span class="mi">2</span><span class="o">/</span><span class="mi">2</span> <span class="o">+</span> <span class="n">L1_wt</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">params</span><span class="p">))</span>
-                <span class="k">return</span> <span class="o">-</span><span class="n">model_1var</span><span class="o">.</span><span class="n">loglike</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">r_</span><span class="p">[</span><span class="n">params</span><span class="p">])</span> <span class="o">/</span> <span class="n">n_exog</span> <span class="o">+</span> <span class="n">pen</span>
-            <span class="k">def</span> <span class="nf">npscore</span><span class="p">(</span><span class="n">params</span><span class="p">):</span>
-                <span class="n">pen_grad</span> <span class="o">=</span> <span class="n">alpha</span><span class="p">[</span><span class="n">k</span><span class="p">]</span><span class="o">*</span><span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">L1_wt</span><span class="p">)</span><span class="o">*</span><span class="n">params</span>
-                <span class="k">return</span> <span class="o">-</span><span class="n">model_1var</span><span class="o">.</span><span class="n">score</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">r_</span><span class="p">[</span><span class="n">params</span><span class="p">])[</span><span class="mi">0</span><span class="p">]</span> <span class="o">/</span> <span class="n">n_exog</span> <span class="o">+</span> <span class="n">pen_grad</span>
-            <span class="k">def</span> <span class="nf">nphess</span><span class="p">(</span><span class="n">params</span><span class="p">):</span>
-                <span class="n">pen_hess</span> <span class="o">=</span> <span class="n">alpha</span><span class="p">[</span><span class="n">k</span><span class="p">]</span><span class="o">*</span><span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">L1_wt</span><span class="p">)</span>
-                <span class="k">return</span> <span class="o">-</span><span class="n">model_1var</span><span class="o">.</span><span class="n">hessian</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">r_</span><span class="p">[</span><span class="n">params</span><span class="p">])[</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">]</span> <span class="o">/</span> <span class="n">n_exog</span> <span class="o">+</span> <span class="n">pen_hess</span>
-            <span class="k">return</span> <span class="n">nploglike</span><span class="p">,</span> <span class="n">npscore</span><span class="p">,</span> <span class="n">nphess</span>
-        <span class="n">nploglike_funcs</span> <span class="o">=</span> <span class="p">[</span><span class="n">gen_npfuncs</span><span class="p">(</span><span class="n">k</span><span class="p">)</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">params</span><span class="p">))]</span>
-
-        <span class="c1"># 1-dimensional exog&#39;s</span>
-        <span class="n">exog_s</span> <span class="o">=</span> <span class="p">[]</span>
-        <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">k_exog</span><span class="p">):</span>
-            <span class="n">ex</span> <span class="o">=</span> <span class="p">[</span><span class="n">x</span><span class="p">[:,</span> <span class="n">k</span><span class="p">][:,</span> <span class="bp">None</span><span class="p">]</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">surv</span><span class="o">.</span><span class="n">exog_s</span><span class="p">]</span>
-            <span class="n">exog_s</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">ex</span><span class="p">)</span>
-
-        <span class="n">converged</span> <span class="o">=</span> <span class="bp">False</span>
-        <span class="n">btol</span> <span class="o">=</span> <span class="mf">1e-8</span>
-        <span class="n">params_zero</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">params</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">bool</span><span class="p">)</span>
-
-        <span class="k">for</span> <span class="n">itr</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">maxiter</span><span class="p">):</span>
-
-            <span class="c1"># Sweep through the parameters</span>
-            <span class="n">params_save</span> <span class="o">=</span> <span class="n">params</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
-            <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">k_exog</span><span class="p">):</span>
-
-                <span class="c1"># Under the active set method, if a parameter becomes</span>
-                <span class="c1"># zero we don&#39;t try to change it again.</span>
-                <span class="k">if</span> <span class="n">params_zero</span><span class="p">[</span><span class="n">k</span><span class="p">]:</span>
-                    <span class="k">continue</span>
-
-                <span class="c1"># Set exog to include only the variable whose effect</span>
-                <span class="c1"># is being estimated.</span>
-                <span class="n">surv</span><span class="o">.</span><span class="n">exog_s</span> <span class="o">=</span> <span class="n">exog_s</span><span class="p">[</span><span class="n">k</span><span class="p">]</span>
-
-                <span class="c1"># Set the offset to account for the variables that are</span>
-                <span class="c1"># being held fixed.</span>
-                <span class="n">params0</span> <span class="o">=</span> <span class="n">params</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
-                <span class="n">params0</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
-                <span class="k">for</span> <span class="n">stx</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">surv</span><span class="o">.</span><span class="n">nstrat</span><span class="p">):</span>
-                    <span class="n">v</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">surv</span><span class="o">.</span><span class="n">exog_s</span><span class="p">[</span><span class="n">stx</span><span class="p">],</span> <span class="n">params0</span><span class="p">)</span>
-                    <span class="n">surv</span><span class="o">.</span><span class="n">offset_s</span><span class="p">[</span><span class="n">stx</span><span class="p">]</span> <span class="o">=</span> <span class="n">offset_s_base</span><span class="p">[</span><span class="n">stx</span><span class="p">]</span> <span class="o">+</span> <span class="n">v</span>
-
-                <span class="n">params</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="n">_opt_1d</span><span class="p">(</span><span class="n">nploglike_funcs</span><span class="p">[</span><span class="n">k</span><span class="p">],</span> <span class="n">params</span><span class="p">[</span><span class="n">k</span><span class="p">],</span>
-                                    <span class="n">alpha</span><span class="p">[</span><span class="n">k</span><span class="p">]</span><span class="o">*</span><span class="n">L1_wt</span><span class="p">,</span> <span class="n">tol</span><span class="o">=</span><span class="n">btol</span><span class="p">)</span>
-
-                <span class="c1"># Update the active set</span>
-                <span class="k">if</span> <span class="n">itr</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">params</span><span class="p">[</span><span class="n">k</span><span class="p">])</span> <span class="o">&lt;</span> <span class="n">zero_tol</span><span class="p">:</span>
-                    <span class="n">params_zero</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="bp">True</span>
-                    <span class="n">params</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.</span>
-
-            <span class="c1"># Check for convergence</span>
-            <span class="n">pchange</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">params</span> <span class="o">-</span> <span class="n">params_save</span><span class="p">))</span>
-            <span class="k">if</span> <span class="n">pchange</span> <span class="o">&lt;</span> <span class="n">cnvrg_tol</span><span class="p">:</span>
-                <span class="n">converged</span> <span class="o">=</span> <span class="bp">True</span>
-                <span class="k">break</span>
-
-        <span class="c1"># Set approximate zero coefficients to be exactly zero</span>
-        <span class="n">params</span> <span class="o">*=</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">params</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="n">zero_tol</span>
-
-        <span class="c1"># Fit the reduced model to get standard errors and other</span>
-        <span class="c1"># post-estimation results.</span>
-        <span class="n">ii</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">flatnonzero</span><span class="p">(</span><span class="n">params</span><span class="p">)</span>
-        <span class="n">cov</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">k_exog</span><span class="p">,</span> <span class="n">k_exog</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
-        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">ii</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
-            <span class="n">model</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">__class__</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">endog</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">exog</span><span class="p">[:,</span> <span class="n">ii</span><span class="p">],</span>
-                                   <span class="n">status</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">status</span><span class="p">,</span> <span class="n">entry</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">entry</span><span class="p">,</span>
-                                   <span class="n">strata</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">strata</span><span class="p">,</span> <span class="n">offset</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">offset</span><span class="p">,</span>
-                                   <span class="n">ties</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">ties</span><span class="p">,</span> <span class="n">missing</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">missing</span><span class="p">)</span>
-            <span class="n">rslt</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">fit</span><span class="p">()</span>
-            <span class="n">cov</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ix_</span><span class="p">(</span><span class="n">ii</span><span class="p">,</span> <span class="n">ii</span><span class="p">)]</span> <span class="o">=</span> <span class="n">rslt</span><span class="o">.</span><span class="n">normalized_cov_params</span>
-
-        <span class="n">rfit</span> <span class="o">=</span> <span class="n">PHRegResults</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">cov_params</span><span class="o">=</span><span class="n">cov</span><span class="p">)</span>
-        <span class="n">rfit</span><span class="o">.</span><span class="n">converged</span> <span class="o">=</span> <span class="n">converged</span>
-        <span class="n">rfit</span><span class="o">.</span><span class="n">regularized</span> <span class="o">=</span> <span class="bp">True</span>
-
-        <span class="k">return</span> <span class="n">rfit</span></div>
 
 <div class="viewcode-block" id="PHReg.loglike"><a class="viewcode-back" href="../../../generated/statsmodels.duration.hazard_regression.PHReg.loglike.html#statsmodels.duration.hazard_regression.PHReg.loglike">[docs]</a>    <span class="k">def</span> <span class="nf">loglike</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
@@ -1429,8 +1336,8 @@
 
 <span class="sd">        Parameters</span>
 <span class="sd">        ----------</span>
-<span class="sd">        params : arrayh-like</span>
-<span class="sd">            The model proportional hazards model parameters.</span>
+<span class="sd">        params : array-like</span>
+<span class="sd">            The proportional hazards model parameters.</span>
 
 <span class="sd">        Returns</span>
 <span class="sd">        -------</span>
@@ -1440,7 +1347,7 @@
 <span class="sd">        -----</span>
 <span class="sd">        The distributions are obtained from a simple discrete estimate</span>
 <span class="sd">        of the survivor function that puts all mass on the observed</span>
-<span class="sd">        failure times wihtin a stratum.</span>
+<span class="sd">        failure times within a stratum.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
 
         <span class="c1"># TODO: this returns a Python list of rv_discrete objects, so</span>
@@ -1475,8 +1382,8 @@
 
             <span class="c1"># The individual survival functions.</span>
             <span class="n">usurv</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="o">-</span><span class="n">ichaz</span><span class="p">)</span>
-            <span class="n">usurv</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">((</span><span class="n">usurv</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">usurv</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="mi">1</span><span class="p">))),</span>
-                                   <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+            <span class="n">z</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">usurv</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="mi">1</span><span class="p">))</span>
+            <span class="n">usurv</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">((</span><span class="n">usurv</span><span class="p">,</span> <span class="n">z</span><span class="p">),</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
 
             <span class="c1"># The individual survival probability masses.</span>
             <span class="n">probs</span> <span class="o">=</span> <span class="o">-</span><span class="n">np</span><span class="o">.</span><span class="n">diff</span><span class="p">(</span><span class="n">usurv</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
@@ -1488,15 +1395,15 @@
         <span class="n">mxc</span> <span class="o">=</span> <span class="nb">max</span><span class="p">([</span><span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">xk</span><span class="p">])</span>
         <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">surv</span><span class="o">.</span><span class="n">nstrat</span><span class="p">):</span>
             <span class="k">if</span> <span class="n">xk</span><span class="p">[</span><span class="n">k</span><span class="p">]</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">mxc</span><span class="p">:</span>
-                <span class="n">xk1</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">xk</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">mxc</span><span class="p">))</span>
-                <span class="n">pk1</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">pk</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">mxc</span><span class="p">))</span>
-                <span class="n">xk1</span><span class="p">[:,</span> <span class="o">-</span><span class="n">mxc</span><span class="p">:]</span> <span class="o">=</span> <span class="n">xk</span>
-                <span class="n">pk1</span><span class="p">[:,</span> <span class="o">-</span><span class="n">mxc</span><span class="p">:]</span> <span class="o">=</span> <span class="n">pk</span>
+                <span class="n">xk1</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">xk</span><span class="p">[</span><span class="n">k</span><span class="p">]</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">mxc</span><span class="p">))</span>
+                <span class="n">pk1</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">pk</span><span class="p">[</span><span class="n">k</span><span class="p">]</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">mxc</span><span class="p">))</span>
+                <span class="n">xk1</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">:</span><span class="n">xk</span><span class="p">[</span><span class="n">k</span><span class="p">]</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]]</span> <span class="o">=</span> <span class="n">xk</span><span class="p">[</span><span class="n">k</span><span class="p">]</span>
+                <span class="n">pk1</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">:</span><span class="n">pk</span><span class="p">[</span><span class="n">k</span><span class="p">]</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]]</span> <span class="o">=</span> <span class="n">pk</span><span class="p">[</span><span class="n">k</span><span class="p">]</span>
                 <span class="n">xk</span><span class="p">[</span><span class="n">k</span><span class="p">],</span> <span class="n">pk</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="n">xk1</span><span class="p">,</span> <span class="n">pk1</span>
 
-        <span class="n">xka</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">endog</span><span class="p">),</span> <span class="n">mxc</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
+        <span class="c1"># Put the support points and probabilities into single matrices</span>
+        <span class="n">xka</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">((</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">endog</span><span class="p">),</span> <span class="n">mxc</span><span class="p">))</span>
         <span class="n">pka</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">((</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">endog</span><span class="p">),</span> <span class="n">mxc</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span> <span class="o">/</span> <span class="n">mxc</span>
-
         <span class="k">for</span> <span class="n">stx</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">surv</span><span class="o">.</span><span class="n">nstrat</span><span class="p">):</span>
             <span class="n">ix</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">surv</span><span class="o">.</span><span class="n">stratum_rows</span><span class="p">[</span><span class="n">stx</span><span class="p">]</span>
             <span class="n">xka</span><span class="p">[</span><span class="n">ix</span><span class="p">,</span> <span class="p">:]</span> <span class="o">=</span> <span class="n">xk</span><span class="p">[</span><span class="n">stx</span><span class="p">]</span>
@@ -1538,13 +1445,16 @@
 <span class="sd">    statsmodels.LikelihoodModelResults</span>
 <span class="sd">    &#39;&#39;&#39;</span>
 
-    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">cov_params</span><span class="p">,</span> <span class="n">covariance_type</span><span class="o">=</span><span class="s2">&quot;naive&quot;</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">cov_params</span><span class="p">,</span> <span class="n">scale</span><span class="o">=</span><span class="mf">1.</span><span class="p">,</span> <span class="n">covariance_type</span><span class="o">=</span><span class="s2">&quot;naive&quot;</span><span class="p">):</span>
+
+        <span class="c1"># There is no scale parameter, but we need it for</span>
+        <span class="c1"># meta-procedures that work with results.</span>
 
         <span class="bp">self</span><span class="o">.</span><span class="n">covariance_type</span> <span class="o">=</span> <span class="n">covariance_type</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">df_resid</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">df_resid</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">df_model</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">df_model</span>
 
-        <span class="nb">super</span><span class="p">(</span><span class="n">PHRegResults</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">PHRegResults</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">scale</span><span class="o">=</span><span class="mf">1.</span><span class="p">,</span>
            <span class="n">normalized_cov_params</span><span class="o">=</span><span class="n">cov_params</span><span class="p">)</span>
 
     <span class="nd">@cache_readonly</span>
@@ -1599,14 +1509,9 @@
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Descriptive statistics of the groups.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
-        <span class="c1"># better handled with np.unique(..., return_counts=True)</span>
-        <span class="n">gsize</span> <span class="o">=</span> <span class="p">{}</span>
-        <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">groups</span><span class="p">:</span>
-            <span class="k">if</span> <span class="n">x</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">gsize</span><span class="p">:</span>
-                <span class="n">gsize</span><span class="p">[</span><span class="n">x</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
-            <span class="n">gsize</span><span class="p">[</span><span class="n">x</span><span class="p">]</span> <span class="o">+=</span> <span class="mi">1</span>
-        <span class="n">gsize</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">gsize</span><span class="o">.</span><span class="n">values</span><span class="p">()))</span>
-        <span class="k">return</span> <span class="n">gsize</span><span class="o">.</span><span class="n">min</span><span class="p">(),</span> <span class="n">gsize</span><span class="o">.</span><span class="n">max</span><span class="p">(),</span> <span class="n">gsize</span><span class="o">.</span><span class="n">mean</span><span class="p">(),</span> <span class="nb">len</span><span class="p">(</span><span class="n">gsize</span><span class="p">)</span>
+        <span class="n">gsizes</span> <span class="o">=</span> <span class="n">np_new_unique</span><span class="p">(</span><span class="n">groups</span><span class="p">,</span> <span class="n">return_counts</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+        <span class="n">gsizes</span> <span class="o">=</span> <span class="n">gsizes</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+        <span class="k">return</span> <span class="n">gsizes</span><span class="o">.</span><span class="n">min</span><span class="p">(),</span> <span class="n">gsizes</span><span class="o">.</span><span class="n">max</span><span class="p">(),</span> <span class="n">gsizes</span><span class="o">.</span><span class="n">mean</span><span class="p">(),</span> <span class="nb">len</span><span class="p">(</span><span class="n">gsizes</span><span class="p">)</span>
 
     <span class="nd">@cache_readonly</span>
 <div class="viewcode-block" id="PHRegResults.weighted_covariate_averages"><a class="viewcode-back" href="../../../generated/statsmodels.duration.hazard_regression.PHRegResults.weighted_covariate_averages.html#statsmodels.duration.hazard_regression.PHRegResults.weighted_covariate_averages">[docs]</a>    <span class="k">def</span> <span class="nf">weighted_covariate_averages</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
@@ -1892,56 +1797,6 @@
 <span class="sd">        &quot;&quot;&quot;</span>
 
         <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">var</span><span class="p">())</span>
-
-
-<span class="k">def</span> <span class="nf">_opt_1d</span><span class="p">(</span><span class="n">funcs</span><span class="p">,</span> <span class="n">start</span><span class="p">,</span> <span class="n">L1_wt</span><span class="p">,</span> <span class="n">tol</span><span class="p">):</span>
-    <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    Optimize a L1-penalized smooth one-dimensional function of a</span>
-<span class="sd">    single variable.</span>
-
-<span class="sd">    Parameters</span>
-<span class="sd">    ----------</span>
-<span class="sd">    funcs : tuple of functions</span>
-<span class="sd">        funcs[0] is the objective function to be minimized.  funcs[1]</span>
-<span class="sd">        and funcs[2] are, respectively, the first and second</span>
-<span class="sd">        derivatives of the smooth part of funcs[0] (i.e. excluding the</span>
-<span class="sd">        L1 penalty).</span>
-<span class="sd">    start : real</span>
-<span class="sd">        A starting value for the function argument</span>
-<span class="sd">    L1_wt : non-negative real</span>
-<span class="sd">        The weight for the L1 penalty function.</span>
-<span class="sd">    tol : non-negative real</span>
-<span class="sd">        A convergence threshold.</span>
-
-<span class="sd">    Returns</span>
-<span class="sd">    -------</span>
-<span class="sd">    The argmin of the objective function.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-
-    <span class="c1"># TODO: can we detect failures without calling funcs[0] twice?</span>
-
-    <span class="n">x</span> <span class="o">=</span> <span class="n">start</span>
-    <span class="n">f</span> <span class="o">=</span> <span class="n">funcs</span><span class="p">[</span><span class="mi">0</span><span class="p">](</span><span class="n">x</span><span class="p">)</span>
-
-    <span class="n">b</span> <span class="o">=</span> <span class="n">funcs</span><span class="p">[</span><span class="mi">1</span><span class="p">](</span><span class="n">x</span><span class="p">)</span>
-    <span class="n">c</span> <span class="o">=</span> <span class="n">funcs</span><span class="p">[</span><span class="mi">2</span><span class="p">](</span><span class="n">x</span><span class="p">)</span>
-    <span class="n">d</span> <span class="o">=</span> <span class="n">b</span> <span class="o">-</span> <span class="n">c</span><span class="o">*</span><span class="n">x</span>
-
-    <span class="k">if</span> <span class="n">L1_wt</span> <span class="o">&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">d</span><span class="p">):</span>
-        <span class="k">return</span> <span class="mf">0.</span>
-    <span class="k">elif</span> <span class="n">d</span> <span class="o">&gt;=</span> <span class="mi">0</span><span class="p">:</span>
-        <span class="n">x</span> <span class="o">+=</span> <span class="p">(</span><span class="n">L1_wt</span> <span class="o">-</span> <span class="n">b</span><span class="p">)</span> <span class="o">/</span> <span class="n">c</span>
-    <span class="k">elif</span> <span class="n">d</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">:</span>
-        <span class="n">x</span> <span class="o">-=</span> <span class="p">(</span><span class="n">L1_wt</span> <span class="o">+</span> <span class="n">b</span><span class="p">)</span> <span class="o">/</span> <span class="n">c</span>
-
-    <span class="n">f1</span> <span class="o">=</span> <span class="n">funcs</span><span class="p">[</span><span class="mi">0</span><span class="p">](</span><span class="n">x</span><span class="p">)</span>
-
-    <span class="c1"># This is an expensive fall-back if the quadratic</span>
-    <span class="c1"># approximation is poor and sends us far off-course.</span>
-    <span class="k">if</span> <span class="n">f1</span> <span class="o">&gt;</span> <span class="n">f</span> <span class="o">+</span> <span class="mf">1e-10</span><span class="p">:</span>
-        <span class="k">return</span> <span class="n">brent</span><span class="p">(</span><span class="n">funcs</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">brack</span><span class="o">=</span><span class="p">(</span><span class="n">x</span><span class="o">-</span><span class="mf">0.2</span><span class="p">,</span> <span class="n">x</span><span class="o">+</span><span class="mf">0.2</span><span class="p">),</span> <span class="n">tol</span><span class="o">=</span><span class="n">tol</span><span class="p">)</span>
-
-    <span class="k">return</span> <span class="n">x</span>
 </pre></div>
 
 
@@ -1960,9 +1815,6 @@
       <input type="hidden" name="check_keywords" value="yes" />
       <input type="hidden" name="area" value="default" />
     </form>
-    <p class="searchtip" style="font-size: 90%">
-    Enter search terms or a module, class or function name.
-    </p>
 </div>
 <script type="text/javascript">$('#searchbox').show(0);</script>
         </div>
@@ -1971,7 +1823,7 @@
     </div>
     <div class="footer" role="contentinfo">
         &copy; Copyright 2009-2013, Josef Perktold, Skipper Seabold, Jonathan Taylor, statsmodels-developers.
-      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.3.5.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.4.1.
     </div>
   </body>
 </html>
