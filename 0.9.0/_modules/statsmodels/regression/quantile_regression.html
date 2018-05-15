@@ -1,0 +1,550 @@
+
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="X-UA-Compatible" content="IE=Edge" />
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>statsmodels.regression.quantile_regression &#8212; statsmodels 0.9.0 documentation</title>
+    <link rel="stylesheet" href="../../../_static/nature.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    <script type="text/javascript" src="../../../_static/documentation_options.js"></script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.1/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="shortcut icon" href="../../../_static/statsmodels_hybi_favico.ico"/>
+    <link rel="author" title="About these documents" href="../../../about.html" />
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+<link rel="stylesheet" href="../../../_static/examples.css" type="text/css" />
+<link rel="stylesheet" href="../../../_static/facebox.css" type="text/css" />
+<script type="text/javascript" src="../../../_static/scripts.js">
+</script>
+<script type="text/javascript" src="../../../_static/facebox.js">
+</script>
+<script type="text/javascript">
+$.facebox.settings.closeImage = "../../../_static/closelabel.png"
+$.facebox.settings.loadingImage = "../../../_static/loading.gif"
+</script>
+
+  </head><body>
+<div class="headerwrap">
+    <div class = "header">
+        
+        <a href = "../../../index.html">
+<img src="../../../_static/statsmodels_hybi_banner.png" alt="Logo"
+    style="padding-left: 15px"/></a>
+        
+    </div>
+</div>
+
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+<li><a href ="../../../install.html">Install</a></li> &nbsp;|&nbsp;
+<li><a href="https://groups.google.com/forum/?hl=en#!forum/pystatsmodels">Support</a></li> &nbsp;|&nbsp;
+<li><a href="https://github.com/statsmodels/statsmodels/issues">Bugs</a></li> &nbsp;|&nbsp;
+<li><a href="../../../dev/index.html">Develop</a></li> &nbsp;|&nbsp;
+<li><a href="../../../examples/index.html">Examples</a></li> &nbsp;|&nbsp;
+<li><a href="../../../faq.html">FAQ</a></li> &nbsp;|&nbsp;
+
+          <li class="nav-item nav-item-1"><a href="../../index.html" accesskey="U">Module code</a> |</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+
+
+
+
+  <h1>Source code for statsmodels.regression.quantile_regression</h1><div class="highlight"><pre>
+<span></span><span class="ch">#!/usr/bin/env python</span>
+
+<span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">Quantile regression model</span>
+
+<span class="sd">Model parameters are estimated using iterated reweighted least squares. The</span>
+<span class="sd">asymptotic covariance matrix estimated using kernel density estimation.</span>
+
+<span class="sd">Author: Vincent Arel-Bundock</span>
+<span class="sd">License: BSD-3</span>
+<span class="sd">Created: 2013-03-19</span>
+
+<span class="sd">The original IRLS function was written for Matlab by Shapour Mohammadi,</span>
+<span class="sd">University of Tehran, 2008 (shmohammadi@gmail.com), with some lines based on</span>
+<span class="sd">code written by James P. Lesage in Applied Econometrics Using MATLAB(1999).PP.</span>
+<span class="sd">73-4.  Translated to python with permission from original author by Christian</span>
+<span class="sd">Prinoth (christian at prinoth dot name).</span>
+<span class="sd">&#39;&#39;&#39;</span>
+
+<span class="kn">from</span> <span class="nn">statsmodels.compat.python</span> <span class="k">import</span> <span class="nb">range</span>
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+<span class="kn">import</span> <span class="nn">warnings</span>
+<span class="kn">import</span> <span class="nn">scipy.stats</span> <span class="k">as</span> <span class="nn">stats</span>
+<span class="kn">from</span> <span class="nn">scipy.linalg</span> <span class="k">import</span> <span class="n">pinv</span>
+<span class="kn">from</span> <span class="nn">scipy.stats</span> <span class="k">import</span> <span class="n">norm</span>
+<span class="kn">from</span> <span class="nn">statsmodels.tools.tools</span> <span class="k">import</span> <span class="n">chain_dot</span>
+<span class="kn">from</span> <span class="nn">statsmodels.compat.numpy</span> <span class="k">import</span> <span class="n">np_matrix_rank</span>
+<span class="kn">from</span> <span class="nn">statsmodels.tools.decorators</span> <span class="k">import</span> <span class="n">cache_readonly</span>
+<span class="kn">from</span> <span class="nn">statsmodels.regression.linear_model</span> <span class="k">import</span> <span class="p">(</span><span class="n">RegressionModel</span><span class="p">,</span>
+                                                 <span class="n">RegressionResults</span><span class="p">,</span>
+                                                 <span class="n">RegressionResultsWrapper</span><span class="p">)</span>
+<span class="kn">from</span> <span class="nn">statsmodels.tools.sm_exceptions</span> <span class="k">import</span> <span class="p">(</span><span class="n">ConvergenceWarning</span><span class="p">,</span>
+                                             <span class="n">IterationLimitWarning</span><span class="p">)</span>
+
+<div class="viewcode-block" id="QuantReg"><a class="viewcode-back" href="../../../generated/statsmodels.regression.quantile_regression.QuantReg.html#statsmodels.regression.quantile_regression.QuantReg">[docs]</a><span class="k">class</span> <span class="nc">QuantReg</span><span class="p">(</span><span class="n">RegressionModel</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;Quantile Regression</span>
+
+<span class="sd">    Estimate a quantile regression model using iterative reweighted least</span>
+<span class="sd">    squares.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    endog : array or dataframe</span>
+<span class="sd">        endogenous/response variable</span>
+<span class="sd">    exog : array or dataframe</span>
+<span class="sd">        exogenous/explanatory variable(s)</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    The Least Absolute Deviation (LAD) estimator is a special case where</span>
+<span class="sd">    quantile is set to 0.5 (q argument of the fit method).</span>
+
+<span class="sd">    The asymptotic covariance matrix is estimated following the procedure in</span>
+<span class="sd">    Greene (2008, p.407-408), using either the logistic or gaussian kernels</span>
+<span class="sd">    (kernel argument of the fit method).</span>
+
+<span class="sd">    References</span>
+<span class="sd">    ----------</span>
+<span class="sd">    General:</span>
+
+<span class="sd">    * Birkes, D. and Y. Dodge(1993). Alternative Methods of Regression, John Wiley and Sons.</span>
+<span class="sd">    * Green,W. H. (2008). Econometric Analysis. Sixth Edition. International Student Edition.</span>
+<span class="sd">    * Koenker, R. (2005). Quantile Regression. New York: Cambridge University Press.</span>
+<span class="sd">    * LeSage, J. P.(1999). Applied Econometrics Using MATLAB,</span>
+
+<span class="sd">    Kernels (used by the fit method):</span>
+
+<span class="sd">    * Green (2008) Table 14.2</span>
+
+<span class="sd">    Bandwidth selection (used by the fit method):</span>
+
+<span class="sd">    * Bofinger, E. (1975). Estimation of a density function using order statistics. Australian Journal of Statistics 17: 1-17.</span>
+<span class="sd">    * Chamberlain, G. (1994). Quantile regression, censoring, and the structure of wages. In Advances in Econometrics, Vol. 1: Sixth World Congress, ed. C. A. Sims, 171-209. Cambridge: Cambridge University Press.</span>
+<span class="sd">    * Hall, P., and S. Sheather. (1988). On the distribution of the Studentized quantile. Journal of the Royal Statistical Society, Series B 50: 381-391.</span>
+
+<span class="sd">    Keywords: Least Absolute Deviation(LAD) Regression, Quantile Regression,</span>
+<span class="sd">    Regression, Robust Estimation.</span>
+<span class="sd">    &#39;&#39;&#39;</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">endog</span><span class="p">,</span> <span class="n">exog</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">QuantReg</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">endog</span><span class="p">,</span> <span class="n">exog</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+<div class="viewcode-block" id="QuantReg.whiten"><a class="viewcode-back" href="../../../generated/statsmodels.regression.quantile_regression.QuantReg.whiten.html#statsmodels.regression.quantile_regression.QuantReg.whiten">[docs]</a>    <span class="k">def</span> <span class="nf">whiten</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        QuantReg model whitener does nothing: returns data.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">data</span></div>
+
+<div class="viewcode-block" id="QuantReg.fit"><a class="viewcode-back" href="../../../generated/statsmodels.regression.quantile_regression.QuantReg.fit.html#statsmodels.regression.quantile_regression.QuantReg.fit">[docs]</a>    <span class="k">def</span> <span class="nf">fit</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">q</span><span class="o">=.</span><span class="mi">5</span><span class="p">,</span> <span class="n">vcov</span><span class="o">=</span><span class="s1">&#39;robust&#39;</span><span class="p">,</span> <span class="n">kernel</span><span class="o">=</span><span class="s1">&#39;epa&#39;</span><span class="p">,</span> <span class="n">bandwidth</span><span class="o">=</span><span class="s1">&#39;hsheather&#39;</span><span class="p">,</span>
+            <span class="n">max_iter</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span> <span class="n">p_tol</span><span class="o">=</span><span class="mf">1e-6</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;Solve by Iterative Weighted Least Squares</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        q : float</span>
+<span class="sd">            Quantile must be between 0 and 1</span>
+<span class="sd">        vcov : string, method used to calculate the variance-covariance matrix</span>
+<span class="sd">            of the parameters. Default is ``robust``:</span>
+
+<span class="sd">            - robust : heteroskedasticity robust standard errors (as suggested</span>
+<span class="sd">              in Greene 6th edition)</span>
+<span class="sd">            - iid : iid errors (as in Stata 12)</span>
+
+<span class="sd">        kernel : string, kernel to use in the kernel density estimation for the</span>
+<span class="sd">            asymptotic covariance matrix:</span>
+
+<span class="sd">            - epa: Epanechnikov</span>
+<span class="sd">            - cos: Cosine</span>
+<span class="sd">            - gau: Gaussian</span>
+<span class="sd">            - par: Parzene</span>
+
+<span class="sd">        bandwidth: string, Bandwidth selection method in kernel density</span>
+<span class="sd">            estimation for asymptotic covariance estimate (full</span>
+<span class="sd">            references in QuantReg docstring):</span>
+
+<span class="sd">            - hsheather: Hall-Sheather (1988)</span>
+<span class="sd">            - bofinger: Bofinger (1975)</span>
+<span class="sd">            - chamberlain: Chamberlain (1994)</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+
+        <span class="k">if</span> <span class="n">q</span> <span class="o">&lt;</span> <span class="mi">0</span> <span class="ow">or</span> <span class="n">q</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">Exception</span><span class="p">(</span><span class="s1">&#39;p must be between 0 and 1&#39;</span><span class="p">)</span>
+
+        <span class="n">kern_names</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;biw&#39;</span><span class="p">,</span> <span class="s1">&#39;cos&#39;</span><span class="p">,</span> <span class="s1">&#39;epa&#39;</span><span class="p">,</span> <span class="s1">&#39;gau&#39;</span><span class="p">,</span> <span class="s1">&#39;par&#39;</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">kernel</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">kern_names</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">Exception</span><span class="p">(</span><span class="s2">&quot;kernel must be one of &quot;</span> <span class="o">+</span> <span class="s1">&#39;, &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">kern_names</span><span class="p">))</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">kernel</span> <span class="o">=</span> <span class="n">kernels</span><span class="p">[</span><span class="n">kernel</span><span class="p">]</span>
+
+        <span class="k">if</span> <span class="n">bandwidth</span> <span class="o">==</span> <span class="s1">&#39;hsheather&#39;</span><span class="p">:</span>
+            <span class="n">bandwidth</span> <span class="o">=</span> <span class="n">hall_sheather</span>
+        <span class="k">elif</span> <span class="n">bandwidth</span> <span class="o">==</span> <span class="s1">&#39;bofinger&#39;</span><span class="p">:</span>
+            <span class="n">bandwidth</span> <span class="o">=</span> <span class="n">bofinger</span>
+        <span class="k">elif</span> <span class="n">bandwidth</span> <span class="o">==</span> <span class="s1">&#39;chamberlain&#39;</span><span class="p">:</span>
+            <span class="n">bandwidth</span> <span class="o">=</span> <span class="n">chamberlain</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">Exception</span><span class="p">(</span><span class="s2">&quot;bandwidth must be in &#39;hsheather&#39;, &#39;bofinger&#39;, &#39;chamberlain&#39;&quot;</span><span class="p">)</span>
+
+        <span class="n">endog</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">endog</span>
+        <span class="n">exog</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">exog</span>
+        <span class="n">nobs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span>
+        <span class="n">exog_rank</span> <span class="o">=</span> <span class="n">np_matrix_rank</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">exog</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">rank</span> <span class="o">=</span> <span class="n">exog_rank</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">df_model</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">rank</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_constant</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">df_resid</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">rank</span>
+        <span class="n">n_iter</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="n">xstar</span> <span class="o">=</span> <span class="n">exog</span>
+
+        <span class="n">beta</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">exog_rank</span><span class="p">)</span>
+        <span class="c1"># TODO: better start, initial beta is used only for convergence check</span>
+
+        <span class="c1"># Note the following doesn&#39;t work yet,</span>
+        <span class="c1"># the iteration loop always starts with OLS as initial beta</span>
+<span class="c1">#        if start_params is not None:</span>
+<span class="c1">#            if len(start_params) != rank:</span>
+<span class="c1">#                raise ValueError(&#39;start_params has wrong length&#39;)</span>
+<span class="c1">#            beta = start_params</span>
+<span class="c1">#        else:</span>
+<span class="c1">#            # start with OLS</span>
+<span class="c1">#            beta = np.dot(np.linalg.pinv(exog), endog)</span>
+
+        <span class="n">diff</span> <span class="o">=</span> <span class="mi">10</span>
+        <span class="n">cycle</span> <span class="o">=</span> <span class="kc">False</span>
+
+        <span class="n">history</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">params</span> <span class="o">=</span> <span class="p">[],</span> <span class="n">mse</span><span class="o">=</span><span class="p">[])</span>
+        <span class="k">while</span> <span class="n">n_iter</span> <span class="o">&lt;</span> <span class="n">max_iter</span> <span class="ow">and</span> <span class="n">diff</span> <span class="o">&gt;</span> <span class="n">p_tol</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">cycle</span><span class="p">:</span>
+            <span class="n">n_iter</span> <span class="o">+=</span> <span class="mi">1</span>
+            <span class="n">beta0</span> <span class="o">=</span> <span class="n">beta</span>
+            <span class="n">xtx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">xstar</span><span class="o">.</span><span class="n">T</span><span class="p">,</span> <span class="n">exog</span><span class="p">)</span>
+            <span class="n">xty</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">xstar</span><span class="o">.</span><span class="n">T</span><span class="p">,</span> <span class="n">endog</span><span class="p">)</span>
+            <span class="n">beta</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">pinv</span><span class="p">(</span><span class="n">xtx</span><span class="p">),</span> <span class="n">xty</span><span class="p">)</span>
+            <span class="n">resid</span> <span class="o">=</span> <span class="n">endog</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">exog</span><span class="p">,</span> <span class="n">beta</span><span class="p">)</span>
+
+            <span class="n">mask</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">resid</span><span class="p">)</span> <span class="o">&lt;</span> <span class="o">.</span><span class="mi">000001</span>
+            <span class="n">resid</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span> <span class="o">=</span> <span class="p">((</span><span class="n">resid</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span> <span class="o">&gt;=</span> <span class="mi">0</span><span class="p">)</span> <span class="o">*</span> <span class="mi">2</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span> <span class="o">*</span> <span class="o">.</span><span class="mi">000001</span>
+            <span class="n">resid</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">resid</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">,</span> <span class="n">q</span> <span class="o">*</span> <span class="n">resid</span><span class="p">,</span> <span class="p">(</span><span class="mi">1</span><span class="o">-</span><span class="n">q</span><span class="p">)</span> <span class="o">*</span> <span class="n">resid</span><span class="p">)</span>
+            <span class="n">resid</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">resid</span><span class="p">)</span>
+            <span class="n">xstar</span> <span class="o">=</span> <span class="n">exog</span> <span class="o">/</span> <span class="n">resid</span><span class="p">[:,</span> <span class="n">np</span><span class="o">.</span><span class="n">newaxis</span><span class="p">]</span>
+            <span class="n">diff</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">beta</span> <span class="o">-</span> <span class="n">beta0</span><span class="p">))</span>
+            <span class="n">history</span><span class="p">[</span><span class="s1">&#39;params&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">beta</span><span class="p">)</span>
+            <span class="n">history</span><span class="p">[</span><span class="s1">&#39;mse&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">resid</span><span class="o">*</span><span class="n">resid</span><span class="p">))</span>
+
+            <span class="k">if</span> <span class="p">(</span><span class="n">n_iter</span> <span class="o">&gt;=</span> <span class="mi">300</span><span class="p">)</span> <span class="ow">and</span> <span class="p">(</span><span class="n">n_iter</span> <span class="o">%</span> <span class="mi">100</span> <span class="o">==</span> <span class="mi">0</span><span class="p">):</span>
+                <span class="c1"># check for convergence circle, shouldn&#39;t happen</span>
+                <span class="k">for</span> <span class="n">ii</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">10</span><span class="p">):</span>
+                    <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">beta</span> <span class="o">==</span> <span class="n">history</span><span class="p">[</span><span class="s1">&#39;params&#39;</span><span class="p">][</span><span class="o">-</span><span class="n">ii</span><span class="p">]):</span>
+                        <span class="n">cycle</span> <span class="o">=</span> <span class="kc">True</span>
+                        <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="s2">&quot;Convergence cycle detected&quot;</span><span class="p">,</span> <span class="n">ConvergenceWarning</span><span class="p">)</span>
+                        <span class="k">break</span>
+
+        <span class="k">if</span> <span class="n">n_iter</span> <span class="o">==</span> <span class="n">max_iter</span><span class="p">:</span>
+            <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="s2">&quot;Maximum number of iterations (&quot;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">max_iter</span><span class="p">)</span> <span class="o">+</span> 
+                          <span class="s2">&quot;) reached.&quot;</span><span class="p">,</span> <span class="n">IterationLimitWarning</span><span class="p">)</span>
+
+        <span class="n">e</span> <span class="o">=</span> <span class="n">endog</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">exog</span><span class="p">,</span> <span class="n">beta</span><span class="p">)</span>
+        <span class="c1"># Greene (2008, p.407) writes that Stata 6 uses this bandwidth:</span>
+        <span class="c1"># h = 0.9 * np.std(e) / (nobs**0.2)</span>
+        <span class="c1"># Instead, we calculate bandwidth as in Stata 12</span>
+        <span class="n">iqre</span> <span class="o">=</span> <span class="n">stats</span><span class="o">.</span><span class="n">scoreatpercentile</span><span class="p">(</span><span class="n">e</span><span class="p">,</span> <span class="mi">75</span><span class="p">)</span> <span class="o">-</span> <span class="n">stats</span><span class="o">.</span><span class="n">scoreatpercentile</span><span class="p">(</span><span class="n">e</span><span class="p">,</span> <span class="mi">25</span><span class="p">)</span>
+        <span class="n">h</span> <span class="o">=</span> <span class="n">bandwidth</span><span class="p">(</span><span class="n">nobs</span><span class="p">,</span> <span class="n">q</span><span class="p">)</span>
+        <span class="n">h</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">std</span><span class="p">(</span><span class="n">endog</span><span class="p">),</span>
+                <span class="n">iqre</span> <span class="o">/</span> <span class="mf">1.34</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="n">norm</span><span class="o">.</span><span class="n">ppf</span><span class="p">(</span><span class="n">q</span> <span class="o">+</span> <span class="n">h</span><span class="p">)</span> <span class="o">-</span> <span class="n">norm</span><span class="o">.</span><span class="n">ppf</span><span class="p">(</span><span class="n">q</span> <span class="o">-</span> <span class="n">h</span><span class="p">))</span>
+
+        <span class="n">fhat0</span> <span class="o">=</span> <span class="mf">1.</span> <span class="o">/</span> <span class="p">(</span><span class="n">nobs</span> <span class="o">*</span> <span class="n">h</span><span class="p">)</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">kernel</span><span class="p">(</span><span class="n">e</span> <span class="o">/</span> <span class="n">h</span><span class="p">))</span>
+
+        <span class="k">if</span> <span class="n">vcov</span> <span class="o">==</span> <span class="s1">&#39;robust&#39;</span><span class="p">:</span>
+            <span class="n">d</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">e</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">,</span> <span class="p">(</span><span class="n">q</span><span class="o">/</span><span class="n">fhat0</span><span class="p">)</span><span class="o">**</span><span class="mi">2</span><span class="p">,</span> <span class="p">((</span><span class="mi">1</span><span class="o">-</span><span class="n">q</span><span class="p">)</span><span class="o">/</span><span class="n">fhat0</span><span class="p">)</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span>
+            <span class="n">xtxi</span> <span class="o">=</span> <span class="n">pinv</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">exog</span><span class="o">.</span><span class="n">T</span><span class="p">,</span> <span class="n">exog</span><span class="p">))</span>
+            <span class="n">xtdx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">exog</span><span class="o">.</span><span class="n">T</span> <span class="o">*</span> <span class="n">d</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">newaxis</span><span class="p">,</span> <span class="p">:],</span> <span class="n">exog</span><span class="p">)</span>
+            <span class="n">vcov</span> <span class="o">=</span> <span class="n">chain_dot</span><span class="p">(</span><span class="n">xtxi</span><span class="p">,</span> <span class="n">xtdx</span><span class="p">,</span> <span class="n">xtxi</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">vcov</span> <span class="o">==</span> <span class="s1">&#39;iid&#39;</span><span class="p">:</span>
+            <span class="n">vcov</span> <span class="o">=</span> <span class="p">(</span><span class="mf">1.</span> <span class="o">/</span> <span class="n">fhat0</span><span class="p">)</span><span class="o">**</span><span class="mi">2</span> <span class="o">*</span> <span class="n">q</span> <span class="o">*</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">q</span><span class="p">)</span> <span class="o">*</span> <span class="n">pinv</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">exog</span><span class="o">.</span><span class="n">T</span><span class="p">,</span> <span class="n">exog</span><span class="p">))</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">Exception</span><span class="p">(</span><span class="s2">&quot;vcov must be &#39;robust&#39; or &#39;iid&#39;&quot;</span><span class="p">)</span>
+
+        <span class="n">lfit</span> <span class="o">=</span> <span class="n">QuantRegResults</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">beta</span><span class="p">,</span> <span class="n">normalized_cov_params</span><span class="o">=</span><span class="n">vcov</span><span class="p">)</span>
+
+        <span class="n">lfit</span><span class="o">.</span><span class="n">q</span> <span class="o">=</span> <span class="n">q</span>
+        <span class="n">lfit</span><span class="o">.</span><span class="n">iterations</span> <span class="o">=</span> <span class="n">n_iter</span>
+        <span class="n">lfit</span><span class="o">.</span><span class="n">sparsity</span> <span class="o">=</span> <span class="mf">1.</span> <span class="o">/</span> <span class="n">fhat0</span>
+        <span class="n">lfit</span><span class="o">.</span><span class="n">bandwidth</span> <span class="o">=</span> <span class="n">h</span>
+        <span class="n">lfit</span><span class="o">.</span><span class="n">history</span> <span class="o">=</span> <span class="n">history</span>
+
+        <span class="k">return</span> <span class="n">RegressionResultsWrapper</span><span class="p">(</span><span class="n">lfit</span><span class="p">)</span></div></div>
+
+
+<span class="k">def</span> <span class="nf">_parzen</span><span class="p">(</span><span class="n">u</span><span class="p">):</span>
+    <span class="n">z</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">u</span><span class="p">)</span> <span class="o">&lt;=</span> <span class="o">.</span><span class="mi">5</span><span class="p">,</span> <span class="mf">4.</span><span class="o">/</span><span class="mi">3</span> <span class="o">-</span> <span class="mf">8.</span> <span class="o">*</span> <span class="n">u</span><span class="o">**</span><span class="mi">2</span> <span class="o">+</span> <span class="mf">8.</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">u</span><span class="p">)</span><span class="o">**</span><span class="mi">3</span><span class="p">,</span>
+                 <span class="mf">8.</span> <span class="o">*</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">u</span><span class="p">))</span><span class="o">**</span><span class="mi">3</span> <span class="o">/</span> <span class="mf">3.</span><span class="p">)</span>
+    <span class="n">z</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">u</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="k">return</span> <span class="n">z</span>
+
+
+<span class="n">kernels</span> <span class="o">=</span> <span class="p">{}</span>
+<span class="n">kernels</span><span class="p">[</span><span class="s1">&#39;biw&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="k">lambda</span> <span class="n">u</span><span class="p">:</span> <span class="mf">15.</span> <span class="o">/</span> <span class="mi">16</span> <span class="o">*</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">u</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span><span class="o">**</span><span class="mi">2</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">u</span><span class="p">)</span> <span class="o">&lt;=</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+<span class="n">kernels</span><span class="p">[</span><span class="s1">&#39;cos&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="k">lambda</span> <span class="n">u</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">u</span><span class="p">)</span> <span class="o">&lt;=</span> <span class="o">.</span><span class="mi">5</span><span class="p">,</span> <span class="mi">1</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">cos</span><span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">pi</span> <span class="o">*</span> <span class="n">u</span><span class="p">),</span> <span class="mi">0</span><span class="p">)</span>
+<span class="n">kernels</span><span class="p">[</span><span class="s1">&#39;epa&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="k">lambda</span> <span class="n">u</span><span class="p">:</span> <span class="mf">3.</span> <span class="o">/</span> <span class="mi">4</span> <span class="o">*</span> <span class="p">(</span><span class="mi">1</span><span class="o">-</span><span class="n">u</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">u</span><span class="p">)</span> <span class="o">&lt;=</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+<span class="n">kernels</span><span class="p">[</span><span class="s1">&#39;gau&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="k">lambda</span> <span class="n">u</span><span class="p">:</span> <span class="n">norm</span><span class="o">.</span><span class="n">pdf</span><span class="p">(</span><span class="n">u</span><span class="p">)</span>
+<span class="n">kernels</span><span class="p">[</span><span class="s1">&#39;par&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">_parzen</span>
+<span class="c1">#kernels[&#39;bet&#39;] = lambda u: np.where(np.abs(u) &lt;= 1, .75 * (1 - u) * (1 + u), 0)</span>
+<span class="c1">#kernels[&#39;log&#39;] = lambda u: logistic.pdf(u) * (1 - logistic.pdf(u))</span>
+<span class="c1">#kernels[&#39;tri&#39;] = lambda u: np.where(np.abs(u) &lt;= 1, 1 - np.abs(u), 0)</span>
+<span class="c1">#kernels[&#39;trw&#39;] = lambda u: 35. / 32 * (1 - u**2)**3 * np.where(np.abs(u) &lt;= 1, 1, 0)</span>
+<span class="c1">#kernels[&#39;uni&#39;] = lambda u: 1. / 2 * np.where(np.abs(u) &lt;= 1, 1, 0)</span>
+
+
+<span class="k">def</span> <span class="nf">hall_sheather</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">q</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=.</span><span class="mi">05</span><span class="p">):</span>
+    <span class="n">z</span> <span class="o">=</span> <span class="n">norm</span><span class="o">.</span><span class="n">ppf</span><span class="p">(</span><span class="n">q</span><span class="p">)</span>
+    <span class="n">num</span> <span class="o">=</span> <span class="mf">1.5</span> <span class="o">*</span> <span class="n">norm</span><span class="o">.</span><span class="n">pdf</span><span class="p">(</span><span class="n">z</span><span class="p">)</span><span class="o">**</span><span class="mf">2.</span>
+    <span class="n">den</span> <span class="o">=</span> <span class="mf">2.</span> <span class="o">*</span> <span class="n">z</span><span class="o">**</span><span class="mf">2.</span> <span class="o">+</span> <span class="mf">1.</span>
+    <span class="n">h</span> <span class="o">=</span> <span class="n">n</span><span class="o">**</span><span class="p">(</span><span class="o">-</span><span class="mf">1.</span> <span class="o">/</span> <span class="mi">3</span><span class="p">)</span> <span class="o">*</span> <span class="n">norm</span><span class="o">.</span><span class="n">ppf</span><span class="p">(</span><span class="mf">1.</span> <span class="o">-</span> <span class="n">alpha</span> <span class="o">/</span> <span class="mf">2.</span><span class="p">)</span><span class="o">**</span><span class="p">(</span><span class="mf">2.</span><span class="o">/</span><span class="mi">3</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="n">num</span> <span class="o">/</span> <span class="n">den</span><span class="p">)</span><span class="o">**</span><span class="p">(</span><span class="mf">1.</span><span class="o">/</span><span class="mi">3</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">h</span>
+
+
+<span class="k">def</span> <span class="nf">bofinger</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">q</span><span class="p">):</span>
+    <span class="n">num</span> <span class="o">=</span> <span class="mf">9.</span> <span class="o">/</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">norm</span><span class="o">.</span><span class="n">pdf</span><span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">norm</span><span class="o">.</span><span class="n">ppf</span><span class="p">(</span><span class="n">q</span><span class="p">))</span><span class="o">**</span><span class="mi">4</span>
+    <span class="n">den</span> <span class="o">=</span> <span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">norm</span><span class="o">.</span><span class="n">ppf</span><span class="p">(</span><span class="n">q</span><span class="p">)</span><span class="o">**</span><span class="mi">2</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span><span class="o">**</span><span class="mi">2</span>
+    <span class="n">h</span> <span class="o">=</span> <span class="n">n</span><span class="o">**</span><span class="p">(</span><span class="o">-</span><span class="mf">1.</span> <span class="o">/</span> <span class="mi">5</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="n">num</span> <span class="o">/</span> <span class="n">den</span><span class="p">)</span><span class="o">**</span><span class="p">(</span><span class="mf">1.</span> <span class="o">/</span> <span class="mi">5</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">h</span>
+
+
+<span class="k">def</span> <span class="nf">chamberlain</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">q</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=.</span><span class="mi">05</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">norm</span><span class="o">.</span><span class="n">ppf</span><span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">alpha</span> <span class="o">/</span> <span class="mi">2</span><span class="p">)</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">q</span><span class="o">*</span><span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">q</span><span class="p">)</span> <span class="o">/</span> <span class="n">n</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="QuantRegResults"><a class="viewcode-back" href="../../../generated/statsmodels.regression.quantile_regression.QuantRegResults.html#statsmodels.regression.quantile_regression.QuantRegResults">[docs]</a><span class="k">class</span> <span class="nc">QuantRegResults</span><span class="p">(</span><span class="n">RegressionResults</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;Results instance for the QuantReg model&#39;&#39;&#39;</span>
+
+<div class="viewcode-block" id="QuantRegResults.prsquared"><a class="viewcode-back" href="../../../generated/statsmodels.regression.quantile_regression.QuantRegResults.prsquared.html#statsmodels.regression.quantile_regression.QuantRegResults.prsquared">[docs]</a>    <span class="nd">@cache_readonly</span>
+    <span class="k">def</span> <span class="nf">prsquared</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">q</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">q</span>
+        <span class="n">endog</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">endog</span>
+        <span class="n">e</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">resid</span>
+        <span class="n">e</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">e</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">,</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">q</span><span class="p">)</span> <span class="o">*</span> <span class="n">e</span><span class="p">,</span> <span class="n">q</span> <span class="o">*</span> <span class="n">e</span><span class="p">)</span>
+        <span class="n">e</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">e</span><span class="p">)</span>
+        <span class="n">ered</span> <span class="o">=</span> <span class="n">endog</span> <span class="o">-</span> <span class="n">stats</span><span class="o">.</span><span class="n">scoreatpercentile</span><span class="p">(</span><span class="n">endog</span><span class="p">,</span> <span class="n">q</span> <span class="o">*</span> <span class="mi">100</span><span class="p">)</span>
+        <span class="n">ered</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">ered</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">,</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">q</span><span class="p">)</span> <span class="o">*</span> <span class="n">ered</span><span class="p">,</span> <span class="n">q</span> <span class="o">*</span> <span class="n">ered</span><span class="p">)</span>
+        <span class="n">ered</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">ered</span><span class="p">)</span>
+        <span class="k">return</span> <span class="mi">1</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">e</span><span class="p">)</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">ered</span><span class="p">)</span></div>
+
+    <span class="c1">#@cache_readonly</span>
+<div class="viewcode-block" id="QuantRegResults.scale"><a class="viewcode-back" href="../../../generated/statsmodels.regression.quantile_regression.QuantRegResults.scale.html#statsmodels.regression.quantile_regression.QuantRegResults.scale">[docs]</a>    <span class="k">def</span> <span class="nf">scale</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="mf">1.</span></div>
+
+<div class="viewcode-block" id="QuantRegResults.bic"><a class="viewcode-back" href="../../../generated/statsmodels.regression.quantile_regression.QuantRegResults.bic.html#statsmodels.regression.quantile_regression.QuantRegResults.bic">[docs]</a>    <span class="nd">@cache_readonly</span>
+    <span class="k">def</span> <span class="nf">bic</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span></div>
+
+<div class="viewcode-block" id="QuantRegResults.aic"><a class="viewcode-back" href="../../../generated/statsmodels.regression.quantile_regression.QuantRegResults.aic.html#statsmodels.regression.quantile_regression.QuantRegResults.aic">[docs]</a>    <span class="nd">@cache_readonly</span>
+    <span class="k">def</span> <span class="nf">aic</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span></div>
+
+<div class="viewcode-block" id="QuantRegResults.llf"><a class="viewcode-back" href="../../../generated/statsmodels.regression.quantile_regression.QuantRegResults.llf.html#statsmodels.regression.quantile_regression.QuantRegResults.llf">[docs]</a>    <span class="nd">@cache_readonly</span>
+    <span class="k">def</span> <span class="nf">llf</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span></div>
+
+<div class="viewcode-block" id="QuantRegResults.rsquared"><a class="viewcode-back" href="../../../generated/statsmodels.regression.quantile_regression.QuantRegResults.rsquared.html#statsmodels.regression.quantile_regression.QuantRegResults.rsquared">[docs]</a>    <span class="nd">@cache_readonly</span>
+    <span class="k">def</span> <span class="nf">rsquared</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span></div>
+
+<div class="viewcode-block" id="QuantRegResults.rsquared_adj"><a class="viewcode-back" href="../../../generated/statsmodels.regression.quantile_regression.QuantRegResults.rsquared_adj.html#statsmodels.regression.quantile_regression.QuantRegResults.rsquared_adj">[docs]</a>    <span class="nd">@cache_readonly</span>
+    <span class="k">def</span> <span class="nf">rsquared_adj</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span></div>
+
+<div class="viewcode-block" id="QuantRegResults.mse"><a class="viewcode-back" href="../../../generated/statsmodels.regression.quantile_regression.QuantRegResults.mse.html#statsmodels.regression.quantile_regression.QuantRegResults.mse">[docs]</a>    <span class="nd">@cache_readonly</span>
+    <span class="k">def</span> <span class="nf">mse</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span></div>
+
+<div class="viewcode-block" id="QuantRegResults.mse_model"><a class="viewcode-back" href="../../../generated/statsmodels.regression.quantile_regression.QuantRegResults.mse_model.html#statsmodels.regression.quantile_regression.QuantRegResults.mse_model">[docs]</a>    <span class="nd">@cache_readonly</span>
+    <span class="k">def</span> <span class="nf">mse_model</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span></div>
+
+<div class="viewcode-block" id="QuantRegResults.mse_total"><a class="viewcode-back" href="../../../generated/statsmodels.regression.quantile_regression.QuantRegResults.mse_total.html#statsmodels.regression.quantile_regression.QuantRegResults.mse_total">[docs]</a>    <span class="nd">@cache_readonly</span>
+    <span class="k">def</span> <span class="nf">mse_total</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span></div>
+
+<div class="viewcode-block" id="QuantRegResults.centered_tss"><a class="viewcode-back" href="../../../generated/statsmodels.regression.quantile_regression.QuantRegResults.centered_tss.html#statsmodels.regression.quantile_regression.QuantRegResults.centered_tss">[docs]</a>    <span class="nd">@cache_readonly</span>
+    <span class="k">def</span> <span class="nf">centered_tss</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span></div>
+
+<div class="viewcode-block" id="QuantRegResults.uncentered_tss"><a class="viewcode-back" href="../../../generated/statsmodels.regression.quantile_regression.QuantRegResults.uncentered_tss.html#statsmodels.regression.quantile_regression.QuantRegResults.uncentered_tss">[docs]</a>    <span class="nd">@cache_readonly</span>
+    <span class="k">def</span> <span class="nf">uncentered_tss</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span></div>
+
+<div class="viewcode-block" id="QuantRegResults.HC0_se"><a class="viewcode-back" href="../../../generated/statsmodels.regression.quantile_regression.QuantRegResults.HC0_se.html#statsmodels.regression.quantile_regression.QuantRegResults.HC0_se">[docs]</a>    <span class="nd">@cache_readonly</span>
+    <span class="k">def</span> <span class="nf">HC0_se</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span></div>
+
+<div class="viewcode-block" id="QuantRegResults.HC1_se"><a class="viewcode-back" href="../../../generated/statsmodels.regression.quantile_regression.QuantRegResults.HC1_se.html#statsmodels.regression.quantile_regression.QuantRegResults.HC1_se">[docs]</a>    <span class="nd">@cache_readonly</span>
+    <span class="k">def</span> <span class="nf">HC1_se</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span></div>
+
+<div class="viewcode-block" id="QuantRegResults.HC2_se"><a class="viewcode-back" href="../../../generated/statsmodels.regression.quantile_regression.QuantRegResults.HC2_se.html#statsmodels.regression.quantile_regression.QuantRegResults.HC2_se">[docs]</a>    <span class="nd">@cache_readonly</span>
+    <span class="k">def</span> <span class="nf">HC2_se</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span></div>
+
+<div class="viewcode-block" id="QuantRegResults.HC3_se"><a class="viewcode-back" href="../../../generated/statsmodels.regression.quantile_regression.QuantRegResults.HC3_se.html#statsmodels.regression.quantile_regression.QuantRegResults.HC3_se">[docs]</a>    <span class="nd">@cache_readonly</span>
+    <span class="k">def</span> <span class="nf">HC3_se</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span></div>
+
+<div class="viewcode-block" id="QuantRegResults.summary"><a class="viewcode-back" href="../../../generated/statsmodels.regression.quantile_regression.QuantRegResults.summary.html#statsmodels.regression.quantile_regression.QuantRegResults.summary">[docs]</a>    <span class="k">def</span> <span class="nf">summary</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">yname</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">xname</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">title</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=.</span><span class="mi">05</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Summarize the Regression Results</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        -----------</span>
+<span class="sd">        yname : string, optional</span>
+<span class="sd">            Default is `y`</span>
+<span class="sd">        xname : list of strings, optional</span>
+<span class="sd">            Default is `var_##` for ## in p the number of regressors</span>
+<span class="sd">        title : string, optional</span>
+<span class="sd">            Title for the top table. If not None, then this replaces the</span>
+<span class="sd">            default title</span>
+<span class="sd">        alpha : float</span>
+<span class="sd">            significance level for the confidence intervals</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        smry : Summary instance</span>
+<span class="sd">            this holds the summary tables and text, which can be printed or</span>
+<span class="sd">            converted to various output formats.</span>
+
+<span class="sd">        See Also</span>
+<span class="sd">        --------</span>
+<span class="sd">        statsmodels.iolib.summary.Summary : class to hold summary</span>
+<span class="sd">            results</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="c1"># #TODO: import where we need it (for now), add as cached attributes</span>
+        <span class="c1"># from statsmodels.stats.stattools import (jarque_bera,</span>
+        <span class="c1">#         omni_normtest, durbin_watson)</span>
+        <span class="c1"># jb, jbpv, skew, kurtosis = jarque_bera(self.wresid)</span>
+        <span class="c1"># omni, omnipv = omni_normtest(self.wresid)</span>
+        <span class="c1">#</span>
+        <span class="n">eigvals</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">eigenvals</span>
+        <span class="n">condno</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">condition_number</span>
+        <span class="c1">#</span>
+        <span class="c1"># self.diagn = dict(jb=jb, jbpv=jbpv, skew=skew, kurtosis=kurtosis,</span>
+        <span class="c1">#                   omni=omni, omnipv=omnipv, condno=condno,</span>
+        <span class="c1">#                   mineigval=eigvals[0])</span>
+
+        <span class="n">top_left</span> <span class="o">=</span> <span class="p">[(</span><span class="s1">&#39;Dep. Variable:&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">),</span>
+                    <span class="p">(</span><span class="s1">&#39;Model:&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">),</span>
+                    <span class="p">(</span><span class="s1">&#39;Method:&#39;</span><span class="p">,</span> <span class="p">[</span><span class="s1">&#39;Least Squares&#39;</span><span class="p">]),</span>
+                    <span class="p">(</span><span class="s1">&#39;Date:&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">),</span>
+                    <span class="p">(</span><span class="s1">&#39;Time:&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+                    <span class="p">]</span>
+
+        <span class="n">top_right</span> <span class="o">=</span> <span class="p">[(</span><span class="s1">&#39;Pseudo R-squared:&#39;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;</span><span class="si">%#8.4g</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">prsquared</span><span class="p">]),</span>
+                     <span class="p">(</span><span class="s1">&#39;Bandwidth:&#39;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;</span><span class="si">%#8.4g</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">bandwidth</span><span class="p">]),</span>
+                     <span class="p">(</span><span class="s1">&#39;Sparsity:&#39;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;</span><span class="si">%#8.4g</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">sparsity</span><span class="p">]),</span>
+                     <span class="p">(</span><span class="s1">&#39;No. Observations:&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">),</span>
+                     <span class="p">(</span><span class="s1">&#39;Df Residuals:&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">),</span> <span class="c1">#[self.df_resid]), #TODO: spelling</span>
+                     <span class="p">(</span><span class="s1">&#39;Df Model:&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span> <span class="c1">#[self.df_model])</span>
+                    <span class="p">]</span>
+
+        <span class="c1"># diagn_left = [(&#39;Omnibus:&#39;, [&quot;%#6.3f&quot; % omni]),</span>
+        <span class="c1">#               (&#39;Prob(Omnibus):&#39;, [&quot;%#6.3f&quot; % omnipv]),</span>
+        <span class="c1">#               (&#39;Skew:&#39;, [&quot;%#6.3f&quot; % skew]),</span>
+        <span class="c1">#               (&#39;Kurtosis:&#39;, [&quot;%#6.3f&quot; % kurtosis])</span>
+        <span class="c1">#               ]</span>
+        <span class="c1">#</span>
+        <span class="c1"># diagn_right = [(&#39;Durbin-Watson:&#39;, [&quot;%#8.3f&quot; % durbin_watson(self.wresid)]),</span>
+        <span class="c1">#                (&#39;Jarque-Bera (JB):&#39;, [&quot;%#8.3f&quot; % jb]),</span>
+        <span class="c1">#                (&#39;Prob(JB):&#39;, [&quot;%#8.3g&quot; % jbpv]),</span>
+        <span class="c1">#                (&#39;Cond. No.&#39;, [&quot;%#8.3g&quot; % condno])</span>
+        <span class="c1">#                ]</span>
+
+
+        <span class="k">if</span> <span class="n">title</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">title</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span> <span class="o">+</span> <span class="s1">&#39; &#39;</span> <span class="o">+</span> <span class="s2">&quot;Regression Results&quot;</span>
+
+        <span class="c1">#create summary table instance</span>
+        <span class="kn">from</span> <span class="nn">statsmodels.iolib.summary</span> <span class="k">import</span> <span class="n">Summary</span>
+        <span class="n">smry</span> <span class="o">=</span> <span class="n">Summary</span><span class="p">()</span>
+        <span class="n">smry</span><span class="o">.</span><span class="n">add_table_2cols</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">gleft</span><span class="o">=</span><span class="n">top_left</span><span class="p">,</span> <span class="n">gright</span><span class="o">=</span><span class="n">top_right</span><span class="p">,</span>
+                          <span class="n">yname</span><span class="o">=</span><span class="n">yname</span><span class="p">,</span> <span class="n">xname</span><span class="o">=</span><span class="n">xname</span><span class="p">,</span> <span class="n">title</span><span class="o">=</span><span class="n">title</span><span class="p">)</span>
+        <span class="n">smry</span><span class="o">.</span><span class="n">add_table_params</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">yname</span><span class="o">=</span><span class="n">yname</span><span class="p">,</span> <span class="n">xname</span><span class="o">=</span><span class="n">xname</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=.</span><span class="mi">05</span><span class="p">,</span>
+                             <span class="n">use_t</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+<span class="c1">#        smry.add_table_2cols(self, gleft=diagn_left, gright=diagn_right,</span>
+                          <span class="c1">#yname=yname, xname=xname,</span>
+                          <span class="c1">#title=&quot;&quot;)</span>
+
+        <span class="c1">#add warnings/notes, added to text format only</span>
+        <span class="n">etext</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">if</span> <span class="n">eigvals</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">&lt;</span> <span class="mf">1e-10</span><span class="p">:</span>
+            <span class="n">wstr</span> <span class="o">=</span> <span class="s2">&quot;The smallest eigenvalue is </span><span class="si">%6.3g</span><span class="s2">. This might indicate &quot;</span>
+            <span class="n">wstr</span> <span class="o">+=</span> <span class="s2">&quot;that there are</span><span class="se">\n</span><span class="s2">&quot;</span>
+            <span class="n">wstr</span> <span class="o">+=</span> <span class="s2">&quot;strong multicollinearity problems or that the design &quot;</span>
+            <span class="n">wstr</span> <span class="o">+=</span> <span class="s2">&quot;matrix is singular.&quot;</span>
+            <span class="n">wstr</span> <span class="o">=</span> <span class="n">wstr</span> <span class="o">%</span> <span class="n">eigvals</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+            <span class="n">etext</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">wstr</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">condno</span> <span class="o">&gt;</span> <span class="mi">1000</span><span class="p">:</span>  <span class="c1">#TODO: what is recommended</span>
+            <span class="n">wstr</span> <span class="o">=</span> <span class="s2">&quot;The condition number is large, </span><span class="si">%6.3g</span><span class="s2">. This might &quot;</span>
+            <span class="n">wstr</span> <span class="o">+=</span> <span class="s2">&quot;indicate that there are</span><span class="se">\n</span><span class="s2">&quot;</span>
+            <span class="n">wstr</span> <span class="o">+=</span> <span class="s2">&quot;strong multicollinearity or other numerical &quot;</span>
+            <span class="n">wstr</span> <span class="o">+=</span> <span class="s2">&quot;problems.&quot;</span>
+            <span class="n">wstr</span> <span class="o">=</span> <span class="n">wstr</span> <span class="o">%</span> <span class="n">condno</span>
+            <span class="n">etext</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">wstr</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">etext</span><span class="p">:</span>
+            <span class="n">smry</span><span class="o">.</span><span class="n">add_extra_txt</span><span class="p">(</span><span class="n">etext</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">smry</span></div></div>
+</pre></div>
+
+
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../../../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    </div>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer" role="contentinfo">
+        &#169; Copyright 2009-2017, Josef Perktold, Skipper Seabold, Jonathan Taylor, statsmodels-developers.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.7.4.
+    </div>
+  </body>
+</html>

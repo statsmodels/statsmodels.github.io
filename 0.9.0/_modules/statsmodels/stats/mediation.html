@@ -1,0 +1,507 @@
+
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="X-UA-Compatible" content="IE=Edge" />
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>statsmodels.stats.mediation &#8212; statsmodels 0.9.0 documentation</title>
+    <link rel="stylesheet" href="../../../_static/nature.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    <script type="text/javascript" src="../../../_static/documentation_options.js"></script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.1/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="shortcut icon" href="../../../_static/statsmodels_hybi_favico.ico"/>
+    <link rel="author" title="About these documents" href="../../../about.html" />
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+<link rel="stylesheet" href="../../../_static/examples.css" type="text/css" />
+<link rel="stylesheet" href="../../../_static/facebox.css" type="text/css" />
+<script type="text/javascript" src="../../../_static/scripts.js">
+</script>
+<script type="text/javascript" src="../../../_static/facebox.js">
+</script>
+<script type="text/javascript">
+$.facebox.settings.closeImage = "../../../_static/closelabel.png"
+$.facebox.settings.loadingImage = "../../../_static/loading.gif"
+</script>
+
+  </head><body>
+<div class="headerwrap">
+    <div class = "header">
+        
+        <a href = "../../../index.html">
+<img src="../../../_static/statsmodels_hybi_banner.png" alt="Logo"
+    style="padding-left: 15px"/></a>
+        
+    </div>
+</div>
+
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+<li><a href ="../../../install.html">Install</a></li> &nbsp;|&nbsp;
+<li><a href="https://groups.google.com/forum/?hl=en#!forum/pystatsmodels">Support</a></li> &nbsp;|&nbsp;
+<li><a href="https://github.com/statsmodels/statsmodels/issues">Bugs</a></li> &nbsp;|&nbsp;
+<li><a href="../../../dev/index.html">Develop</a></li> &nbsp;|&nbsp;
+<li><a href="../../../examples/index.html">Examples</a></li> &nbsp;|&nbsp;
+<li><a href="../../../faq.html">FAQ</a></li> &nbsp;|&nbsp;
+
+          <li class="nav-item nav-item-1"><a href="../../index.html" accesskey="U">Module code</a> |</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+
+
+
+
+  <h1>Source code for statsmodels.stats.mediation</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Mediation analysis</span>
+
+<span class="sd">Implements algorithm 1 (&#39;parametric inference&#39;) and algorithm 2</span>
+<span class="sd">(&#39;nonparametric inference&#39;) from:</span>
+
+<span class="sd">Imai, Keele, Tingley (2010).  A general approach to causal mediation</span>
+<span class="sd">analysis. Psychological Methods 15:4, 309-334.</span>
+
+<span class="sd">http://imai.princeton.edu/research/files/BaronKenny.pdf</span>
+
+<span class="sd">The algorithms are described on page 317 of the paper.</span>
+
+<span class="sd">In the case of linear models with no interactions involving the</span>
+<span class="sd">mediator, the results should be similar or identical to the earlier</span>
+<span class="sd">Barron-Kenny approach.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+<span class="kn">import</span> <span class="nn">pandas</span> <span class="k">as</span> <span class="nn">pd</span>
+<span class="kn">from</span> <span class="nn">statsmodels.graphics.utils</span> <span class="k">import</span> <span class="n">maybe_name_or_idx</span>
+<span class="kn">import</span> <span class="nn">statsmodels.compat.pandas</span> <span class="k">as</span> <span class="nn">pdc</span>  <span class="c1"># pragma: no cover</span>
+
+
+<div class="viewcode-block" id="Mediation"><a class="viewcode-back" href="../../../generated/statsmodels.stats.mediation.Mediation.html#statsmodels.stats.mediation.Mediation">[docs]</a><span class="k">class</span> <span class="nc">Mediation</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Conduct a mediation analysis.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    outcome_model : statsmodels model</span>
+<span class="sd">        Regression model for the outcome.  Predictor variables include</span>
+<span class="sd">        the treatment/exposure, the mediator, and any other variables</span>
+<span class="sd">        of interest.</span>
+<span class="sd">    mediator_model : statsmodels model</span>
+<span class="sd">        Regression model for the mediator variable.  Predictor</span>
+<span class="sd">        variables include the treatment/exposure and any other</span>
+<span class="sd">        variables of interest.</span>
+<span class="sd">    exposure : string or (int, int) tuple</span>
+<span class="sd">        The name or column position of the treatment/exposure</span>
+<span class="sd">        variable.  If positions are given, the first integer is the</span>
+<span class="sd">        column position of the exposure variable in the outcome model</span>
+<span class="sd">        and the second integer is the position of the exposure variable</span>
+<span class="sd">        in the mediator model.  If a string is given, it must be the name</span>
+<span class="sd">        of the exposure variable in both regression models.</span>
+<span class="sd">    mediator : string or int</span>
+<span class="sd">        The name or column position of the mediator variable in the</span>
+<span class="sd">        outcome regression model.  If None, infer the name from the</span>
+<span class="sd">        mediator model formula (if present).</span>
+<span class="sd">    moderators : dict</span>
+<span class="sd">        Map from variable names or index positions to values of</span>
+<span class="sd">        moderator variables that are held fixed when calculating</span>
+<span class="sd">        mediation effects.  If the keys are index position they must</span>
+<span class="sd">        be tuples `(i, j)` where `i` is the index in the outcome model</span>
+<span class="sd">        and `j` is the index in the mediator model.  Otherwise the</span>
+<span class="sd">        keys must be variable names.</span>
+<span class="sd">    outcome_fit_kwargs : dict-like</span>
+<span class="sd">        Keyword arguments to use when fitting the outcome model.</span>
+<span class="sd">    mediator_fit_kwargs : dict-like</span>
+<span class="sd">        Keyword arguments to use when fitting the mediator model.</span>
+
+<span class="sd">    Returns a ``MediationResults`` object.</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    The mediator model class must implement ``get_distribution``.</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    A basic mediation analysis using formulas:</span>
+
+<span class="sd">    &gt;&gt;&gt; import statsmodels.api as sm</span>
+<span class="sd">    &gt;&gt;&gt; import statsmodels.genmod.families.links as links</span>
+<span class="sd">    &gt;&gt;&gt; probit = links.probit</span>
+<span class="sd">    &gt;&gt;&gt; outcome_model = sm.GLM.from_formula(&quot;cong_mesg ~ emo + treat + age + educ + gender + income&quot;,</span>
+<span class="sd">    ...                                     data, family=sm.families.Binomial(link=probit()))</span>
+<span class="sd">    &gt;&gt;&gt; mediator_model = sm.OLS.from_formula(&quot;emo ~ treat + age + educ + gender + income&quot;, data)</span>
+<span class="sd">    &gt;&gt;&gt; med = Mediation(outcome_model, mediator_model, &quot;treat&quot;, &quot;emo&quot;).fit()</span>
+<span class="sd">    &gt;&gt;&gt; med.summary()</span>
+
+<span class="sd">    A basic mediation analysis without formulas.  This may be slightly</span>
+<span class="sd">    faster than the approach using formulas.  If there are any</span>
+<span class="sd">    interactions involving the treatment or mediator variables this</span>
+<span class="sd">    approach will not work, you must use formulas.</span>
+
+<span class="sd">    &gt;&gt;&gt; import patsy</span>
+<span class="sd">    &gt;&gt;&gt; outcome = np.asarray(data[&quot;cong_mesg&quot;])</span>
+<span class="sd">    &gt;&gt;&gt; outcome_exog = patsy.dmatrix(&quot;emo + treat + age + educ + gender + income&quot;, data,</span>
+<span class="sd">    ...                              return_type=&#39;dataframe&#39;)</span>
+<span class="sd">    &gt;&gt;&gt; probit = sm.families.links.probit</span>
+<span class="sd">    &gt;&gt;&gt; outcome_model = sm.GLM(outcome, outcome_exog, family=sm.families.Binomial(link=probit()))</span>
+<span class="sd">    &gt;&gt;&gt; mediator = np.asarray(data[&quot;emo&quot;])</span>
+<span class="sd">    &gt;&gt;&gt; mediator_exog = patsy.dmatrix(&quot;treat + age + educ + gender + income&quot;, data,</span>
+<span class="sd">    ...                               return_type=&#39;dataframe&#39;)</span>
+<span class="sd">    &gt;&gt;&gt; mediator_model = sm.OLS(mediator, mediator_exog)</span>
+<span class="sd">    &gt;&gt;&gt; tx_pos = [outcome_exog.columns.tolist().index(&quot;treat&quot;),</span>
+<span class="sd">    ...           mediator_exog.columns.tolist().index(&quot;treat&quot;)]</span>
+<span class="sd">    &gt;&gt;&gt; med_pos = outcome_exog.columns.tolist().index(&quot;emo&quot;)</span>
+<span class="sd">    &gt;&gt;&gt; med = Mediation(outcome_model, mediator_model, tx_pos, med_pos).fit()</span>
+<span class="sd">    &gt;&gt;&gt; med.summary()</span>
+
+<span class="sd">    A moderated mediation analysis.  The mediation effect is computed</span>
+<span class="sd">    for people of age 20.</span>
+
+<span class="sd">    &gt;&gt;&gt; fml = &quot;cong_mesg ~ emo + treat*age + emo*age + educ + gender + income&quot;,</span>
+<span class="sd">    &gt;&gt;&gt; outcome_model = sm.GLM.from_formula(fml, data,</span>
+<span class="sd">    ...                                      family=sm.families.Binomial())</span>
+<span class="sd">    &gt;&gt;&gt; mediator_model = sm.OLS.from_formula(&quot;emo ~ treat*age + educ + gender + income&quot;, data)</span>
+<span class="sd">    &gt;&gt;&gt; moderators = {&quot;age&quot; : 20}</span>
+<span class="sd">    &gt;&gt;&gt; med = Mediation(outcome_model, mediator_model, &quot;treat&quot;, &quot;emo&quot;,</span>
+<span class="sd">    ...                 moderators=moderators).fit()</span>
+
+<span class="sd">    References</span>
+<span class="sd">    ----------</span>
+<span class="sd">    Imai, Keele, Tingley (2010).  A general approach to causal mediation</span>
+<span class="sd">    analysis. Psychological Methods 15:4, 309-334.</span>
+<span class="sd">    http://imai.princeton.edu/research/files/BaronKenny.pdf</span>
+
+<span class="sd">    Tingley, Yamamoto, Hirose, Keele, Imai (2014).  mediation : R</span>
+<span class="sd">    package for causal mediation analysis.  Journal of Statistical</span>
+<span class="sd">    Software 59:5.  http://www.jstatsoft.org/v59/i05/paper</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">outcome_model</span><span class="p">,</span> <span class="n">mediator_model</span><span class="p">,</span> <span class="n">exposure</span><span class="p">,</span> <span class="n">mediator</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                 <span class="n">moderators</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">outcome_fit_kwargs</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">mediator_fit_kwargs</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">outcome_model</span> <span class="o">=</span> <span class="n">outcome_model</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">mediator_model</span> <span class="o">=</span> <span class="n">mediator_model</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">exposure</span> <span class="o">=</span> <span class="n">exposure</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">moderators</span> <span class="o">=</span> <span class="n">moderators</span> <span class="k">if</span> <span class="n">moderators</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="p">{}</span>
+
+        <span class="k">if</span> <span class="n">mediator</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">mediator</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_guess_endog_name</span><span class="p">(</span><span class="n">mediator_model</span><span class="p">,</span> <span class="s1">&#39;mediator&#39;</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">mediator</span> <span class="o">=</span> <span class="n">mediator</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_outcome_fit_kwargs</span> <span class="o">=</span> <span class="p">(</span><span class="n">outcome_fit_kwargs</span> <span class="k">if</span> <span class="n">outcome_fit_kwargs</span>
+                                    <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="p">{})</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_mediator_fit_kwargs</span> <span class="o">=</span> <span class="p">(</span><span class="n">mediator_fit_kwargs</span> <span class="k">if</span> <span class="n">mediator_fit_kwargs</span>
+                                     <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="p">{})</span>
+
+        <span class="c1"># We will be changing these so need to copy.</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_outcome_exog</span> <span class="o">=</span> <span class="n">outcome_model</span><span class="o">.</span><span class="n">exog</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_mediator_exog</span> <span class="o">=</span> <span class="n">mediator_model</span><span class="o">.</span><span class="n">exog</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+
+        <span class="c1"># Position of the exposure variable in the mediator model.</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_exp_pos_mediator</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_variable_pos</span><span class="p">(</span><span class="s1">&#39;exposure&#39;</span><span class="p">,</span> <span class="s1">&#39;mediator&#39;</span><span class="p">)</span>
+
+        <span class="c1"># Position of the exposure variable in the outcome model.</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_exp_pos_outcome</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_variable_pos</span><span class="p">(</span><span class="s1">&#39;exposure&#39;</span><span class="p">,</span> <span class="s1">&#39;outcome&#39;</span><span class="p">)</span>
+
+        <span class="c1"># Position of the mediator variable in the outcome model.</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_med_pos_outcome</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_variable_pos</span><span class="p">(</span><span class="s1">&#39;mediator&#39;</span><span class="p">,</span> <span class="s1">&#39;outcome&#39;</span><span class="p">)</span>
+
+
+    <span class="k">def</span> <span class="nf">_variable_pos</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">var</span><span class="p">,</span> <span class="n">model</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">model</span> <span class="o">==</span> <span class="s1">&#39;mediator&#39;</span><span class="p">:</span>
+            <span class="n">mod</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">mediator_model</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">mod</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">outcome_model</span>
+
+        <span class="k">if</span> <span class="n">var</span> <span class="o">==</span> <span class="s1">&#39;mediator&#39;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">maybe_name_or_idx</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">mediator</span><span class="p">,</span> <span class="n">mod</span><span class="p">)[</span><span class="mi">1</span><span class="p">]</span>
+
+        <span class="n">exp</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">exposure</span>
+        <span class="n">exp_is_2</span> <span class="o">=</span> <span class="p">((</span><span class="nb">len</span><span class="p">(</span><span class="n">exp</span><span class="p">)</span> <span class="o">==</span> <span class="mi">2</span><span class="p">)</span> <span class="ow">and</span> <span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="n">exp</span><span class="p">)</span> <span class="o">!=</span> <span class="nb">type</span><span class="p">(</span><span class="s1">&#39;&#39;</span><span class="p">)))</span>
+
+        <span class="k">if</span> <span class="n">exp_is_2</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">model</span> <span class="o">==</span> <span class="s1">&#39;outcome&#39;</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">exp</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="k">elif</span> <span class="n">model</span> <span class="o">==</span> <span class="s1">&#39;mediator&#39;</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">exp</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">maybe_name_or_idx</span><span class="p">(</span><span class="n">exp</span><span class="p">,</span> <span class="n">mod</span><span class="p">)[</span><span class="mi">1</span><span class="p">]</span>
+
+
+    <span class="k">def</span> <span class="nf">_guess_endog_name</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">typ</span><span class="p">):</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="s1">&#39;formula&#39;</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">model</span><span class="o">.</span><span class="n">formula</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;~&quot;</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;cannot infer </span><span class="si">%s</span><span class="s1"> name without formula&#39;</span> <span class="o">%</span> <span class="n">typ</span><span class="p">)</span>
+
+
+    <span class="k">def</span> <span class="nf">_simulate_params</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">result</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Simulate model parameters from fitted sampling distribution.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">mn</span> <span class="o">=</span> <span class="n">result</span><span class="o">.</span><span class="n">params</span>
+        <span class="n">cov</span> <span class="o">=</span> <span class="n">result</span><span class="o">.</span><span class="n">cov_params</span><span class="p">()</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">multivariate_normal</span><span class="p">(</span><span class="n">mn</span><span class="p">,</span> <span class="n">cov</span><span class="p">)</span>
+
+
+    <span class="k">def</span> <span class="nf">_get_mediator_exog</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">exposure</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return the mediator exog matrix with exposure set to the given</span>
+<span class="sd">        value.  Set values of moderated variables as needed.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">mediator_exog</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_mediator_exog</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">mediator_model</span><span class="p">,</span> <span class="s1">&#39;formula&#39;</span><span class="p">):</span>
+            <span class="n">mediator_exog</span><span class="p">[:,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_exp_pos_mediator</span><span class="p">]</span> <span class="o">=</span> <span class="n">exposure</span>
+            <span class="k">for</span> <span class="n">ix</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">moderators</span><span class="p">:</span>
+                <span class="n">v</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">moderators</span><span class="p">[</span><span class="n">ix</span><span class="p">]</span>
+                <span class="n">mediator_exog</span><span class="p">[:,</span> <span class="n">ix</span><span class="p">[</span><span class="mi">1</span><span class="p">]]</span> <span class="o">=</span> <span class="n">v</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># Need to regenerate the model exog</span>
+            <span class="n">df</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">mediator_model</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">frame</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+            <span class="n">df</span><span class="o">.</span><span class="n">loc</span><span class="p">[:,</span> <span class="bp">self</span><span class="o">.</span><span class="n">exposure</span><span class="p">]</span> <span class="o">=</span> <span class="n">exposure</span>
+            <span class="k">for</span> <span class="n">vname</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">moderators</span><span class="p">:</span>
+                <span class="n">v</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">moderators</span><span class="p">[</span><span class="n">vname</span><span class="p">]</span>
+                <span class="n">df</span><span class="o">.</span><span class="n">loc</span><span class="p">[:,</span> <span class="n">vname</span><span class="p">]</span> <span class="o">=</span> <span class="n">v</span>
+            <span class="n">klass</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">mediator_model</span><span class="o">.</span><span class="vm">__class__</span>
+            <span class="n">init_kwargs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">mediator_model</span><span class="o">.</span><span class="n">_get_init_kwds</span><span class="p">()</span>
+            <span class="n">model</span> <span class="o">=</span> <span class="n">klass</span><span class="o">.</span><span class="n">from_formula</span><span class="p">(</span><span class="n">data</span><span class="o">=</span><span class="n">df</span><span class="p">,</span> <span class="o">**</span><span class="n">init_kwargs</span><span class="p">)</span>
+            <span class="n">mediator_exog</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">exog</span>
+
+        <span class="k">return</span> <span class="n">mediator_exog</span>
+
+
+    <span class="k">def</span> <span class="nf">_get_outcome_exog</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">exposure</span><span class="p">,</span> <span class="n">mediator</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Retun the exog design matrix with mediator and exposure set to</span>
+<span class="sd">        the given values.  Set values of moderated variables as</span>
+<span class="sd">        needed.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">outcome_exog</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_outcome_exog</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">outcome_model</span><span class="p">,</span> <span class="s1">&#39;formula&#39;</span><span class="p">):</span>
+            <span class="n">outcome_exog</span><span class="p">[:,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_med_pos_outcome</span><span class="p">]</span> <span class="o">=</span> <span class="n">mediator</span>
+            <span class="n">outcome_exog</span><span class="p">[:,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_exp_pos_outcome</span><span class="p">]</span> <span class="o">=</span> <span class="n">exposure</span>
+            <span class="k">for</span> <span class="n">ix</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">moderators</span><span class="p">:</span>
+                <span class="n">v</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">moderators</span><span class="p">[</span><span class="n">ix</span><span class="p">]</span>
+                <span class="n">outcome_exog</span><span class="p">[:,</span> <span class="n">ix</span><span class="p">[</span><span class="mi">0</span><span class="p">]]</span> <span class="o">=</span> <span class="n">v</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># Need to regenerate the model exog</span>
+            <span class="n">df</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">outcome_model</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">frame</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+            <span class="n">df</span><span class="o">.</span><span class="n">loc</span><span class="p">[:,</span> <span class="bp">self</span><span class="o">.</span><span class="n">exposure</span><span class="p">]</span> <span class="o">=</span> <span class="n">exposure</span>
+            <span class="n">df</span><span class="o">.</span><span class="n">loc</span><span class="p">[:,</span> <span class="bp">self</span><span class="o">.</span><span class="n">mediator</span><span class="p">]</span> <span class="o">=</span> <span class="n">mediator</span>
+            <span class="k">for</span> <span class="n">vname</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">moderators</span><span class="p">:</span>
+                <span class="n">v</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">moderators</span><span class="p">[</span><span class="n">vname</span><span class="p">]</span>
+                <span class="n">df</span><span class="o">.</span><span class="n">loc</span><span class="p">[:,</span> <span class="n">vname</span><span class="p">]</span> <span class="o">=</span> <span class="n">v</span>
+            <span class="n">klass</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">outcome_model</span><span class="o">.</span><span class="vm">__class__</span>
+            <span class="n">init_kwargs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">outcome_model</span><span class="o">.</span><span class="n">_get_init_kwds</span><span class="p">()</span>
+            <span class="n">model</span> <span class="o">=</span> <span class="n">klass</span><span class="o">.</span><span class="n">from_formula</span><span class="p">(</span><span class="n">data</span><span class="o">=</span><span class="n">df</span><span class="p">,</span> <span class="o">**</span><span class="n">init_kwargs</span><span class="p">)</span>
+            <span class="n">outcome_exog</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">exog</span>
+
+        <span class="k">return</span> <span class="n">outcome_exog</span>
+
+
+    <span class="k">def</span> <span class="nf">_fit_model</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">fit_kwargs</span><span class="p">,</span> <span class="n">boot</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+        <span class="n">klass</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="vm">__class__</span>
+        <span class="n">init_kwargs</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">_get_init_kwds</span><span class="p">()</span>
+        <span class="n">endog</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">endog</span>
+        <span class="n">exog</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">exog</span>
+        <span class="k">if</span> <span class="n">boot</span><span class="p">:</span>
+            <span class="n">ii</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">endog</span><span class="p">),</span> <span class="nb">len</span><span class="p">(</span><span class="n">endog</span><span class="p">))</span>
+            <span class="n">endog</span> <span class="o">=</span> <span class="n">endog</span><span class="p">[</span><span class="n">ii</span><span class="p">]</span>
+            <span class="n">exog</span> <span class="o">=</span> <span class="n">exog</span><span class="p">[</span><span class="n">ii</span><span class="p">,</span> <span class="p">:]</span>
+        <span class="n">outcome_model</span> <span class="o">=</span> <span class="n">klass</span><span class="p">(</span><span class="n">endog</span><span class="p">,</span> <span class="n">exog</span><span class="p">,</span> <span class="o">**</span><span class="n">init_kwargs</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">outcome_model</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="o">**</span><span class="n">fit_kwargs</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="Mediation.fit"><a class="viewcode-back" href="../../../generated/statsmodels.stats.mediation.Mediation.fit.html#statsmodels.stats.mediation.Mediation.fit">[docs]</a>    <span class="k">def</span> <span class="nf">fit</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s2">&quot;parametric&quot;</span><span class="p">,</span> <span class="n">n_rep</span><span class="o">=</span><span class="mi">1000</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Fit a regression model to assess mediation.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        method : string</span>
+<span class="sd">            Either &#39;parametric&#39; or &#39;bootstrap&#39;.</span>
+<span class="sd">        n_rep : integer</span>
+<span class="sd">            The number of simulation replications.</span>
+
+<span class="sd">        Returns a MediationResults object.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="k">if</span> <span class="n">method</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;para&quot;</span><span class="p">):</span>
+            <span class="c1"># Initial fit to unperturbed data.</span>
+            <span class="n">outcome_result</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_fit_model</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">outcome_model</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_outcome_fit_kwargs</span><span class="p">)</span>
+            <span class="n">mediator_result</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_fit_model</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">mediator_model</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_mediator_fit_kwargs</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="ow">not</span> <span class="n">method</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;boot&quot;</span><span class="p">):</span>
+            <span class="k">raise</span><span class="p">(</span><span class="s2">&quot;method must be either &#39;parametric&#39; or &#39;bootstrap&#39;&quot;</span><span class="p">)</span>
+
+        <span class="n">indirect_effects</span> <span class="o">=</span> <span class="p">[[],</span> <span class="p">[]]</span>
+        <span class="n">direct_effects</span> <span class="o">=</span> <span class="p">[[],</span> <span class="p">[]]</span>
+
+        <span class="k">for</span> <span class="nb">iter</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_rep</span><span class="p">):</span>
+
+            <span class="k">if</span> <span class="n">method</span> <span class="o">==</span> <span class="s2">&quot;parametric&quot;</span><span class="p">:</span>
+                <span class="c1"># Realization of outcome model parameters from sampling distribution</span>
+                <span class="n">outcome_params</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_simulate_params</span><span class="p">(</span><span class="n">outcome_result</span><span class="p">)</span>
+
+                <span class="c1"># Realization of mediation model parameters from sampling distribution</span>
+                <span class="n">mediation_params</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_simulate_params</span><span class="p">(</span><span class="n">mediator_result</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">outcome_result</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_fit_model</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">outcome_model</span><span class="p">,</span>
+                                                 <span class="bp">self</span><span class="o">.</span><span class="n">_outcome_fit_kwargs</span><span class="p">,</span> <span class="n">boot</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+                <span class="n">outcome_params</span> <span class="o">=</span> <span class="n">outcome_result</span><span class="o">.</span><span class="n">params</span>
+                <span class="n">mediator_result</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_fit_model</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">mediator_model</span><span class="p">,</span>
+                                                  <span class="bp">self</span><span class="o">.</span><span class="n">_mediator_fit_kwargs</span><span class="p">,</span> <span class="n">boot</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+                <span class="n">mediation_params</span> <span class="o">=</span> <span class="n">mediator_result</span><span class="o">.</span><span class="n">params</span>
+
+            <span class="c1"># predicted outcomes[tm][te] is the outcome when the</span>
+            <span class="c1"># mediator is set to tm and the outcome/exposure is set to</span>
+            <span class="c1"># te.</span>
+            <span class="n">predicted_outcomes</span> <span class="o">=</span> <span class="p">[[</span><span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">],</span> <span class="p">[</span><span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">]]</span>
+            <span class="k">for</span> <span class="n">tm</span> <span class="ow">in</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="n">mex</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_mediator_exog</span><span class="p">(</span><span class="n">tm</span><span class="p">)</span>
+                <span class="n">gen</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">mediator_model</span><span class="o">.</span><span class="n">get_distribution</span><span class="p">(</span><span class="n">mediation_params</span><span class="p">,</span>
+                                                           <span class="n">mediator_result</span><span class="o">.</span><span class="n">scale</span><span class="p">,</span>
+                                                           <span class="n">exog</span><span class="o">=</span><span class="n">mex</span><span class="p">)</span>
+                <span class="n">potential_mediator</span> <span class="o">=</span> <span class="n">gen</span><span class="o">.</span><span class="n">rvs</span><span class="p">(</span><span class="n">mex</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+
+                <span class="k">for</span> <span class="n">te</span> <span class="ow">in</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">:</span>
+                    <span class="n">oex</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_outcome_exog</span><span class="p">(</span><span class="n">te</span><span class="p">,</span> <span class="n">potential_mediator</span><span class="p">)</span>
+                    <span class="n">po</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">outcome_model</span><span class="o">.</span><span class="n">predict</span><span class="p">(</span><span class="n">outcome_params</span><span class="p">,</span> <span class="n">oex</span><span class="p">)</span>
+                    <span class="n">predicted_outcomes</span><span class="p">[</span><span class="n">tm</span><span class="p">][</span><span class="n">te</span><span class="p">]</span> <span class="o">=</span> <span class="n">po</span>
+
+            <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="n">indirect_effects</span><span class="p">[</span><span class="n">t</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">predicted_outcomes</span><span class="p">[</span><span class="mi">1</span><span class="p">][</span><span class="n">t</span><span class="p">]</span> <span class="o">-</span> <span class="n">predicted_outcomes</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="n">t</span><span class="p">])</span>
+                <span class="n">direct_effects</span><span class="p">[</span><span class="n">t</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">predicted_outcomes</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="mi">1</span><span class="p">]</span> <span class="o">-</span> <span class="n">predicted_outcomes</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="mi">0</span><span class="p">])</span>
+
+        <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="n">indirect_effects</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">indirect_effects</span><span class="p">[</span><span class="n">t</span><span class="p">])</span><span class="o">.</span><span class="n">T</span>
+            <span class="n">direct_effects</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">direct_effects</span><span class="p">[</span><span class="n">t</span><span class="p">])</span><span class="o">.</span><span class="n">T</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">indirect_effects</span> <span class="o">=</span> <span class="n">indirect_effects</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">direct_effects</span> <span class="o">=</span> <span class="n">direct_effects</span>
+
+        <span class="n">rslt</span> <span class="o">=</span> <span class="n">MediationResults</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">indirect_effects</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">direct_effects</span><span class="p">)</span>
+        <span class="n">rslt</span><span class="o">.</span><span class="n">method</span> <span class="o">=</span> <span class="n">method</span>
+        <span class="k">return</span> <span class="n">rslt</span></div></div>
+
+
+<span class="k">def</span> <span class="nf">_pvalue</span><span class="p">(</span><span class="n">vec</span><span class="p">):</span>
+    <span class="k">return</span> <span class="mi">2</span> <span class="o">*</span> <span class="nb">min</span><span class="p">(</span><span class="nb">sum</span><span class="p">(</span><span class="n">vec</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">),</span> <span class="nb">sum</span><span class="p">(</span><span class="n">vec</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">))</span> <span class="o">/</span> <span class="nb">float</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">vec</span><span class="p">))</span>
+
+
+<div class="viewcode-block" id="MediationResults"><a class="viewcode-back" href="../../../generated/statsmodels.stats.mediation.MediationResults.html#statsmodels.stats.mediation.MediationResults">[docs]</a><span class="k">class</span> <span class="nc">MediationResults</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A class for holding the results of a mediation analysis.</span>
+
+<span class="sd">    The following terms are used in the summary output:</span>
+
+<span class="sd">    ACME : average causal mediated effect</span>
+<span class="sd">    ADE : average direct effect</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">indirect_effects</span><span class="p">,</span> <span class="n">direct_effects</span><span class="p">):</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">indirect_effects</span> <span class="o">=</span> <span class="n">indirect_effects</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">direct_effects</span> <span class="o">=</span> <span class="n">direct_effects</span>
+
+        <span class="n">indirect_effects_avg</span> <span class="o">=</span> <span class="p">[</span><span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">]</span>
+        <span class="n">direct_effects_avg</span> <span class="o">=</span> <span class="p">[</span><span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">]</span>
+        <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="n">indirect_effects_avg</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">indirect_effects</span><span class="p">[</span><span class="n">t</span><span class="p">]</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+            <span class="n">direct_effects_avg</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">direct_effects</span><span class="p">[</span><span class="n">t</span><span class="p">]</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">ACME_ctrl</span> <span class="o">=</span> <span class="n">indirect_effects_avg</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">ACME_tx</span> <span class="o">=</span> <span class="n">indirect_effects_avg</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">ADE_ctrl</span> <span class="o">=</span> <span class="n">direct_effects_avg</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">ADE_tx</span> <span class="o">=</span> <span class="n">direct_effects_avg</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">total_effect</span> <span class="o">=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ACME_ctrl</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">ACME_tx</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">ADE_ctrl</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">ADE_tx</span><span class="p">)</span> <span class="o">/</span> <span class="mi">2</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">prop_med_ctrl</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ACME_ctrl</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">total_effect</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">prop_med_tx</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ACME_tx</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">total_effect</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">prop_med_avg</span> <span class="o">=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">prop_med_ctrl</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">prop_med_tx</span><span class="p">)</span> <span class="o">/</span> <span class="mi">2</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">ACME_avg</span> <span class="o">=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ACME_ctrl</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">ACME_tx</span><span class="p">)</span> <span class="o">/</span> <span class="mi">2</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">ADE_avg</span> <span class="o">=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ADE_ctrl</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">ADE_tx</span><span class="p">)</span> <span class="o">/</span> <span class="mi">2</span>
+
+
+<div class="viewcode-block" id="MediationResults.summary"><a class="viewcode-back" href="../../../generated/statsmodels.stats.mediation.MediationResults.summary.html#statsmodels.stats.mediation.MediationResults.summary">[docs]</a>    <span class="k">def</span> <span class="nf">summary</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="mf">0.05</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Provide a summary of a mediation analysis.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="n">columns</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;Estimate&quot;</span><span class="p">,</span> <span class="s2">&quot;Lower CI bound&quot;</span><span class="p">,</span> <span class="s2">&quot;Upper CI bound&quot;</span><span class="p">,</span> <span class="s2">&quot;P-value&quot;</span><span class="p">]</span>
+        <span class="n">index</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;ACME (control)&quot;</span><span class="p">,</span> <span class="s2">&quot;ACME (treated)&quot;</span><span class="p">,</span> <span class="s2">&quot;ADE (control)&quot;</span><span class="p">,</span> <span class="s2">&quot;ADE (treated)&quot;</span><span class="p">,</span>
+                 <span class="s2">&quot;Total effect&quot;</span><span class="p">,</span> <span class="s2">&quot;Prop. mediated (control)&quot;</span><span class="p">,</span> <span class="s2">&quot;Prop. mediated (treated)&quot;</span><span class="p">,</span>
+                 <span class="s2">&quot;ACME (average)&quot;</span><span class="p">,</span> <span class="s2">&quot;ADE (average)&quot;</span><span class="p">,</span> <span class="s2">&quot;Prop. mediated (average)&quot;</span><span class="p">]</span>
+        <span class="n">smry</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">columns</span><span class="o">=</span><span class="n">columns</span><span class="p">,</span> <span class="n">index</span><span class="o">=</span><span class="n">index</span><span class="p">)</span>
+
+        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">vec</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">([</span><span class="bp">self</span><span class="o">.</span><span class="n">ACME_ctrl</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">ACME_tx</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">ADE_ctrl</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">ADE_tx</span><span class="p">,</span>
+                                 <span class="bp">self</span><span class="o">.</span><span class="n">total_effect</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">prop_med_ctrl</span><span class="p">,</span>
+                                 <span class="bp">self</span><span class="o">.</span><span class="n">prop_med_tx</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">ACME_avg</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">ADE_avg</span><span class="p">,</span>
+                                 <span class="bp">self</span><span class="o">.</span><span class="n">prop_med_avg</span><span class="p">]):</span>
+
+            <span class="k">if</span> <span class="p">((</span><span class="n">vec</span> <span class="ow">is</span> <span class="bp">self</span><span class="o">.</span><span class="n">prop_med_ctrl</span><span class="p">)</span> <span class="ow">or</span> <span class="p">(</span><span class="n">vec</span> <span class="ow">is</span> <span class="bp">self</span><span class="o">.</span><span class="n">prop_med_tx</span><span class="p">)</span> <span class="ow">or</span>
+                <span class="p">(</span><span class="n">vec</span> <span class="ow">is</span> <span class="bp">self</span><span class="o">.</span><span class="n">prop_med_avg</span><span class="p">)):</span>
+                <span class="n">smry</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">median</span><span class="p">(</span><span class="n">vec</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">smry</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">vec</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span>
+            <span class="n">smry</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">percentile</span><span class="p">(</span><span class="n">vec</span><span class="p">,</span> <span class="mi">100</span> <span class="o">*</span> <span class="n">alpha</span> <span class="o">/</span> <span class="mi">2</span><span class="p">)</span>
+            <span class="n">smry</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="mi">2</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">percentile</span><span class="p">(</span><span class="n">vec</span><span class="p">,</span> <span class="mi">100</span> <span class="o">*</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">alpha</span> <span class="o">/</span> <span class="mi">2</span><span class="p">))</span>
+            <span class="n">smry</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="mi">3</span><span class="p">]</span> <span class="o">=</span> <span class="n">_pvalue</span><span class="p">(</span><span class="n">vec</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">pdc</span><span class="o">.</span><span class="n">version</span> <span class="o">&lt;</span> <span class="s1">&#39;0.17.0&#39;</span><span class="p">:</span>  <span class="c1"># pragma: no cover</span>
+            <span class="n">smry</span> <span class="o">=</span> <span class="n">smry</span><span class="o">.</span><span class="n">convert_objects</span><span class="p">(</span><span class="n">convert_numeric</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>  <span class="c1"># pragma: no cover</span>
+            <span class="n">smry</span> <span class="o">=</span> <span class="n">smry</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span><span class="n">pd</span><span class="o">.</span><span class="n">to_numeric</span><span class="p">,</span> <span class="n">errors</span><span class="o">=</span><span class="s1">&#39;coerce&#39;</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">smry</span></div></div>
+</pre></div>
+
+
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../../../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    </div>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer" role="contentinfo">
+        &#169; Copyright 2009-2017, Josef Perktold, Skipper Seabold, Jonathan Taylor, statsmodels-developers.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.7.4.
+    </div>
+  </body>
+</html>
