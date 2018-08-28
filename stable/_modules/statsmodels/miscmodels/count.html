@@ -1,0 +1,443 @@
+
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="X-UA-Compatible" content="IE=Edge" />
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>statsmodels.miscmodels.count &#8212; statsmodels 0.9.0 documentation</title>
+    <link rel="stylesheet" href="../../../_static/nature.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    <script type="text/javascript" src="../../../_static/documentation_options.js"></script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.1/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="shortcut icon" href="../../../_static/statsmodels_hybi_favico.ico"/>
+    <link rel="author" title="About these documents" href="../../../about.html" />
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+<link rel="stylesheet" href="../../../_static/examples.css" type="text/css" />
+<link rel="stylesheet" href="../../../_static/facebox.css" type="text/css" />
+<script type="text/javascript" src="../../../_static/scripts.js">
+</script>
+<script type="text/javascript" src="../../../_static/facebox.js">
+</script>
+<script type="text/javascript">
+$.facebox.settings.closeImage = "../../../_static/closelabel.png"
+$.facebox.settings.loadingImage = "../../../_static/loading.gif"
+</script>
+
+  </head><body>
+<div class="headerwrap">
+    <div class = "header">
+        
+        <a href = "../../../index.html">
+<img src="../../../_static/statsmodels_hybi_banner.png" alt="Logo"
+    style="padding-left: 15px"/></a>
+        
+    </div>
+</div>
+
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+<li><a href ="../../../install.html">Install</a></li> &nbsp;|&nbsp;
+<li><a href="https://groups.google.com/forum/?hl=en#!forum/pystatsmodels">Support</a></li> &nbsp;|&nbsp;
+<li><a href="https://github.com/statsmodels/statsmodels/issues">Bugs</a></li> &nbsp;|&nbsp;
+<li><a href="../../../dev/index.html">Develop</a></li> &nbsp;|&nbsp;
+<li><a href="../../../examples/index.html">Examples</a></li> &nbsp;|&nbsp;
+<li><a href="../../../faq.html">FAQ</a></li> &nbsp;|&nbsp;
+
+          <li class="nav-item nav-item-1"><a href="../../index.html" accesskey="U">Module code</a> |</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+
+
+
+
+  <h1>Source code for statsmodels.miscmodels.count</h1><div class="highlight"><pre>
+<span></span><span class="c1"># -*- coding: utf-8 -*-</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Created on Mon Jul 26 08:34:59 2010</span>
+
+<span class="sd">Author: josef-pktd</span>
+
+<span class="sd">changes:</span>
+<span class="sd">added offset and zero-inflated version of Poisson</span>
+<span class="sd"> - kind of ok, need better test cases,</span>
+<span class="sd"> - a nan in ZIP bse, need to check hessian calculations</span>
+<span class="sd"> - found error in ZIP loglike</span>
+<span class="sd"> - all tests pass with</span>
+
+<span class="sd">Issues</span>
+<span class="sd">------</span>
+<span class="sd">* If true model is not zero-inflated then numerical Hessian for ZIP has zeros</span>
+<span class="sd">  for the inflation probability and is not invertible.</span>
+<span class="sd">  -&gt; hessian inverts and bse look ok if row and column are dropped, pinv also works</span>
+<span class="sd">* GenericMLE: still get somewhere (where?)</span>
+<span class="sd">   &quot;CacheWriteWarning: The attribute &#39;bse&#39; cannot be overwritten&quot;</span>
+<span class="sd">* bfgs is too fragile, doesn&#39;t come back</span>
+<span class="sd">* `nm` is slow but seems to work</span>
+<span class="sd">* need good start_params and their use in genericmle needs to be checked for</span>
+<span class="sd">  consistency, set as attribute or method (called as attribute)</span>
+<span class="sd">* numerical hessian needs better scaling</span>
+
+<span class="sd">* check taking parts out of the loop, e.g. factorial(endog) could be precalculated</span>
+
+
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="kn">from</span> <span class="nn">__future__</span> <span class="k">import</span> <span class="n">print_function</span>
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+<span class="kn">from</span> <span class="nn">scipy</span> <span class="k">import</span> <span class="n">stats</span>
+<span class="kn">from</span> <span class="nn">scipy.misc</span> <span class="k">import</span> <span class="n">factorial</span>
+<span class="kn">import</span> <span class="nn">statsmodels.api</span> <span class="k">as</span> <span class="nn">sm</span>
+<span class="kn">from</span> <span class="nn">statsmodels.base.model</span> <span class="k">import</span> <span class="n">GenericLikelihoodModel</span>
+
+<span class="k">def</span> <span class="nf">maxabs</span><span class="p">(</span><span class="n">arr1</span><span class="p">,</span> <span class="n">arr2</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">arr1</span> <span class="o">-</span> <span class="n">arr2</span><span class="p">))</span>
+
+<span class="k">def</span> <span class="nf">maxabsrel</span><span class="p">(</span><span class="n">arr1</span><span class="p">,</span> <span class="n">arr2</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">arr2</span> <span class="o">/</span> <span class="n">arr1</span> <span class="o">-</span> <span class="mi">1</span><span class="p">))</span>
+
+<span class="k">class</span> <span class="nc">NonlinearDeltaCov</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;Asymptotic covariance by Deltamethod</span>
+
+<span class="sd">    the function is designed for 2d array, with rows equal to</span>
+<span class="sd">    the number of equations and columns equal to the number</span>
+<span class="sd">    of parameters. 1d params work by chance ?</span>
+
+<span class="sd">    fun: R^{m*k) -&gt; R^{m}  where m is number of equations and k is</span>
+<span class="sd">    the number of parameters.</span>
+
+<span class="sd">    equations follow Greene</span>
+
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fun</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">cov_params</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">fun</span> <span class="o">=</span> <span class="n">fun</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">params</span> <span class="o">=</span> <span class="n">params</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">cov_params</span> <span class="o">=</span> <span class="n">cov_params</span>
+
+    <span class="k">def</span> <span class="nf">grad</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwds</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">params</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">params</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">params</span>
+        <span class="n">kwds</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s1">&#39;epsilon&#39;</span><span class="p">,</span> <span class="mf">1e-4</span><span class="p">)</span>
+        <span class="kn">from</span> <span class="nn">statsmodels.tools.numdiff</span> <span class="k">import</span> <span class="n">approx_fprime</span>
+        <span class="k">return</span> <span class="n">approx_fprime</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">fun</span><span class="p">,</span> <span class="o">**</span><span class="n">kwds</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">cov</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">g</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">grad</span><span class="p">()</span>
+        <span class="n">covar</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">g</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">cov_params</span><span class="p">),</span> <span class="n">g</span><span class="o">.</span><span class="n">T</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">covar</span>
+
+    <span class="k">def</span> <span class="nf">expected</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c1"># rename: misnomer, this is the MLE of the fun</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">fun</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">params</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">wald</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+        <span class="n">m</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">expected</span><span class="p">()</span>
+        <span class="n">v</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">cov</span><span class="p">()</span>
+        <span class="n">df</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">size</span><span class="p">(</span><span class="n">m</span><span class="p">)</span>
+        <span class="n">diff</span> <span class="o">=</span> <span class="n">m</span> <span class="o">-</span> <span class="n">value</span>
+        <span class="n">lmstat</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">diff</span><span class="o">.</span><span class="n">T</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">inv</span><span class="p">(</span><span class="n">v</span><span class="p">)),</span> <span class="n">diff</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">lmstat</span><span class="p">,</span> <span class="n">stats</span><span class="o">.</span><span class="n">chi2</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="n">lmstat</span><span class="p">,</span> <span class="n">df</span><span class="p">)</span>
+
+
+
+
+<div class="viewcode-block" id="PoissonGMLE"><a class="viewcode-back" href="../../../generated/statsmodels.miscmodels.count.PoissonGMLE.html#statsmodels.miscmodels.count.PoissonGMLE">[docs]</a><span class="k">class</span> <span class="nc">PoissonGMLE</span><span class="p">(</span><span class="n">GenericLikelihoodModel</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;Maximum Likelihood Estimation of Poisson Model</span>
+
+<span class="sd">    This is an example for generic MLE which has the same</span>
+<span class="sd">    statistical model as discretemod.Poisson.</span>
+
+<span class="sd">    Except for defining the negative log-likelihood method, all</span>
+<span class="sd">    methods and results are generic. Gradients and Hessian</span>
+<span class="sd">    and all resulting statistics are based on numerical</span>
+<span class="sd">    differentiation.</span>
+
+<span class="sd">    &#39;&#39;&#39;</span>
+
+    <span class="c1"># copied from discretemod.Poisson</span>
+<div class="viewcode-block" id="PoissonGMLE.nloglikeobs"><a class="viewcode-back" href="../../../generated/statsmodels.miscmodels.count.PoissonGMLE.nloglikeobs.html#statsmodels.miscmodels.count.PoissonGMLE.nloglikeobs">[docs]</a>    <span class="k">def</span> <span class="nf">nloglikeobs</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Loglikelihood of Poisson model</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        params : array-like</span>
+<span class="sd">            The parameters of the model.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        The log likelihood of the model evaluated at `params`</span>
+
+<span class="sd">        Notes</span>
+<span class="sd">        --------</span>
+<span class="sd">        .. math:: \\ln L=\\sum_{i=1}^{n}\\left[-\\lambda_{i}+y_{i}x_{i}^{\\prime}\\beta-\\ln y_{i}!\\right]</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">XB</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">exog</span><span class="p">,</span> <span class="n">params</span><span class="p">)</span>
+        <span class="n">endog</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">endog</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">XB</span><span class="p">)</span> <span class="o">-</span>  <span class="n">endog</span><span class="o">*</span><span class="n">XB</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">factorial</span><span class="p">(</span><span class="n">endog</span><span class="p">))</span></div>
+
+<div class="viewcode-block" id="PoissonGMLE.predict_distribution"><a class="viewcode-back" href="../../../generated/statsmodels.miscmodels.count.PoissonGMLE.predict_distribution.html#statsmodels.miscmodels.count.PoissonGMLE.predict_distribution">[docs]</a>    <span class="k">def</span> <span class="nf">predict_distribution</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">exog</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;return frozen scipy.stats distribution with mu at estimated prediction</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">result</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">mu</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">exog</span><span class="p">,</span> <span class="n">params</span><span class="p">))</span>
+            <span class="k">return</span> <span class="n">stats</span><span class="o">.</span><span class="n">poisson</span><span class="p">(</span><span class="n">mu</span><span class="p">,</span> <span class="n">loc</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span></div></div>
+
+
+
+<div class="viewcode-block" id="PoissonOffsetGMLE"><a class="viewcode-back" href="../../../generated/statsmodels.miscmodels.count.PoissonOffsetGMLE.html#statsmodels.miscmodels.count.PoissonOffsetGMLE">[docs]</a><span class="k">class</span> <span class="nc">PoissonOffsetGMLE</span><span class="p">(</span><span class="n">GenericLikelihoodModel</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;Maximum Likelihood Estimation of Poisson Model</span>
+
+<span class="sd">    This is an example for generic MLE which has the same</span>
+<span class="sd">    statistical model as discretemod.Poisson but adds offset</span>
+
+<span class="sd">    Except for defining the negative log-likelihood method, all</span>
+<span class="sd">    methods and results are generic. Gradients and Hessian</span>
+<span class="sd">    and all resulting statistics are based on numerical</span>
+<span class="sd">    differentiation.</span>
+
+<span class="sd">    &#39;&#39;&#39;</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">endog</span><span class="p">,</span> <span class="n">exog</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">offset</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">missing</span><span class="o">=</span><span class="s1">&#39;none&#39;</span><span class="p">,</span> <span class="o">**</span><span class="n">kwds</span><span class="p">):</span>
+        <span class="c1"># let them be none in case user wants to use inheritance</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">offset</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">offset</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="n">offset</span> <span class="o">=</span> <span class="n">offset</span><span class="p">[:,</span><span class="kc">None</span><span class="p">]</span> <span class="c1">#need column</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">offset</span> <span class="o">=</span> <span class="n">offset</span><span class="o">.</span><span class="n">ravel</span><span class="p">()</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">offset</span> <span class="o">=</span> <span class="mf">0.</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">PoissonOffsetGMLE</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">endog</span><span class="p">,</span> <span class="n">exog</span><span class="p">,</span> <span class="n">missing</span><span class="o">=</span><span class="n">missing</span><span class="p">,</span>
+                <span class="o">**</span><span class="n">kwds</span><span class="p">)</span>
+
+<span class="c1">#this was added temporarily for bug-hunting, but shouldn&#39;t be needed</span>
+<span class="c1">#    def loglike(self, params):</span>
+<span class="c1">#        return -self.nloglikeobs(params).sum(0)</span>
+
+    <span class="c1"># original copied from discretemod.Poisson</span>
+<div class="viewcode-block" id="PoissonOffsetGMLE.nloglikeobs"><a class="viewcode-back" href="../../../generated/statsmodels.miscmodels.count.PoissonOffsetGMLE.nloglikeobs.html#statsmodels.miscmodels.count.PoissonOffsetGMLE.nloglikeobs">[docs]</a>    <span class="k">def</span> <span class="nf">nloglikeobs</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Loglikelihood of Poisson model</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        params : array-like</span>
+<span class="sd">            The parameters of the model.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        The log likelihood of the model evaluated at `params`</span>
+
+<span class="sd">        Notes</span>
+<span class="sd">        --------</span>
+<span class="sd">        .. math:: \\ln L=\\sum_{i=1}^{n}\\left[-\\lambda_{i}+y_{i}x_{i}^{\\prime}\\beta-\\ln y_{i}!\\right]</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="n">XB</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">offset</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">exog</span><span class="p">,</span> <span class="n">params</span><span class="p">)</span>
+        <span class="n">endog</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">endog</span>
+        <span class="n">nloglik</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">XB</span><span class="p">)</span> <span class="o">-</span>  <span class="n">endog</span><span class="o">*</span><span class="n">XB</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">factorial</span><span class="p">(</span><span class="n">endog</span><span class="p">))</span>
+        <span class="k">return</span> <span class="n">nloglik</span></div></div>
+
+<div class="viewcode-block" id="PoissonZiGMLE"><a class="viewcode-back" href="../../../generated/statsmodels.miscmodels.count.PoissonZiGMLE.html#statsmodels.miscmodels.count.PoissonZiGMLE">[docs]</a><span class="k">class</span> <span class="nc">PoissonZiGMLE</span><span class="p">(</span><span class="n">GenericLikelihoodModel</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;Maximum Likelihood Estimation of Poisson Model</span>
+
+<span class="sd">    This is an example for generic MLE which has the same statistical model</span>
+<span class="sd">    as discretemod.Poisson but adds offset and zero-inflation.</span>
+
+<span class="sd">    Except for defining the negative log-likelihood method, all</span>
+<span class="sd">    methods and results are generic. Gradients and Hessian</span>
+<span class="sd">    and all resulting statistics are based on numerical</span>
+<span class="sd">    differentiation.</span>
+
+<span class="sd">    There are numerical problems if there is no zero-inflation.</span>
+
+<span class="sd">    &#39;&#39;&#39;</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">endog</span><span class="p">,</span> <span class="n">exog</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">offset</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">missing</span><span class="o">=</span><span class="s1">&#39;none&#39;</span><span class="p">,</span> <span class="o">**</span><span class="n">kwds</span><span class="p">):</span>
+        <span class="c1"># let them be none in case user wants to use inheritance</span>
+
+        <span class="nb">super</span><span class="p">(</span><span class="n">PoissonZiGMLE</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">endog</span><span class="p">,</span> <span class="n">exog</span><span class="p">,</span> <span class="n">missing</span><span class="o">=</span><span class="n">missing</span><span class="p">,</span>
+                <span class="o">**</span><span class="n">kwds</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">offset</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">offset</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="n">offset</span> <span class="o">=</span> <span class="n">offset</span><span class="p">[:,</span><span class="kc">None</span><span class="p">]</span> <span class="c1">#need column</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">offset</span> <span class="o">=</span> <span class="n">offset</span><span class="o">.</span><span class="n">ravel</span><span class="p">()</span>  <span class="c1">#which way?</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">offset</span> <span class="o">=</span> <span class="mf">0.</span>
+
+        <span class="c1">#TODO: it&#39;s not standard pattern to use default exog</span>
+        <span class="k">if</span> <span class="n">exog</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">exog</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">((</span><span class="bp">self</span><span class="o">.</span><span class="n">nobs</span><span class="p">,</span><span class="mi">1</span><span class="p">))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">nparams</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">exog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+        <span class="c1">#what&#39;s the shape in regression for exog if only constant</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">start_params</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">hstack</span><span class="p">((</span><span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">nparams</span><span class="p">),</span> <span class="mi">0</span><span class="p">))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">cloneattr</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;start_params&#39;</span><span class="p">]</span>
+        <span class="c1">#needed for t_test and summary</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">exog_names</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;zi&#39;</span><span class="p">)</span>
+
+
+    <span class="c1"># original copied from discretemod.Poisson</span>
+<div class="viewcode-block" id="PoissonZiGMLE.nloglikeobs"><a class="viewcode-back" href="../../../generated/statsmodels.miscmodels.count.PoissonZiGMLE.nloglikeobs.html#statsmodels.miscmodels.count.PoissonZiGMLE.nloglikeobs">[docs]</a>    <span class="k">def</span> <span class="nf">nloglikeobs</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Loglikelihood of Poisson model</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        params : array-like</span>
+<span class="sd">            The parameters of the model.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        The log likelihood of the model evaluated at `params`</span>
+
+<span class="sd">        Notes</span>
+<span class="sd">        --------</span>
+<span class="sd">        .. math:: \\ln L=\\sum_{i=1}^{n}\\left[-\\lambda_{i}+y_{i}x_{i}^{\\prime}\\beta-\\ln y_{i}!\\right]</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">beta</span> <span class="o">=</span> <span class="n">params</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+        <span class="n">gamm</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">/</span> <span class="p">(</span><span class="mi">1</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">params</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]))</span>  <span class="c1">#check this</span>
+        <span class="c1"># replace with np.dot(self.exogZ, gamma)</span>
+        <span class="c1">#print(np.shape(self.offset), self.exog.shape, beta.shape</span>
+        <span class="n">XB</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">offset</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">exog</span><span class="p">,</span> <span class="n">beta</span><span class="p">)</span>
+        <span class="n">endog</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">endog</span>
+        <span class="n">nloglik</span> <span class="o">=</span> <span class="o">-</span><span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="mi">1</span><span class="o">-</span><span class="n">gamm</span><span class="p">)</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">XB</span><span class="p">)</span> <span class="o">-</span>  <span class="n">endog</span><span class="o">*</span><span class="n">XB</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">factorial</span><span class="p">(</span><span class="n">endog</span><span class="p">))</span>
+        <span class="n">nloglik</span><span class="p">[</span><span class="n">endog</span><span class="o">==</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">gamm</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="o">-</span><span class="n">nloglik</span><span class="p">[</span><span class="n">endog</span><span class="o">==</span><span class="mi">0</span><span class="p">]))</span>
+
+        <span class="k">return</span> <span class="n">nloglik</span></div></div>
+
+
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s1">&#39;__main__&#39;</span><span class="p">:</span>
+
+    <span class="c1">#Example:</span>
+    <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">seed</span><span class="p">(</span><span class="mi">98765678</span><span class="p">)</span>
+    <span class="n">nobs</span> <span class="o">=</span> <span class="mi">1000</span>
+    <span class="n">rvs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randn</span><span class="p">(</span><span class="n">nobs</span><span class="p">,</span><span class="mi">6</span><span class="p">)</span>
+    <span class="n">data_exog</span> <span class="o">=</span> <span class="n">rvs</span>
+    <span class="n">data_exog</span> <span class="o">=</span> <span class="n">sm</span><span class="o">.</span><span class="n">add_constant</span><span class="p">(</span><span class="n">data_exog</span><span class="p">,</span> <span class="n">prepend</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+    <span class="n">xbeta</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">+</span> <span class="mf">0.1</span><span class="o">*</span><span class="n">rvs</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+    <span class="n">data_endog</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">poisson</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">xbeta</span><span class="p">))</span>
+    <span class="c1">#print(data_endog</span>
+
+    <span class="n">modp</span> <span class="o">=</span> <span class="n">MyPoisson</span><span class="p">(</span><span class="n">data_endog</span><span class="p">,</span> <span class="n">data_exog</span><span class="p">)</span>
+    <span class="n">resp</span> <span class="o">=</span> <span class="n">modp</span><span class="o">.</span><span class="n">fit</span><span class="p">()</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">resp</span><span class="o">.</span><span class="n">params</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">resp</span><span class="o">.</span><span class="n">bse</span><span class="p">)</span>
+
+    <span class="kn">from</span> <span class="nn">statsmodels.discretemod</span> <span class="k">import</span> <span class="n">Poisson</span>
+    <span class="n">resdp</span> <span class="o">=</span> <span class="n">Poisson</span><span class="p">(</span><span class="n">data_endog</span><span class="p">,</span> <span class="n">data_exog</span><span class="p">)</span><span class="o">.</span><span class="n">fit</span><span class="p">()</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">compare with discretemod&#39;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;compare params&#39;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">resdp</span><span class="o">.</span><span class="n">params</span> <span class="o">-</span> <span class="n">resp</span><span class="o">.</span><span class="n">params</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;compare bse&#39;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">resdp</span><span class="o">.</span><span class="n">bse</span> <span class="o">-</span> <span class="n">resp</span><span class="o">.</span><span class="n">bse</span><span class="p">)</span>
+
+    <span class="n">gmlp</span> <span class="o">=</span> <span class="n">sm</span><span class="o">.</span><span class="n">GLM</span><span class="p">(</span><span class="n">data_endog</span><span class="p">,</span> <span class="n">data_exog</span><span class="p">,</span> <span class="n">family</span><span class="o">=</span><span class="n">sm</span><span class="o">.</span><span class="n">families</span><span class="o">.</span><span class="n">Poisson</span><span class="p">())</span>
+    <span class="n">resgp</span> <span class="o">=</span> <span class="n">gmlp</span><span class="o">.</span><span class="n">fit</span><span class="p">()</span>
+    <span class="sd">&#39;&#39;&#39; this creates a warning, bug bse is double defined ???</span>
+<span class="sd">    c:\josef\eclipsegworkspace\statsmodels-josef-experimental-gsoc\scikits\statsmodels\decorators.py:105: CacheWriteWarning: The attribute &#39;bse&#39; cannot be overwritten</span>
+<span class="sd">      warnings.warn(errmsg, CacheWriteWarning)</span>
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">compare with GLM&#39;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;compare params&#39;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">resgp</span><span class="o">.</span><span class="n">params</span> <span class="o">-</span> <span class="n">resp</span><span class="o">.</span><span class="n">params</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;compare bse&#39;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">resgp</span><span class="o">.</span><span class="n">bse</span> <span class="o">-</span> <span class="n">resp</span><span class="o">.</span><span class="n">bse</span><span class="p">)</span>
+
+    <span class="n">lam</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">data_exog</span><span class="p">,</span> <span class="n">resp</span><span class="o">.</span><span class="n">params</span><span class="p">))</span>
+    <span class="sd">&#39;&#39;&#39;mean of Poisson distribution&#39;&#39;&#39;</span>
+    <span class="n">predmean</span> <span class="o">=</span> <span class="n">stats</span><span class="o">.</span><span class="n">poisson</span><span class="o">.</span><span class="n">stats</span><span class="p">(</span><span class="n">lam</span><span class="p">,</span><span class="n">moments</span><span class="o">=</span><span class="s1">&#39;m&#39;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">predmean</span> <span class="o">-</span> <span class="n">lam</span><span class="p">)))</span>
+
+    <span class="n">fun</span> <span class="o">=</span> <span class="k">lambda</span> <span class="n">params</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">data_exog</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span> <span class="n">params</span><span class="p">))</span>
+
+    <span class="n">lamcov</span> <span class="o">=</span> <span class="n">NonlinearDeltaCov</span><span class="p">(</span><span class="n">fun</span><span class="p">,</span> <span class="n">resp</span><span class="o">.</span><span class="n">params</span><span class="p">,</span> <span class="n">resdp</span><span class="o">.</span><span class="n">cov_params</span><span class="p">())</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">lamcov</span><span class="o">.</span><span class="n">cov</span><span class="p">()</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">lamcov</span><span class="o">.</span><span class="n">cov</span><span class="p">())</span>
+
+    <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;analytical&#39;</span><span class="p">)</span>
+    <span class="n">xm</span> <span class="o">=</span> <span class="n">data_exog</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">xm</span><span class="p">,</span> <span class="n">resdp</span><span class="o">.</span><span class="n">cov_params</span><span class="p">()),</span> <span class="n">xm</span><span class="o">.</span><span class="n">T</span><span class="p">)</span> <span class="o">*</span> \
+            <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="mi">2</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">data_exog</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span> <span class="n">resp</span><span class="o">.</span><span class="n">params</span><span class="p">)))</span>
+
+    <span class="sd">&#39;&#39;&#39; cov of linear transformation of params</span>
+<span class="sd">    &gt;&gt;&gt; np.dot(np.dot(xm, resdp.cov_params()), xm.T)</span>
+<span class="sd">    0.00038904130127582825</span>
+<span class="sd">    &gt;&gt;&gt; resp.cov_params(xm)</span>
+<span class="sd">    0.00038902428119179394</span>
+<span class="sd">    &gt;&gt;&gt; np.dot(np.dot(xm, resp.cov_params()), xm.T)</span>
+<span class="sd">    0.00038902428119179394</span>
+<span class="sd">    &#39;&#39;&#39;</span>
+
+    <span class="nb">print</span><span class="p">(</span><span class="n">lamcov</span><span class="o">.</span><span class="n">wald</span><span class="p">(</span><span class="mf">1.</span><span class="p">))</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">lamcov</span><span class="o">.</span><span class="n">wald</span><span class="p">(</span><span class="mf">2.</span><span class="p">))</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">lamcov</span><span class="o">.</span><span class="n">wald</span><span class="p">(</span><span class="mf">2.6</span><span class="p">))</span>
+
+    <span class="n">do_bootstrap</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="k">if</span> <span class="n">do_bootstrap</span><span class="p">:</span>
+        <span class="n">m</span><span class="p">,</span><span class="n">s</span><span class="p">,</span><span class="n">r</span> <span class="o">=</span> <span class="n">resp</span><span class="o">.</span><span class="n">bootstrap</span><span class="p">(</span><span class="n">method</span><span class="o">=</span><span class="s1">&#39;newton&#39;</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">m</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">s</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">resp</span><span class="o">.</span><span class="n">bse</span><span class="p">)</span>
+
+
+    <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">comparison maxabs, masabsrel&#39;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;discr params&#39;</span><span class="p">,</span> <span class="n">maxabs</span><span class="p">(</span><span class="n">resdp</span><span class="o">.</span><span class="n">params</span><span class="p">,</span> <span class="n">resp</span><span class="o">.</span><span class="n">params</span><span class="p">),</span> <span class="n">maxabsrel</span><span class="p">(</span><span class="n">resdp</span><span class="o">.</span><span class="n">params</span><span class="p">,</span> <span class="n">resp</span><span class="o">.</span><span class="n">params</span><span class="p">))</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;discr bse   &#39;</span><span class="p">,</span> <span class="n">maxabs</span><span class="p">(</span><span class="n">resdp</span><span class="o">.</span><span class="n">bse</span><span class="p">,</span> <span class="n">resp</span><span class="o">.</span><span class="n">bse</span><span class="p">),</span> <span class="n">maxabsrel</span><span class="p">(</span><span class="n">resdp</span><span class="o">.</span><span class="n">bse</span><span class="p">,</span> <span class="n">resp</span><span class="o">.</span><span class="n">bse</span><span class="p">))</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;discr bsejac&#39;</span><span class="p">,</span> <span class="n">maxabs</span><span class="p">(</span><span class="n">resdp</span><span class="o">.</span><span class="n">bse</span><span class="p">,</span> <span class="n">resp</span><span class="o">.</span><span class="n">bsejac</span><span class="p">),</span> <span class="n">maxabsrel</span><span class="p">(</span><span class="n">resdp</span><span class="o">.</span><span class="n">bse</span><span class="p">,</span> <span class="n">resp</span><span class="o">.</span><span class="n">bsejac</span><span class="p">))</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;discr bsejhj&#39;</span><span class="p">,</span> <span class="n">maxabs</span><span class="p">(</span><span class="n">resdp</span><span class="o">.</span><span class="n">bse</span><span class="p">,</span> <span class="n">resp</span><span class="o">.</span><span class="n">bsejhj</span><span class="p">),</span> <span class="n">maxabsrel</span><span class="p">(</span><span class="n">resdp</span><span class="o">.</span><span class="n">bse</span><span class="p">,</span> <span class="n">resp</span><span class="o">.</span><span class="n">bsejhj</span><span class="p">))</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;&#39;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;glm params  &#39;</span><span class="p">,</span> <span class="n">maxabs</span><span class="p">(</span><span class="n">resdp</span><span class="o">.</span><span class="n">params</span><span class="p">,</span> <span class="n">resp</span><span class="o">.</span><span class="n">params</span><span class="p">),</span> <span class="n">maxabsrel</span><span class="p">(</span><span class="n">resdp</span><span class="o">.</span><span class="n">params</span><span class="p">,</span> <span class="n">resp</span><span class="o">.</span><span class="n">params</span><span class="p">))</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;glm bse     &#39;</span><span class="p">,</span> <span class="n">maxabs</span><span class="p">(</span><span class="n">resdp</span><span class="o">.</span><span class="n">bse</span><span class="p">,</span> <span class="n">resp</span><span class="o">.</span><span class="n">bse</span><span class="p">),</span> <span class="n">maxabsrel</span><span class="p">(</span><span class="n">resdp</span><span class="o">.</span><span class="n">bse</span><span class="p">,</span> <span class="n">resp</span><span class="o">.</span><span class="n">bse</span><span class="p">))</span>
+
+</pre></div>
+
+
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../../../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    </div>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer" role="contentinfo">
+        &#169; Copyright 2009-2017, Josef Perktold, Skipper Seabold, Jonathan Taylor, statsmodels-developers.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.7.4.
+    </div>
+  </body>
+</html>

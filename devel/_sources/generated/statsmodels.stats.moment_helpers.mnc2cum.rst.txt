@@ -1,0 +1,6 @@
+statsmodels.stats.moment\_helpers.mnc2cum
+=========================================
+
+.. currentmodule:: statsmodels.stats.moment_helpers
+
+.. autofunction:: mnc2cum
