@@ -1,6 +1,6 @@
 # Statsmodels Documentation Website
 
-Hosted at [www.statsmodels.org](www.statsmodels.org).
+Hosted at [www.statsmodels.org](https://www.statsmodels.org).
 
 ## Updating
 
