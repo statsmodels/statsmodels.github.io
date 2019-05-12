@@ -5,7 +5,7 @@
 <html xmlns="http://www.w3.org/1999/xhtml">
   <head>
     <meta charset="utf-8" />
-    <title>statsmodels.tsa.innovations.arma_innovations &#8212; statsmodels v0.10.0.dev0+1509.g58a67b44c documentation</title>
+    <title>statsmodels.tsa.innovations.arma_innovations &#8212; statsmodels v0.10.0.dev0+1511.g992e6eb1c documentation</title>
     <link rel="stylesheet" href="../../../../_static/nature.css" type="text/css" />
     <link rel="stylesheet" href="../../../../_static/pygments.css" type="text/css" />
     <link rel="stylesheet" type="text/css" href="../../../../_static/graphviz.css" />
@@ -90,10 +90,102 @@ $(document).ready(function() {
   <h1>Source code for statsmodels.tsa.innovations.arma_innovations</h1><div class="highlight"><pre>
 <span></span><span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
 
+<span class="kn">from</span> <span class="nn">statsmodels.tsa</span> <span class="k">import</span> <span class="n">arima_process</span>
 <span class="kn">from</span> <span class="nn">statsmodels.tsa.statespace.tools</span> <span class="k">import</span> <span class="n">prefix_dtype_map</span>
 <span class="kn">from</span> <span class="nn">statsmodels.tools.numdiff</span> <span class="k">import</span> <span class="n">_get_epsilon</span><span class="p">,</span> <span class="n">approx_fprime_cs</span>
 <span class="kn">from</span> <span class="nn">scipy.linalg.blas</span> <span class="k">import</span> <span class="n">find_best_blas_type</span>
 <span class="kn">from</span> <span class="nn">.</span> <span class="k">import</span> <span class="n">_arma_innovations</span>
+
+
+<span class="k">def</span> <span class="nf">arma_innovations</span><span class="p">(</span><span class="n">endog</span><span class="p">,</span> <span class="n">ar_params</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">ma_params</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">sigma2</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+                     <span class="n">normalize</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">prefix</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Compute innovations using a given ARMA process</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    endog : ndarray</span>
+<span class="sd">        The observed time-series process, may be univariate or multivariate.</span>
+<span class="sd">    ar_params : ndarray, optional</span>
+<span class="sd">        Autoregressive parameters.</span>
+<span class="sd">    ma_params : ndarray, optional</span>
+<span class="sd">        Moving average parameters.</span>
+<span class="sd">    sigma2 : ndarray, optional</span>
+<span class="sd">        The ARMA innovation variance. Default is 1.</span>
+<span class="sd">    normalize : boolean, optional</span>
+<span class="sd">        Whether or not to normalize the returned innovations. Default is False.</span>
+<span class="sd">    prefix : str, optional</span>
+<span class="sd">        The BLAS prefix associated with the datatype. Default is to find the</span>
+<span class="sd">        best datatype based on given input. This argument is typically only</span>
+<span class="sd">        used internally.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    innovations : ndarray</span>
+<span class="sd">        Innovations (one-step-ahead prediction errors) for the given `endog`</span>
+<span class="sd">        series with predictions based on the given ARMA process. If</span>
+<span class="sd">        `normalize=True`, then the returned innovations have been &quot;whitened&quot; by</span>
+<span class="sd">        dividing through by the square root of the mean square error.</span>
+<span class="sd">    innovations_mse : ndarray</span>
+<span class="sd">        Mean square error for the innovations.</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Parameters</span>
+    <span class="n">endog</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">endog</span><span class="p">)</span>
+    <span class="n">squeezed</span> <span class="o">=</span> <span class="n">endog</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">1</span>
+    <span class="k">if</span> <span class="n">squeezed</span><span class="p">:</span>
+        <span class="n">endog</span> <span class="o">=</span> <span class="n">endog</span><span class="p">[:,</span> <span class="kc">None</span><span class="p">]</span>
+
+    <span class="n">ar_params</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">atleast_1d</span><span class="p">([]</span> <span class="k">if</span> <span class="n">ar_params</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">ar_params</span><span class="p">)</span>
+    <span class="n">ma_params</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">atleast_1d</span><span class="p">([]</span> <span class="k">if</span> <span class="n">ma_params</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">ma_params</span><span class="p">)</span>
+
+    <span class="n">nobs</span><span class="p">,</span> <span class="n">k_endog</span> <span class="o">=</span> <span class="n">endog</span><span class="o">.</span><span class="n">shape</span>
+    <span class="n">ar</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">r_</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="n">ar_params</span><span class="p">]</span>
+    <span class="n">ma</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">r_</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="n">ma_params</span><span class="p">]</span>
+
+    <span class="c1"># Get BLAS prefix</span>
+    <span class="k">if</span> <span class="n">prefix</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">prefix</span><span class="p">,</span> <span class="n">dtype</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">find_best_blas_type</span><span class="p">(</span>
+            <span class="p">[</span><span class="n">endog</span><span class="p">,</span> <span class="n">ar_params</span><span class="p">,</span> <span class="n">ma_params</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">sigma2</span><span class="p">)])</span>
+    <span class="n">dtype</span> <span class="o">=</span> <span class="n">prefix_dtype_map</span><span class="p">[</span><span class="n">prefix</span><span class="p">]</span>
+
+    <span class="c1"># Make arrays contiguous for BLAS calls</span>
+    <span class="n">endog</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asfortranarray</span><span class="p">(</span><span class="n">endog</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">)</span>
+    <span class="n">ar_params</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asfortranarray</span><span class="p">(</span><span class="n">ar_params</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">)</span>
+    <span class="n">ma_params</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asfortranarray</span><span class="p">(</span><span class="n">ma_params</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">)</span>
+    <span class="n">sigma2</span> <span class="o">=</span> <span class="n">dtype</span><span class="p">(</span><span class="n">sigma2</span><span class="p">)</span><span class="o">.</span><span class="n">item</span><span class="p">()</span>
+
+    <span class="c1"># Get the appropriate functions</span>
+    <span class="n">arma_transformed_acovf_fast</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span>
+        <span class="n">_arma_innovations</span><span class="p">,</span> <span class="n">prefix</span> <span class="o">+</span> <span class="s1">&#39;arma_transformed_acovf_fast&#39;</span><span class="p">)</span>
+    <span class="n">arma_innovations_algo_fast</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span>
+        <span class="n">_arma_innovations</span><span class="p">,</span> <span class="n">prefix</span> <span class="o">+</span> <span class="s1">&#39;arma_innovations_algo_fast&#39;</span><span class="p">)</span>
+    <span class="n">arma_innovations_filter</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span>
+        <span class="n">_arma_innovations</span><span class="p">,</span> <span class="n">prefix</span> <span class="o">+</span> <span class="s1">&#39;arma_innovations_filter&#39;</span><span class="p">)</span>
+
+    <span class="c1"># Run the innovations algorithm for ARMA coefficients</span>
+    <span class="n">arma_acovf</span> <span class="o">=</span> <span class="n">arima_process</span><span class="o">.</span><span class="n">arma_acovf</span><span class="p">(</span><span class="n">ar</span><span class="p">,</span> <span class="n">ma</span><span class="p">,</span>
+                                          <span class="n">sigma2</span><span class="o">=</span><span class="n">sigma2</span><span class="p">,</span> <span class="n">nobs</span><span class="o">=</span><span class="n">nobs</span><span class="p">)</span> <span class="o">/</span> <span class="n">sigma2</span>
+    <span class="n">acovf</span><span class="p">,</span> <span class="n">acovf2</span> <span class="o">=</span> <span class="n">arma_transformed_acovf_fast</span><span class="p">(</span><span class="n">ar</span><span class="p">,</span> <span class="n">ma</span><span class="p">,</span> <span class="n">arma_acovf</span><span class="p">)</span>
+    <span class="n">theta</span><span class="p">,</span> <span class="n">v</span> <span class="o">=</span> <span class="n">arma_innovations_algo_fast</span><span class="p">(</span><span class="n">nobs</span><span class="p">,</span> <span class="n">ar_params</span><span class="p">,</span> <span class="n">ma_params</span><span class="p">,</span>
+                                          <span class="n">acovf</span><span class="p">,</span> <span class="n">acovf2</span><span class="p">)</span>
+    <span class="n">v</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">v</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">normalize</span><span class="p">:</span>
+        <span class="n">v05</span> <span class="o">=</span> <span class="n">v</span><span class="o">**</span><span class="mf">0.5</span>
+
+    <span class="c1"># Run the innovations filter across each series</span>
+    <span class="n">u</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">k_endog</span><span class="p">):</span>
+        <span class="n">u_i</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">arma_innovations_filter</span><span class="p">(</span><span class="n">endog</span><span class="p">[:,</span> <span class="n">i</span><span class="p">],</span> <span class="n">ar_params</span><span class="p">,</span>
+                                               <span class="n">ma_params</span><span class="p">,</span> <span class="n">theta</span><span class="p">))</span>
+        <span class="n">u</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">u_i</span> <span class="o">/</span> <span class="n">v05</span> <span class="k">if</span> <span class="n">normalize</span> <span class="k">else</span> <span class="n">u_i</span><span class="p">)</span>
+    <span class="n">u</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">(</span><span class="n">u</span><span class="p">)</span><span class="o">.</span><span class="n">T</span>
+
+    <span class="c1"># Post-processing</span>
+    <span class="k">if</span> <span class="n">squeezed</span><span class="p">:</span>
+        <span class="n">u</span> <span class="o">=</span> <span class="n">u</span><span class="o">.</span><span class="n">squeeze</span><span class="p">()</span>
+
+    <span class="k">return</span> <span class="n">u</span><span class="p">,</span> <span class="n">v</span>
 
 
 <div class="viewcode-block" id="arma_loglike"><a class="viewcode-back" href="../../../../generated/statsmodels.tsa.innovations.arma_innovations.arma_loglike.html#statsmodels.tsa.innovations.arma_innovations.arma_loglike">[docs]</a><span class="k">def</span> <span class="nf">arma_loglike</span><span class="p">(</span><span class="n">endog</span><span class="p">,</span> <span class="n">ar_params</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">ma_params</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">sigma2</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">prefix</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
