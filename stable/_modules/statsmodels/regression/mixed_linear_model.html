@@ -1,20 +1,20 @@
 
 
-<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
-  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<!DOCTYPE html>
 
 <html xmlns="http://www.w3.org/1999/xhtml">
   <head>
-    <meta http-equiv="X-UA-Compatible" content="IE=Edge" />
-    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-    <title>statsmodels.regression.mixed_linear_model &#8212; statsmodels 0.9.0 documentation</title>
+    <meta charset="utf-8" />
+    <title>statsmodels.regression.mixed_linear_model &#8212; statsmodels 0.10.0rc1 documentation</title>
     <link rel="stylesheet" href="../../../_static/nature.css" type="text/css" />
     <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
-    <script type="text/javascript" src="../../../_static/documentation_options.js"></script>
+    <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css" />
+    <script type="text/javascript" id="documentation_options" data-url_root="../../../" src="../../../_static/documentation_options.js"></script>
     <script type="text/javascript" src="../../../_static/jquery.js"></script>
     <script type="text/javascript" src="../../../_static/underscore.js"></script>
     <script type="text/javascript" src="../../../_static/doctools.js"></script>
-    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.1/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <script type="text/javascript" src="../../../_static/language_data.js"></script>
+    <script async="async" type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/latest.js?config=TeX-AMS-MML_HTMLorMML"></script>
     <link rel="shortcut icon" href="../../../_static/statsmodels_hybi_favico.ico"/>
     <link rel="author" title="About these documents" href="../../../about.html" />
     <link rel="index" title="Index" href="../../../genindex.html" />
@@ -29,6 +29,23 @@
 $.facebox.settings.closeImage = "../../../_static/closelabel.png"
 $.facebox.settings.loadingImage = "../../../_static/loading.gif"
 </script>
+
+<script>
+$(document).ready(function() {
+  $.getJSON("../../../../versions.json", function(data) {
+    $(".header").prepend(`
+    <div class="dropdown">
+      <button class="dropbtn">Other Versions</button>
+      <div class="dropdown-content">
+      </div>
+    </div>`)
+    for (var i = 0; i < data.length; i++) {
+      $(".dropdown-content").append("<a href=\"../../../../" + data[i] + "/index.html\">" + data[i] + "</a>")
+    };
+  });
+});
+</script>
+
 
   </head><body>
 <div class="headerwrap">
@@ -224,13 +241,12 @@ $.facebox.settings.loadingImage = "../../../_static/loading.gif"
 <span class="kn">from</span> <span class="nn">scipy</span> <span class="k">import</span> <span class="n">sparse</span>
 <span class="kn">import</span> <span class="nn">pandas</span> <span class="k">as</span> <span class="nn">pd</span>
 <span class="kn">import</span> <span class="nn">patsy</span>
-<span class="kn">from</span> <span class="nn">statsmodels.compat.collections</span> <span class="k">import</span> <span class="n">OrderedDict</span>
+<span class="kn">from</span> <span class="nn">collections</span> <span class="k">import</span> <span class="n">OrderedDict</span>
 <span class="kn">from</span> <span class="nn">statsmodels.compat.python</span> <span class="k">import</span> <span class="n">string_types</span>
 <span class="kn">from</span> <span class="nn">statsmodels.compat</span> <span class="k">import</span> <span class="nb">range</span>
 <span class="kn">import</span> <span class="nn">warnings</span>
 <span class="kn">from</span> <span class="nn">statsmodels.tools.sm_exceptions</span> <span class="k">import</span> <span class="n">ConvergenceWarning</span>
 <span class="kn">from</span> <span class="nn">statsmodels.base._penalties</span> <span class="k">import</span> <span class="n">Penalty</span>
-<span class="kn">from</span> <span class="nn">statsmodels.compat.numpy</span> <span class="k">import</span> <span class="n">np_matrix_rank</span>
 
 
 <span class="k">def</span> <span class="nf">_dot</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">):</span>
@@ -486,94 +502,117 @@ $.facebox.settings.loadingImage = "../../../_static/loading.gif"
         <span class="k">return</span> <span class="n">pa</span>
 
 
-<span class="k">def</span> <span class="nf">_smw_solver</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">A</span><span class="p">,</span> <span class="n">AtA</span><span class="p">,</span> <span class="n">BI</span><span class="p">,</span> <span class="n">di</span><span class="p">):</span>
-    <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    Solves the system (s*I + A*B*A&#39;) * x = rhs for an arbitrary rhs.</span>
+<span class="k">def</span> <span class="nf">_smw_solver</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">A</span><span class="p">,</span> <span class="n">AtA</span><span class="p">,</span> <span class="n">Qi</span><span class="p">,</span> <span class="n">di</span><span class="p">):</span>
+    <span class="sa">r</span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Returns a solver for the linear system:</span>
 
-<span class="sd">    The inverse matrix of B is block diagonal.  The upper left block</span>
-<span class="sd">    is BI and the lower right block is a diagonal matrix containing</span>
-<span class="sd">    di.</span>
+<span class="sd">    .. math::</span>
+
+<span class="sd">        (sI + ABA^\prime) y = x</span>
+
+<span class="sd">    The returned function f satisfies f(x) = y as defined above.</span>
+
+<span class="sd">    B and its inverse matrix are block diagonal.  The upper left block</span>
+<span class="sd">    of :math:`B^{-1}` is Qi and its lower right block is diag(di).</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
 <span class="sd">    s : scalar</span>
 <span class="sd">        See above for usage</span>
 <span class="sd">    A : ndarray</span>
-<span class="sd">        See above for usage</span>
+<span class="sd">        p x q matrix, in general q &lt;&lt; p, may be sparse.</span>
 <span class="sd">    AtA : square ndarray</span>
-<span class="sd">        A.T * A</span>
-<span class="sd">    BI : square symmetric ndarray</span>
-<span class="sd">        The inverse of `B`.</span>
-<span class="sd">    di : array-like</span>
+<span class="sd">        :math:`A^\prime  A`, a q x q matrix.</span>
+<span class="sd">    Qi : square symmetric ndarray</span>
+<span class="sd">        The matrix `B` is q x q, where q = r + d.  `B` consists of a r</span>
+<span class="sd">        x r diagonal block whose inverse is `Qi`, and a d x d diagonal</span>
+<span class="sd">        block, whose inverse is diag(di).</span>
+<span class="sd">    di : 1d array-like</span>
+<span class="sd">        See documentation for Qi.</span>
 
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
-<span class="sd">    A function that takes `rhs` as an input argument and returns a</span>
-<span class="sd">    solution to the linear system defined above.</span>
+<span class="sd">    A function for solving a linear system, as documented above.</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    Uses Sherman-Morrison-Woodbury identity:</span>
+<span class="sd">        https://en.wikipedia.org/wiki/Woodbury_matrix_identity</span>
 <span class="sd">    &quot;&quot;&quot;</span>
 
     <span class="c1"># Use SMW identity</span>
     <span class="n">qmat</span> <span class="o">=</span> <span class="n">AtA</span> <span class="o">/</span> <span class="n">s</span>
-    <span class="n">m</span> <span class="o">=</span> <span class="n">BI</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
-    <span class="n">qmat</span><span class="p">[</span><span class="mi">0</span><span class="p">:</span><span class="n">m</span><span class="p">,</span> <span class="mi">0</span><span class="p">:</span><span class="n">m</span><span class="p">]</span> <span class="o">+=</span> <span class="n">BI</span>
-    <span class="n">ix</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">m</span><span class="p">,</span> <span class="n">A</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
-    <span class="n">qmat</span><span class="p">[</span><span class="n">ix</span><span class="p">,</span> <span class="n">ix</span><span class="p">]</span> <span class="o">+=</span> <span class="n">di</span>
+    <span class="k">if</span> <span class="n">sparse</span><span class="o">.</span><span class="n">issparse</span><span class="p">(</span><span class="n">qmat</span><span class="p">):</span>
+        <span class="n">qmat</span> <span class="o">=</span> <span class="n">qmat</span><span class="o">.</span><span class="n">todense</span><span class="p">()</span>
+    <span class="n">m</span> <span class="o">=</span> <span class="n">Qi</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">qmat</span><span class="p">[</span><span class="mi">0</span><span class="p">:</span><span class="n">m</span><span class="p">,</span> <span class="mi">0</span><span class="p">:</span><span class="n">m</span><span class="p">]</span> <span class="o">+=</span> <span class="n">Qi</span>
+    <span class="n">d</span> <span class="o">=</span> <span class="n">qmat</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">qmat</span><span class="o">.</span><span class="n">flat</span><span class="p">[</span><span class="n">m</span><span class="o">*</span><span class="p">(</span><span class="n">d</span><span class="o">+</span><span class="mi">1</span><span class="p">)::</span><span class="n">d</span><span class="o">+</span><span class="mi">1</span><span class="p">]</span> <span class="o">+=</span> <span class="n">di</span>
     <span class="k">if</span> <span class="n">sparse</span><span class="o">.</span><span class="n">issparse</span><span class="p">(</span><span class="n">A</span><span class="p">):</span>
-        <span class="n">qi</span> <span class="o">=</span> <span class="n">sparse</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">inv</span><span class="p">(</span><span class="n">qmat</span><span class="p">)</span>
-        <span class="n">qmati</span> <span class="o">=</span> <span class="n">A</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">qi</span><span class="o">.</span><span class="n">T</span><span class="p">)</span><span class="o">.</span><span class="n">T</span>
+        <span class="n">qmati</span> <span class="o">=</span> <span class="n">sparse</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">spsolve</span><span class="p">(</span><span class="n">sparse</span><span class="o">.</span><span class="n">csc_matrix</span><span class="p">(</span><span class="n">qmat</span><span class="p">),</span> <span class="n">A</span><span class="o">.</span><span class="n">T</span><span class="p">)</span>
     <span class="k">else</span><span class="p">:</span>
         <span class="n">qmati</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">solve</span><span class="p">(</span><span class="n">qmat</span><span class="p">,</span> <span class="n">A</span><span class="o">.</span><span class="n">T</span><span class="p">)</span>
 
-    <span class="k">def</span> <span class="nf">solver</span><span class="p">(</span><span class="n">rhs</span><span class="p">):</span>
-        <span class="k">if</span> <span class="n">sparse</span><span class="o">.</span><span class="n">issparse</span><span class="p">(</span><span class="n">A</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">sparse</span><span class="o">.</span><span class="n">issparse</span><span class="p">(</span><span class="n">A</span><span class="p">):</span>
+        <span class="k">def</span> <span class="nf">solver</span><span class="p">(</span><span class="n">rhs</span><span class="p">):</span>
             <span class="n">ql</span> <span class="o">=</span> <span class="n">qmati</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">rhs</span><span class="p">)</span>
             <span class="n">ql</span> <span class="o">=</span> <span class="n">A</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">ql</span><span class="p">)</span>
-        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">rhs</span> <span class="o">/</span> <span class="n">s</span> <span class="o">-</span> <span class="n">ql</span> <span class="o">/</span> <span class="n">s</span><span class="o">**</span><span class="mi">2</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">def</span> <span class="nf">solver</span><span class="p">(</span><span class="n">rhs</span><span class="p">):</span>
             <span class="n">ql</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">qmati</span><span class="p">,</span> <span class="n">rhs</span><span class="p">)</span>
             <span class="n">ql</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">A</span><span class="p">,</span> <span class="n">ql</span><span class="p">)</span>
-        <span class="n">rslt</span> <span class="o">=</span> <span class="n">rhs</span> <span class="o">/</span> <span class="n">s</span> <span class="o">-</span> <span class="n">ql</span> <span class="o">/</span> <span class="n">s</span><span class="o">**</span><span class="mi">2</span>
-        <span class="k">if</span> <span class="n">sparse</span><span class="o">.</span><span class="n">issparse</span><span class="p">(</span><span class="n">rslt</span><span class="p">):</span>
-            <span class="n">rslt</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">rslt</span><span class="o">.</span><span class="n">todense</span><span class="p">())</span>
-        <span class="k">return</span> <span class="n">rslt</span>
+            <span class="k">return</span> <span class="n">rhs</span> <span class="o">/</span> <span class="n">s</span> <span class="o">-</span> <span class="n">ql</span> <span class="o">/</span> <span class="n">s</span><span class="o">**</span><span class="mi">2</span>
 
     <span class="k">return</span> <span class="n">solver</span>
 
 
-<span class="k">def</span> <span class="nf">_smw_logdet</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">A</span><span class="p">,</span> <span class="n">AtA</span><span class="p">,</span> <span class="n">BI</span><span class="p">,</span> <span class="n">di</span><span class="p">,</span> <span class="n">B_logdet</span><span class="p">):</span>
-    <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    Returns the log determinant of s*I + A*B*A&#39;.</span>
+<span class="k">def</span> <span class="nf">_smw_logdet</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">A</span><span class="p">,</span> <span class="n">AtA</span><span class="p">,</span> <span class="n">Qi</span><span class="p">,</span> <span class="n">di</span><span class="p">,</span> <span class="n">B_logdet</span><span class="p">):</span>
+    <span class="sa">r</span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Returns the log determinant of</span>
+
+<span class="sd">    .. math::</span>
+
+<span class="sd">        sI + ABA^\prime</span>
 
 <span class="sd">    Uses the matrix determinant lemma to accelerate the calculation.</span>
+<span class="sd">    B is assumed to be positive definite, and s &gt; 0, therefore the</span>
+<span class="sd">    determinant is positive.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
-<span class="sd">    s : scalar</span>
+<span class="sd">    s : positive scalar</span>
 <span class="sd">        See above for usage</span>
-<span class="sd">    A : square symmetric ndarray</span>
-<span class="sd">        See above for usage</span>
-<span class="sd">    AtA : square matrix</span>
-<span class="sd">        A.T * A</span>
-<span class="sd">    BI : square symmetric ndarray</span>
-<span class="sd">        The upper left block of B^-1.</span>
-<span class="sd">    di : array-like</span>
-<span class="sd">        The diagonal elements of the lower right block of B^-1.</span>
+<span class="sd">    A : ndarray</span>
+<span class="sd">        p x q matrix, in general q &lt;&lt; p.</span>
+<span class="sd">    AtA : square ndarray</span>
+<span class="sd">        :math:`A^\prime  A`, a q x q matrix.</span>
+<span class="sd">    Qi : square symmetric ndarray</span>
+<span class="sd">        The matrix `B` is q x q, where q = r + d.  `B` consists of a r</span>
+<span class="sd">        x r diagonal block whose inverse is `Qi`, and a d x d diagonal</span>
+<span class="sd">        block, whose inverse is diag(di).</span>
+<span class="sd">    di : 1d array-like</span>
+<span class="sd">        See documentation for Qi.</span>
 <span class="sd">    B_logdet : real</span>
 <span class="sd">        The log determinant of B</span>
 
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
 <span class="sd">    The log determinant of s*I + A*B*A&#39;.</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    Uses the matrix determinant lemma:</span>
+<span class="sd">        https://en.wikipedia.org/wiki/Matrix_determinant_lemma</span>
 <span class="sd">    &quot;&quot;&quot;</span>
 
     <span class="n">p</span> <span class="o">=</span> <span class="n">A</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
     <span class="n">ld</span> <span class="o">=</span> <span class="n">p</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">s</span><span class="p">)</span>
     <span class="n">qmat</span> <span class="o">=</span> <span class="n">AtA</span> <span class="o">/</span> <span class="n">s</span>
-    <span class="n">m</span> <span class="o">=</span> <span class="n">BI</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
-    <span class="n">qmat</span><span class="p">[</span><span class="mi">0</span><span class="p">:</span><span class="n">m</span><span class="p">,</span> <span class="mi">0</span><span class="p">:</span><span class="n">m</span><span class="p">]</span> <span class="o">+=</span> <span class="n">BI</span>
-    <span class="n">ix</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">m</span><span class="p">,</span> <span class="n">A</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
-    <span class="n">qmat</span><span class="p">[</span><span class="n">ix</span><span class="p">,</span> <span class="n">ix</span><span class="p">]</span> <span class="o">+=</span> <span class="n">di</span>
-    <span class="k">if</span> <span class="n">sparse</span><span class="o">.</span><span class="n">issparse</span><span class="p">(</span><span class="n">qmat</span><span class="p">):</span>
-        <span class="n">qmat</span> <span class="o">=</span> <span class="n">qmat</span><span class="o">.</span><span class="n">todense</span><span class="p">()</span>
+    <span class="n">m</span> <span class="o">=</span> <span class="n">Qi</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">qmat</span><span class="p">[</span><span class="mi">0</span><span class="p">:</span><span class="n">m</span><span class="p">,</span> <span class="mi">0</span><span class="p">:</span><span class="n">m</span><span class="p">]</span> <span class="o">+=</span> <span class="n">Qi</span>
+    <span class="n">d</span> <span class="o">=</span> <span class="n">qmat</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">qmat</span><span class="o">.</span><span class="n">flat</span><span class="p">[</span><span class="n">m</span><span class="o">*</span><span class="p">(</span><span class="n">d</span><span class="o">+</span><span class="mi">1</span><span class="p">)::</span><span class="n">d</span><span class="o">+</span><span class="mi">1</span><span class="p">]</span> <span class="o">+=</span> <span class="n">di</span>
     <span class="n">_</span><span class="p">,</span> <span class="n">ld1</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">slogdet</span><span class="p">(</span><span class="n">qmat</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">B_logdet</span> <span class="o">+</span> <span class="n">ld</span> <span class="o">+</span> <span class="n">ld1</span>
 
@@ -786,7 +825,12 @@ $.facebox.settings.loadingImage = "../../../_static/loading.gif"
         <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">n_groups</span><span class="p">):</span>
             <span class="n">a</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_augment_exog</span><span class="p">(</span><span class="n">i</span><span class="p">)</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_aex_r</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">a</span><span class="p">)</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_aex_r2</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">_dot</span><span class="p">(</span><span class="n">a</span><span class="o">.</span><span class="n">T</span><span class="p">,</span> <span class="n">a</span><span class="p">))</span>
+
+            <span class="c1"># This matrix is not very sparse so convert it to dense.</span>
+            <span class="n">ma</span> <span class="o">=</span> <span class="n">_dot</span><span class="p">(</span><span class="n">a</span><span class="o">.</span><span class="n">T</span><span class="p">,</span> <span class="n">a</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">sparse</span><span class="o">.</span><span class="n">issparse</span><span class="p">(</span><span class="n">ma</span><span class="p">):</span>
+                <span class="n">ma</span> <span class="o">=</span> <span class="n">ma</span><span class="o">.</span><span class="n">todense</span><span class="p">()</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_aex_r2</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">ma</span><span class="p">)</span>
 
         <span class="c1"># Precompute this</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_lin</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_quad</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_reparam</span><span class="p">()</span>
@@ -868,7 +912,7 @@ $.facebox.settings.loadingImage = "../../../_static/loading.gif"
 <span class="sd">        model : Model instance</span>
 
 <span class="sd">        Notes</span>
-<span class="sd">        ------</span>
+<span class="sd">        -----</span>
 <span class="sd">        `data` must define __getitem__ with the keys in the formula</span>
 <span class="sd">        terms args and kwargs are passed on to the model</span>
 <span class="sd">        instantiation. E.g., a numpy structured or rec array, a</span>
@@ -1003,9 +1047,12 @@ $.facebox.settings.loadingImage = "../../../_static/loading.gif"
         <span class="k">else</span><span class="p">:</span>
             <span class="n">exog_vc</span> <span class="o">=</span> <span class="kc">None</span>
 
+        <span class="n">kwargs</span><span class="p">[</span><span class="s2">&quot;subset&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="n">kwargs</span><span class="p">[</span><span class="s2">&quot;exog_re&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">exog_re</span>
+        <span class="n">kwargs</span><span class="p">[</span><span class="s2">&quot;exog_vc&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">exog_vc</span>
+        <span class="n">kwargs</span><span class="p">[</span><span class="s2">&quot;groups&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">groups</span>
         <span class="n">mod</span> <span class="o">=</span> <span class="nb">super</span><span class="p">(</span><span class="n">MixedLM</span><span class="p">,</span> <span class="bp">cls</span><span class="p">)</span><span class="o">.</span><span class="n">from_formula</span><span class="p">(</span>
-            <span class="n">formula</span><span class="p">,</span> <span class="n">data</span><span class="p">,</span> <span class="n">subset</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">exog_re</span><span class="o">=</span><span class="n">exog_re</span><span class="p">,</span>
-            <span class="n">exog_vc</span><span class="o">=</span><span class="n">exog_vc</span><span class="p">,</span> <span class="n">groups</span><span class="o">=</span><span class="n">groups</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+            <span class="n">formula</span><span class="p">,</span> <span class="n">data</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
 
         <span class="c1"># expand re names to account for pairs of RE</span>
         <span class="p">(</span><span class="n">param_names</span><span class="p">,</span>
@@ -1623,11 +1670,11 @@ $.facebox.settings.loadingImage = "../../../_static/loading.gif"
 
         <span class="c1"># Handle the covariance penalty.</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">cov_pen</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="n">score_re</span> <span class="o">-=</span> <span class="bp">self</span><span class="o">.</span><span class="n">cov_pen</span><span class="o">.</span><span class="n">grad</span><span class="p">(</span><span class="n">cov_re</span><span class="p">,</span> <span class="n">cov_re_inv</span><span class="p">)</span>
+            <span class="n">score_re</span> <span class="o">-=</span> <span class="bp">self</span><span class="o">.</span><span class="n">cov_pen</span><span class="o">.</span><span class="n">deriv</span><span class="p">(</span><span class="n">cov_re</span><span class="p">,</span> <span class="n">cov_re_inv</span><span class="p">)</span>
 
         <span class="c1"># Handle the fixed effects penalty.</span>
         <span class="k">if</span> <span class="n">calc_fe</span> <span class="ow">and</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">fe_pen</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">):</span>
-            <span class="n">score_fe</span> <span class="o">-=</span> <span class="bp">self</span><span class="o">.</span><span class="n">fe_pen</span><span class="o">.</span><span class="n">grad</span><span class="p">(</span><span class="n">fe_params</span><span class="p">)</span>
+            <span class="n">score_fe</span> <span class="o">-=</span> <span class="bp">self</span><span class="o">.</span><span class="n">fe_pen</span><span class="o">.</span><span class="n">deriv</span><span class="p">(</span><span class="n">fe_params</span><span class="p">)</span>
 
         <span class="c1"># resid&#39; V^{-1} resid, summed over the groups (a scalar)</span>
         <span class="n">rvir</span> <span class="o">=</span> <span class="mf">0.</span>
@@ -1983,7 +2030,7 @@ $.facebox.settings.loadingImage = "../../../_static/loading.gif"
 
 <div class="viewcode-block" id="MixedLM.fit"><a class="viewcode-back" href="../../../generated/statsmodels.regression.mixed_linear_model.MixedLM.fit.html#statsmodels.regression.mixed_linear_model.MixedLM.fit">[docs]</a>    <span class="k">def</span> <span class="nf">fit</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">start_params</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">reml</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">niter_sa</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
             <span class="n">do_cg</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">fe_pen</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">cov_pen</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">free</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
-            <span class="n">full_output</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s1">&#39;bfgs&#39;</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+            <span class="n">full_output</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Fit a linear mixed model to the data.</span>
 
@@ -2021,20 +2068,29 @@ $.facebox.settings.loadingImage = "../../../_static/loading.gif"
 <span class="sd">        full_output : bool</span>
 <span class="sd">            If true, attach iteration history to results</span>
 <span class="sd">        method : string</span>
-<span class="sd">            Optimization method.</span>
+<span class="sd">            Optimization method.  Can be a scipy.optimize method name,</span>
+<span class="sd">            or a list of such names to be tried in sequence.</span>
 
 <span class="sd">        Returns</span>
 <span class="sd">        -------</span>
 <span class="sd">        A MixedLMResults instance.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
 
-        <span class="n">_allowed_kwargs</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;gtol&#39;</span><span class="p">,</span> <span class="s1">&#39;maxiter&#39;</span><span class="p">]</span>
+        <span class="n">_allowed_kwargs</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;gtol&#39;</span><span class="p">,</span> <span class="s1">&#39;maxiter&#39;</span><span class="p">,</span> <span class="s1">&#39;eps&#39;</span><span class="p">,</span> <span class="s1">&#39;maxcor&#39;</span><span class="p">,</span> <span class="s1">&#39;ftol&#39;</span><span class="p">,</span>
+                           <span class="s1">&#39;tol&#39;</span><span class="p">,</span> <span class="s1">&#39;disp&#39;</span><span class="p">,</span> <span class="s1">&#39;maxls&#39;</span><span class="p">]</span>
         <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">keys</span><span class="p">():</span>
             <span class="k">if</span> <span class="n">x</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">_allowed_kwargs</span><span class="p">:</span>
-                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Argument </span><span class="si">%s</span><span class="s2"> not allowed for MixedLM.fit&quot;</span> <span class="o">%</span> <span class="n">x</span><span class="p">)</span>
+                <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="s2">&quot;Argument </span><span class="si">%s</span><span class="s2"> not used by MixedLM.fit&quot;</span> <span class="o">%</span> <span class="n">x</span><span class="p">)</span>
 
-        <span class="k">if</span> <span class="n">method</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">&quot;newton&quot;</span><span class="p">,</span> <span class="s2">&quot;ncg&quot;</span><span class="p">]:</span>
-            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;method </span><span class="si">%s</span><span class="s2"> not available for MixedLM&quot;</span> <span class="o">%</span> <span class="n">method</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">method</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">method</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;bfgs&#39;</span><span class="p">,</span> <span class="s1">&#39;lbfgs&#39;</span><span class="p">,</span> <span class="s1">&#39;cg&#39;</span><span class="p">]</span>
+        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">method</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+            <span class="n">method</span> <span class="o">=</span> <span class="p">[</span><span class="n">method</span><span class="p">]</span>
+
+        <span class="k">for</span> <span class="n">meth</span> <span class="ow">in</span> <span class="n">method</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">meth</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">&quot;newton&quot;</span><span class="p">,</span> <span class="s2">&quot;ncg&quot;</span><span class="p">]:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                    <span class="s2">&quot;method </span><span class="si">%s</span><span class="s2"> not available for MixedLM&quot;</span> <span class="o">%</span> <span class="n">meth</span><span class="p">)</span>
 
         <span class="bp">self</span><span class="o">.</span><span class="n">reml</span> <span class="o">=</span> <span class="n">reml</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">cov_pen</span> <span class="o">=</span> <span class="n">cov_pen</span>
@@ -2077,16 +2133,24 @@ $.facebox.settings.loadingImage = "../../../_static/loading.gif"
             <span class="k">if</span> <span class="n">niter_sa</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
                 <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="s2">&quot;niter_sa is currently ignored&quot;</span><span class="p">)</span>
 
-            <span class="c1"># It seems that the optimizers sometimes stop too soon, so</span>
-            <span class="c1"># we run a few times.</span>
-            <span class="k">for</span> <span class="n">rep</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">5</span><span class="p">):</span>
+            <span class="c1"># Try optimizing one or more times</span>
+            <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">method</span><span class="p">)):</span>
                 <span class="n">rslt</span> <span class="o">=</span> <span class="nb">super</span><span class="p">(</span><span class="n">MixedLM</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">start_params</span><span class="o">=</span><span class="n">packed</span><span class="p">,</span>
                                                 <span class="n">skip_hessian</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
-                                                <span class="n">method</span><span class="o">=</span><span class="n">method</span><span class="p">,</span>
+                                                <span class="n">method</span><span class="o">=</span><span class="n">method</span><span class="p">[</span><span class="n">j</span><span class="p">],</span>
                                                 <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
                 <span class="k">if</span> <span class="n">rslt</span><span class="o">.</span><span class="n">mle_retvals</span><span class="p">[</span><span class="s1">&#39;converged&#39;</span><span class="p">]:</span>
                     <span class="k">break</span>
                 <span class="n">packed</span> <span class="o">=</span> <span class="n">rslt</span><span class="o">.</span><span class="n">params</span>
+                <span class="k">if</span> <span class="n">j</span> <span class="o">+</span> <span class="mi">1</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="n">method</span><span class="p">):</span>
+                    <span class="n">next_method</span> <span class="o">=</span> <span class="n">method</span><span class="p">[</span><span class="n">j</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span>
+                    <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span>
+                        <span class="s2">&quot;Retrying MixedLM optimization with </span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">next_method</span><span class="p">,</span>
+                        <span class="n">ConvergenceWarning</span><span class="p">)</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">msg</span> <span class="o">=</span> <span class="p">(</span><span class="s2">&quot;MixedLM optimization failed, &quot;</span> <span class="o">+</span>
+                           <span class="s2">&quot;trying a different optimizer may help.&quot;</span><span class="p">)</span>
+                    <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="n">msg</span><span class="p">,</span> <span class="n">ConvergenceWarning</span><span class="p">)</span>
 
             <span class="c1"># The optimization succeeded</span>
             <span class="n">params</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">atleast_1d</span><span class="p">(</span><span class="n">rslt</span><span class="o">.</span><span class="n">params</span><span class="p">)</span>
@@ -2095,7 +2159,9 @@ $.facebox.settings.loadingImage = "../../../_static/loading.gif"
 
         <span class="n">converged</span> <span class="o">=</span> <span class="n">rslt</span><span class="o">.</span><span class="n">mle_retvals</span><span class="p">[</span><span class="s1">&#39;converged&#39;</span><span class="p">]</span>
         <span class="k">if</span> <span class="ow">not</span> <span class="n">converged</span><span class="p">:</span>
-            <span class="n">msg</span> <span class="o">=</span> <span class="s2">&quot;Gradient optimization failed.&quot;</span>
+            <span class="n">gn</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">score</span><span class="p">(</span><span class="n">rslt</span><span class="o">.</span><span class="n">params</span><span class="p">)</span>
+            <span class="n">gn</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">gn</span><span class="o">**</span><span class="mi">2</span><span class="p">))</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="s2">&quot;Gradient optimization failed, |grad| = </span><span class="si">%f</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">gn</span>
             <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="n">msg</span><span class="p">,</span> <span class="n">ConvergenceWarning</span><span class="p">)</span>
 
         <span class="c1"># Convert to the final parameterization (i.e. undo the square</span>
@@ -2159,7 +2225,90 @@ $.facebox.settings.loadingImage = "../../../_static/loading.gif"
         <span class="n">results</span><span class="o">.</span><span class="n">use_sqrt</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">use_sqrt</span>
         <span class="n">results</span><span class="o">.</span><span class="n">freepat</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_freepat</span>
 
-        <span class="k">return</span> <span class="n">MixedLMResultsWrapper</span><span class="p">(</span><span class="n">results</span><span class="p">)</span></div></div>
+        <span class="k">return</span> <span class="n">MixedLMResultsWrapper</span><span class="p">(</span><span class="n">results</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="MixedLM.get_distribution"><a class="viewcode-back" href="../../../generated/statsmodels.regression.mixed_linear_model.MixedLM.get_distribution.html#statsmodels.regression.mixed_linear_model.MixedLM.get_distribution">[docs]</a>    <span class="k">def</span> <span class="nf">get_distribution</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">scale</span><span class="p">,</span> <span class="n">exog</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">_mixedlm_distribution</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">scale</span><span class="p">,</span> <span class="n">exog</span><span class="p">)</span></div></div>
+
+
+<span class="k">class</span> <span class="nc">_mixedlm_distribution</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A private class for simulating data from a given mixed linear model.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    model : MixedLM instance</span>
+<span class="sd">        A mixed linear model</span>
+<span class="sd">    params : array-like</span>
+<span class="sd">        A parameter vector defining a mixed linear model.  See</span>
+<span class="sd">        notes for more information.</span>
+<span class="sd">    scale : scalar</span>
+<span class="sd">        The unexplained variance</span>
+<span class="sd">    exog : array-like</span>
+<span class="sd">        An array of fixed effect covariates.  If None, model.exog</span>
+<span class="sd">        is used.</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    The params array is a vector containing fixed effects parameters,</span>
+<span class="sd">    random effects parameters, and variance component parameters, in</span>
+<span class="sd">    that order.  The lower triangle of the random effects covariance</span>
+<span class="sd">    matrix is stored.  The random effects and variance components</span>
+<span class="sd">    parameters are divided by the scale parameter.</span>
+
+<span class="sd">    This class is used in Mediation, and possibly elsewhere.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">scale</span><span class="p">,</span> <span class="n">exog</span><span class="p">):</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">model</span> <span class="o">=</span> <span class="n">model</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">exog</span> <span class="o">=</span> <span class="n">exog</span> <span class="k">if</span> <span class="n">exog</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">model</span><span class="o">.</span><span class="n">exog</span>
+
+        <span class="n">po</span> <span class="o">=</span> <span class="n">MixedLMParams</span><span class="o">.</span><span class="n">from_packed</span><span class="p">(</span>
+                <span class="n">params</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="n">k_fe</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="n">k_re</span><span class="p">,</span> <span class="kc">False</span><span class="p">,</span> <span class="kc">True</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">fe_params</span> <span class="o">=</span> <span class="n">po</span><span class="o">.</span><span class="n">fe_params</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">cov_re</span> <span class="o">=</span> <span class="n">scale</span> <span class="o">*</span> <span class="n">po</span><span class="o">.</span><span class="n">cov_re</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">vcomp</span> <span class="o">=</span> <span class="n">scale</span> <span class="o">*</span> <span class="n">po</span><span class="o">.</span><span class="n">vcomp</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">scale</span> <span class="o">=</span> <span class="n">scale</span>
+
+        <span class="n">group_idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">nobs</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">g</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">group_labels</span><span class="p">):</span>
+            <span class="n">group_idx</span><span class="p">[</span><span class="n">model</span><span class="o">.</span><span class="n">row_indices</span><span class="p">[</span><span class="n">g</span><span class="p">]]</span> <span class="o">=</span> <span class="n">k</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">group_idx</span> <span class="o">=</span> <span class="n">group_idx</span>
+
+    <span class="k">def</span> <span class="nf">rvs</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">n</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return a vector of simulated values from a mixed linear</span>
+<span class="sd">        model.</span>
+
+<span class="sd">        The parameter n is ignored, but required by the interface</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="n">model</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span>
+
+        <span class="c1"># Fixed effects</span>
+        <span class="n">y</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">exog</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">fe_params</span><span class="p">)</span>
+
+        <span class="c1"># Random effects</span>
+        <span class="n">u</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="n">size</span><span class="o">=</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">n_groups</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="n">k_re</span><span class="p">))</span>
+        <span class="n">u</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">u</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">cholesky</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">cov_re</span><span class="p">)</span><span class="o">.</span><span class="n">T</span><span class="p">)</span>
+        <span class="n">y</span> <span class="o">+=</span> <span class="p">(</span><span class="n">u</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">group_idx</span><span class="p">,</span> <span class="p">:]</span> <span class="o">*</span> <span class="n">model</span><span class="o">.</span><span class="n">exog_re</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+
+        <span class="c1"># Variance components</span>
+        <span class="k">for</span> <span class="n">j</span><span class="p">,</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">_vc_names</span><span class="p">):</span>
+            <span class="n">ex</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">exog_vc</span><span class="p">[</span><span class="n">k</span><span class="p">]</span>
+            <span class="n">v</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">vcomp</span><span class="p">[</span><span class="n">j</span><span class="p">]</span>
+            <span class="k">for</span> <span class="n">g</span> <span class="ow">in</span> <span class="n">model</span><span class="o">.</span><span class="n">group_labels</span><span class="p">:</span>
+                <span class="n">exg</span> <span class="o">=</span> <span class="n">ex</span><span class="p">[</span><span class="n">g</span><span class="p">]</span>
+                <span class="n">ii</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">row_indices</span><span class="p">[</span><span class="n">g</span><span class="p">]</span>
+                <span class="n">u</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="n">size</span><span class="o">=</span><span class="n">exg</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+                <span class="n">y</span><span class="p">[</span><span class="n">ii</span><span class="p">]</span> <span class="o">+=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">v</span><span class="p">)</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">exg</span><span class="p">,</span> <span class="n">u</span><span class="p">)</span>
+
+        <span class="c1"># Residual variance</span>
+        <span class="n">y</span> <span class="o">+=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">scale</span><span class="p">)</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="n">size</span><span class="o">=</span><span class="nb">len</span><span class="p">(</span><span class="n">y</span><span class="p">))</span>
+
+        <span class="k">return</span> <span class="n">y</span>
 
 
 <div class="viewcode-block" id="MixedLMResults"><a class="viewcode-back" href="../../../generated/statsmodels.regression.mixed_linear_model.MixedLMResults.html#statsmodels.regression.mixed_linear_model.MixedLMResults">[docs]</a><span class="k">class</span> <span class="nc">MixedLMResults</span><span class="p">(</span><span class="n">base</span><span class="o">.</span><span class="n">LikelihoodModelResults</span><span class="p">,</span> <span class="n">base</span><span class="o">.</span><span class="n">ResultMixin</span><span class="p">):</span>
@@ -2172,14 +2321,19 @@ $.facebox.settings.loadingImage = "../../../_static/loading.gif"
 <span class="sd">    ----------</span>
 <span class="sd">    See statsmodels.LikelihoodModelResults</span>
 
-<span class="sd">    Returns</span>
-<span class="sd">    -------</span>
-<span class="sd">    **Attributes**</span>
-
+<span class="sd">    Attributes</span>
+<span class="sd">    ----------</span>
 <span class="sd">    model : class instance</span>
 <span class="sd">        Pointer to MixedLM model instance that called fit.</span>
 <span class="sd">    normalized_cov_params : array</span>
 <span class="sd">        The sampling covariance matrix of the estimates</span>
+<span class="sd">    params : array</span>
+<span class="sd">        A packed parameter vector for the profile parameterization.</span>
+<span class="sd">        The first `k_fe` elements are the estimated fixed effects</span>
+<span class="sd">        coefficients.  The remaining elements are the estimated</span>
+<span class="sd">        variance parameters.  The variance parameters are all divided</span>
+<span class="sd">        by `scale` and are not the variance parameters shown</span>
+<span class="sd">        in the summary.</span>
 <span class="sd">    fe_params : array</span>
 <span class="sd">        The fitted fixed-effects coefficients</span>
 <span class="sd">    cov_re : array</span>
@@ -2203,7 +2357,7 @@ $.facebox.settings.loadingImage = "../../../_static/loading.gif"
         <span class="nb">super</span><span class="p">(</span><span class="n">MixedLMResults</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span>
                                              <span class="n">normalized_cov_params</span><span class="o">=</span><span class="n">cov_params</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">nobs</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">df_resid</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span> <span class="o">-</span> <span class="n">np_matrix_rank</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">exog</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">df_resid</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">matrix_rank</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">exog</span><span class="p">)</span>
 
 <div class="viewcode-block" id="MixedLMResults.fittedvalues"><a class="viewcode-back" href="../../../generated/statsmodels.regression.mixed_linear_model.MixedLMResults.fittedvalues.html#statsmodels.regression.mixed_linear_model.MixedLMResults.fittedvalues">[docs]</a>    <span class="nd">@cache_readonly</span>
     <span class="k">def</span> <span class="nf">fittedvalues</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
@@ -2353,7 +2507,7 @@ $.facebox.settings.loadingImage = "../../../_static/loading.gif"
             <span class="n">ex_r</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">_aex_r</span><span class="p">[</span><span class="n">group_ix</span><span class="p">]</span>
             <span class="n">ex2_r</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">_aex_r2</span><span class="p">[</span><span class="n">group_ix</span><span class="p">]</span>
             <span class="n">label</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">group_labels</span><span class="p">[</span><span class="n">group_ix</span><span class="p">]</span>
-            <span class="n">vc_var</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">_expand_vcomp</span><span class="p">(</span><span class="n">vcomp</span><span class="p">,</span> <span class="n">group_ix</span><span class="p">)</span>
+            <span class="n">vc_var</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">_expand_vcomp</span><span class="p">(</span><span class="n">vcomp</span><span class="p">,</span> <span class="n">label</span><span class="p">)</span>
 
             <span class="n">solver</span> <span class="o">=</span> <span class="n">_smw_solver</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">scale</span><span class="p">,</span> <span class="n">ex_r</span><span class="p">,</span> <span class="n">ex2_r</span><span class="p">,</span> <span class="n">cov_re_inv</span><span class="p">,</span>
                                  <span class="mi">1</span> <span class="o">/</span> <span class="n">vc_var</span><span class="p">)</span>
@@ -2370,7 +2524,7 @@ $.facebox.settings.loadingImage = "../../../_static/loading.gif"
             <span class="n">v</span><span class="p">[</span><span class="mi">0</span><span class="p">:</span><span class="n">m</span><span class="p">,</span> <span class="mi">0</span><span class="p">:</span><span class="n">m</span><span class="p">]</span> <span class="o">+=</span> <span class="bp">self</span><span class="o">.</span><span class="n">cov_re</span>
             <span class="n">ix</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">m</span><span class="p">,</span> <span class="n">v</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
             <span class="n">v</span><span class="p">[</span><span class="n">ix</span><span class="p">,</span> <span class="n">ix</span><span class="p">]</span> <span class="o">+=</span> <span class="n">vc_var</span>
-            <span class="n">na</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_expand_re_names</span><span class="p">(</span><span class="n">group_ix</span><span class="p">)</span>
+            <span class="n">na</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_expand_re_names</span><span class="p">(</span><span class="n">label</span><span class="p">)</span>
             <span class="n">v</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">v</span><span class="p">,</span> <span class="n">index</span><span class="o">=</span><span class="n">na</span><span class="p">,</span> <span class="n">columns</span><span class="o">=</span><span class="n">na</span><span class="p">)</span>
             <span class="n">ranef_dict</span><span class="p">[</span><span class="n">label</span><span class="p">]</span> <span class="o">=</span> <span class="n">v</span>
 
@@ -2405,6 +2559,11 @@ $.facebox.settings.loadingImage = "../../../_static/loading.gif"
 <span class="sd">            The available results have the same elements as the parameter table</span>
 <span class="sd">            in `summary()`.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">scale</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="kn">import</span> <span class="nn">warnings</span>
+            <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="s1">&#39;scale is has no effect and is deprecated. It will&#39;</span>
+                          <span class="s1">&#39;be removed in the next version.&#39;</span><span class="p">,</span>
+                          <span class="ne">DeprecationWarning</span><span class="p">)</span>
 
         <span class="k">if</span> <span class="n">r_matrix</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">!=</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_fe</span><span class="p">:</span>
             <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;r_matrix for t-test should have </span><span class="si">%d</span><span class="s2"> columns&quot;</span>
@@ -2413,8 +2572,7 @@ $.facebox.settings.loadingImage = "../../../_static/loading.gif"
         <span class="n">d</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_re2</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_vc</span>
         <span class="n">z0</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">r_matrix</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">d</span><span class="p">))</span>
         <span class="n">r_matrix</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">((</span><span class="n">r_matrix</span><span class="p">,</span> <span class="n">z0</span><span class="p">),</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
-        <span class="n">tst_rslt</span> <span class="o">=</span> <span class="nb">super</span><span class="p">(</span><span class="n">MixedLMResults</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">t_test</span><span class="p">(</span>
-            <span class="n">r_matrix</span><span class="p">,</span> <span class="n">scale</span><span class="o">=</span><span class="n">scale</span><span class="p">,</span> <span class="n">use_t</span><span class="o">=</span><span class="n">use_t</span><span class="p">)</span>
+        <span class="n">tst_rslt</span> <span class="o">=</span> <span class="nb">super</span><span class="p">(</span><span class="n">MixedLMResults</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">t_test</span><span class="p">(</span><span class="n">r_matrix</span><span class="p">,</span> <span class="n">use_t</span><span class="o">=</span><span class="n">use_t</span><span class="p">)</span>
         <span class="k">return</span> <span class="n">tst_rslt</span></div>
 
 <div class="viewcode-block" id="MixedLMResults.summary"><a class="viewcode-back" href="../../../generated/statsmodels.regression.mixed_linear_model.MixedLMResults.summary.html#statsmodels.regression.mixed_linear_model.MixedLMResults.summary">[docs]</a>    <span class="k">def</span> <span class="nf">summary</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">yname</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">xname_fe</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">xname_re</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
@@ -2423,7 +2581,7 @@ $.facebox.settings.loadingImage = "../../../_static/loading.gif"
 <span class="sd">        Summarize the mixed model regression results.</span>
 
 <span class="sd">        Parameters</span>
-<span class="sd">        -----------</span>
+<span class="sd">        ----------</span>
 <span class="sd">        yname : string, optional</span>
 <span class="sd">            Default is `y`</span>
 <span class="sd">        xname_fe : list of strings, optional</span>
@@ -2444,8 +2602,7 @@ $.facebox.settings.loadingImage = "../../../_static/loading.gif"
 
 <span class="sd">        See Also</span>
 <span class="sd">        --------</span>
-<span class="sd">        statsmodels.iolib.summary.Summary : class to hold summary</span>
-<span class="sd">            results</span>
+<span class="sd">        statsmodels.iolib.summary2.Summary : class to hold summary results</span>
 <span class="sd">        &quot;&quot;&quot;</span>
 
         <span class="kn">from</span> <span class="nn">statsmodels.iolib</span> <span class="k">import</span> <span class="n">summary2</span>
@@ -2455,16 +2612,21 @@ $.facebox.settings.loadingImage = "../../../_static/loading.gif"
         <span class="n">info</span><span class="p">[</span><span class="s2">&quot;Model:&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;MixedLM&quot;</span>
         <span class="k">if</span> <span class="n">yname</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
             <span class="n">yname</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">endog_names</span>
+
         <span class="n">param_names</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">param_names</span><span class="p">[:]</span>
         <span class="n">k_fe_params</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">fe_params</span><span class="p">)</span>
         <span class="n">k_re_params</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">param_names</span><span class="p">)</span> <span class="o">-</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">fe_params</span><span class="p">)</span>
+
         <span class="k">if</span> <span class="n">xname_fe</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
             <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">xname_fe</span><span class="p">)</span> <span class="o">!=</span> <span class="n">k_fe_params</span><span class="p">:</span>
-                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;xname_fe should be a list of length </span><span class="si">%d</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">k_fe_params</span><span class="p">)</span>
+                <span class="n">msg</span> <span class="o">=</span> <span class="s2">&quot;xname_fe should be a list of length </span><span class="si">%d</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">k_fe_params</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
             <span class="n">param_names</span><span class="p">[:</span><span class="n">k_fe_params</span><span class="p">]</span> <span class="o">=</span> <span class="n">xname_fe</span>
+
         <span class="k">if</span> <span class="n">xname_re</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
             <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">xname_re</span><span class="p">)</span> <span class="o">!=</span> <span class="n">k_re_params</span><span class="p">:</span>
-                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;xname_re should be a list of length </span><span class="si">%d</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">k_re_params</span><span class="p">)</span>
+                <span class="n">msg</span> <span class="o">=</span> <span class="s2">&quot;xname_re should be a list of length </span><span class="si">%d</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">k_re_params</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
             <span class="n">param_names</span><span class="p">[</span><span class="n">k_fe_params</span><span class="p">:]</span> <span class="o">=</span> <span class="n">xname_re</span>
 
         <span class="n">info</span><span class="p">[</span><span class="s2">&quot;No. Observations:&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">n_totobs</span><span class="p">)</span>
@@ -2535,6 +2697,7 @@ $.facebox.settings.loadingImage = "../../../_static/loading.gif"
 
 <div class="viewcode-block" id="MixedLMResults.aic"><a class="viewcode-back" href="../../../generated/statsmodels.regression.mixed_linear_model.MixedLMResults.aic.html#statsmodels.regression.mixed_linear_model.MixedLMResults.aic">[docs]</a>    <span class="nd">@cache_readonly</span>
     <span class="k">def</span> <span class="nf">aic</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Akaike information criterion&quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">reml</span><span class="p">:</span>
             <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">freepat</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
@@ -2545,6 +2708,7 @@ $.facebox.settings.loadingImage = "../../../_static/loading.gif"
 
 <div class="viewcode-block" id="MixedLMResults.bic"><a class="viewcode-back" href="../../../generated/statsmodels.regression.mixed_linear_model.MixedLMResults.bic.html#statsmodels.regression.mixed_linear_model.MixedLMResults.bic">[docs]</a>    <span class="nd">@cache_readonly</span>
     <span class="k">def</span> <span class="nf">bic</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Bayesian information criterion&quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">reml</span><span class="p">:</span>
             <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">freepat</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
@@ -2749,13 +2913,11 @@ $.facebox.settings.loadingImage = "../../../_static/loading.gif"
       <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
         <div class="sphinxsidebarwrapper">
 <div id="searchbox" style="display: none" role="search">
-  <h3>Quick search</h3>
+  <h3 id="searchlabel">Quick search</h3>
     <div class="searchformwrapper">
     <form class="search" action="../../../search.html" method="get">
-      <input type="text" name="q" />
+      <input type="text" name="q" aria-labelledby="searchlabel" />
       <input type="submit" value="Go" />
-      <input type="hidden" name="check_keywords" value="yes" />
-      <input type="hidden" name="area" value="default" />
     </form>
     </div>
 </div>
@@ -2765,8 +2927,8 @@ $.facebox.settings.loadingImage = "../../../_static/loading.gif"
       <div class="clearer"></div>
     </div>
     <div class="footer" role="contentinfo">
-        &#169; Copyright 2009-2017, Josef Perktold, Skipper Seabold, Jonathan Taylor, statsmodels-developers.
-      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.7.4.
+        &#169; Copyright 2009-2018, Josef Perktold, Skipper Seabold, Jonathan Taylor, statsmodels-developers.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 2.1.0.
     </div>
   </body>
 </html>
