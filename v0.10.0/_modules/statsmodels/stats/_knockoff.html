@@ -1,0 +1,391 @@
+
+
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta charset="utf-8" />
+    <title>statsmodels.stats._knockoff &#8212; statsmodels v0.10.0 documentation</title>
+    <link rel="stylesheet" href="../../../_static/nature.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css" />
+    <script type="text/javascript" id="documentation_options" data-url_root="../../../" src="../../../_static/documentation_options.js"></script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <script type="text/javascript" src="../../../_static/language_data.js"></script>
+    <script async="async" type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/latest.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="shortcut icon" href="../../../_static/statsmodels_hybi_favico.ico"/>
+    <link rel="author" title="About these documents" href="../../../about.html" />
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+<link rel="stylesheet" href="../../../_static/examples.css" type="text/css" />
+<link rel="stylesheet" href="../../../_static/facebox.css" type="text/css" />
+<script type="text/javascript" src="../../../_static/scripts.js">
+</script>
+<script type="text/javascript" src="../../../_static/facebox.js">
+</script>
+<script type="text/javascript">
+$.facebox.settings.closeImage = "../../../_static/closelabel.png"
+$.facebox.settings.loadingImage = "../../../_static/loading.gif"
+</script>
+
+<script>
+$(document).ready(function() {
+  $.getJSON("../../../../versions.json", function(versions) {
+    var dropdown = document.createElement("div");
+    dropdown.className = "dropdown";
+    var button = document.createElement("button");
+    button.className = "dropbtn";
+    button.innerHTML = "Other Versions";
+    var content = document.createElement("div");
+    content.className = "dropdown-content";
+    dropdown.appendChild(button);
+    dropdown.appendChild(content);
+    $(".header").prepend(dropdown);
+    for (var i = 0; i < versions.length; i++) {
+      if (versions[i].substring(0, 1) == "v") {
+        versions[i] = [versions[i], versions[i].substring(1)];
+      } else {
+        versions[i] = [versions[i], versions[i]];
+      };
+    };
+    for (var i = 0; i < versions.length; i++) {
+      var a = document.createElement("a");
+      a.innerHTML = versions[i][1];
+      a.href = "../../../../" + versions[i][0] + "/index.html";
+      a.title = versions[i][1];
+      $(".dropdown-content").append(a);
+    };
+  });
+});
+</script>
+
+
+  </head><body>
+<div class="headerwrap">
+    <div class = "header">
+        
+        <a href = "../../../index.html">
+<img src="../../../_static/statsmodels_hybi_banner.png" alt="Logo"
+    style="padding-left: 15px"/></a>
+        
+    </div>
+</div>
+
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+<li><a href ="../../../install.html">Install</a></li> &nbsp;|&nbsp;
+<li><a href="https://groups.google.com/forum/?hl=en#!forum/pystatsmodels">Support</a></li> &nbsp;|&nbsp;
+<li><a href="https://github.com/statsmodels/statsmodels/issues">Bugs</a></li> &nbsp;|&nbsp;
+<li><a href="../../../dev/index.html">Develop</a></li> &nbsp;|&nbsp;
+<li><a href="../../../examples/index.html">Examples</a></li> &nbsp;|&nbsp;
+<li><a href="../../../faq.html">FAQ</a></li> &nbsp;|&nbsp;
+
+          <li class="nav-item nav-item-1"><a href="../../index.html" accesskey="U">Module code</a> |</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+
+
+
+
+  <h1>Source code for statsmodels.stats._knockoff</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">The RegressionFDR class implements the &#39;Knockoff&#39; approach for</span>
+<span class="sd">controlling false discovery rates (FDR) in regression analysis.</span>
+
+<span class="sd">The knockoff approach does not require standard errors.  Thus one</span>
+<span class="sd">application is to provide inference for parameter estimates that are</span>
+<span class="sd">not smooth functions of the data.  For example, the knockoff approach</span>
+<span class="sd">can be used to do inference for parameter estimates obtained from the</span>
+<span class="sd">LASSO, of from stepwise variable selection.</span>
+
+<span class="sd">The knockoff approach controls FDR for parameter estimates that may be</span>
+<span class="sd">dependent, such as coefficient estimates in a multiple regression</span>
+<span class="sd">model.</span>
+
+<span class="sd">The knockoff approach is applicable whenever the test statistic can be</span>
+<span class="sd">computed entirely from x&#39;y and x&#39;x, where x is the design matrix and y</span>
+<span class="sd">is the vector of responses.</span>
+
+<span class="sd">Reference</span>
+<span class="sd">---------</span>
+<span class="sd">Rina Foygel Barber, Emmanuel Candes (2015).  Controlling the False</span>
+<span class="sd">Discovery Rate via Knockoffs.  Annals of Statistics 43:5.</span>
+<span class="sd">http://statweb.stanford.edu/~candes/papers/FDR_regression.pdf</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+<span class="kn">import</span> <span class="nn">pandas</span> <span class="k">as</span> <span class="nn">pd</span>
+<span class="kn">from</span> <span class="nn">statsmodels.iolib</span> <span class="k">import</span> <span class="n">summary2</span>
+
+
+<div class="viewcode-block" id="RegressionFDR"><a class="viewcode-back" href="../../../generated/statsmodels.stats.multitest.RegressionFDR.html#statsmodels.stats.multitest.RegressionFDR">[docs]</a><span class="k">class</span> <span class="nc">RegressionFDR</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Control FDR in a regression procedure.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    endog : array-like</span>
+<span class="sd">        The dependent variable of the regression</span>
+<span class="sd">    exog : array-like</span>
+<span class="sd">        The independent variables of the regression</span>
+<span class="sd">    regeffects : RegressionEffects instance</span>
+<span class="sd">        An instance of a RegressionEffects class that can compute</span>
+<span class="sd">        effect sizes for the regression coefficients.</span>
+<span class="sd">    method : string</span>
+<span class="sd">        The approach used to asssess and control FDR, currently</span>
+<span class="sd">        must be &#39;knockoff&#39;.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    Returns an instance of the RegressionFDR class.  The `fdr` attribute</span>
+<span class="sd">    holds the estimated false discovery rates.</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    This class Implements the knockoff method of Barber and Candes.</span>
+<span class="sd">    This is an approach for controlling the FDR of a variety of</span>
+<span class="sd">    regression estimation procedures, including correlation</span>
+<span class="sd">    coefficients, OLS regression, OLS with forward selection, and</span>
+<span class="sd">    LASSO regression.</span>
+
+<span class="sd">    For other approaches to FDR control in regression, see the</span>
+<span class="sd">    statsmodels.stats.multitest module.  Methods provided in that</span>
+<span class="sd">    module use Z-scores or p-values, and therefore require standard</span>
+<span class="sd">    errors for the coefficient estimates to be available.</span>
+
+<span class="sd">    The default method for constructing the augmented design matrix is</span>
+<span class="sd">    the &#39;equivariant&#39; approach, set `design_method=&#39;sdp&#39;` to use an</span>
+<span class="sd">    alternative approach involving semidefinite programming.  See</span>
+<span class="sd">    Barber and Candes for more information about both approaches.  The</span>
+<span class="sd">    sdp approach requires that the cvxopt package be installed.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">endog</span><span class="p">,</span> <span class="n">exog</span><span class="p">,</span> <span class="n">regeffects</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s2">&quot;knockoff&quot;</span><span class="p">,</span>
+                 <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">exog</span><span class="p">,</span> <span class="s2">&quot;columns&quot;</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">xnames</span> <span class="o">=</span> <span class="n">exog</span><span class="o">.</span><span class="n">columns</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">xnames</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;x</span><span class="si">%d</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">j</span> <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">exog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">])]</span>
+
+        <span class="n">exog</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">exog</span><span class="p">)</span>
+        <span class="n">endog</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">endog</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="s2">&quot;design_method&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">kwargs</span><span class="p">:</span>
+            <span class="n">kwargs</span><span class="p">[</span><span class="s2">&quot;design_method&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;equi&quot;</span>
+
+        <span class="n">nobs</span><span class="p">,</span> <span class="n">nvar</span> <span class="o">=</span> <span class="n">exog</span><span class="o">.</span><span class="n">shape</span>
+
+        <span class="k">if</span> <span class="n">kwargs</span><span class="p">[</span><span class="s2">&quot;design_method&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;equi&quot;</span><span class="p">:</span>
+            <span class="n">exog1</span><span class="p">,</span> <span class="n">exog2</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">_design_knockoff_equi</span><span class="p">(</span><span class="n">exog</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">kwargs</span><span class="p">[</span><span class="s2">&quot;design_method&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;sdp&quot;</span><span class="p">:</span>
+            <span class="n">exog1</span><span class="p">,</span> <span class="n">exog2</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">_design_knockoff_sdp</span><span class="p">(</span><span class="n">exog</span><span class="p">)</span>
+        <span class="n">endog</span> <span class="o">=</span> <span class="n">endog</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">endog</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">endog</span> <span class="o">=</span> <span class="n">endog</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">exog</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">((</span><span class="n">exog1</span><span class="p">,</span> <span class="n">exog2</span><span class="p">),</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">exog1</span> <span class="o">=</span> <span class="n">exog1</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">exog2</span> <span class="o">=</span> <span class="n">exog2</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">stats</span> <span class="o">=</span> <span class="n">regeffects</span><span class="o">.</span><span class="n">stats</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
+
+        <span class="n">unq</span><span class="p">,</span> <span class="n">inv</span><span class="p">,</span> <span class="n">cnt</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">unique</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">stats</span><span class="p">,</span> <span class="n">return_inverse</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+                                  <span class="n">return_counts</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+        <span class="c1"># The denominator of the FDR</span>
+        <span class="n">cc</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">cumsum</span><span class="p">(</span><span class="n">cnt</span><span class="p">)</span>
+        <span class="n">denom</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">stats</span><span class="p">)</span> <span class="o">-</span> <span class="n">cc</span> <span class="o">+</span> <span class="n">cnt</span>
+        <span class="n">denom</span><span class="p">[</span><span class="n">denom</span> <span class="o">&lt;</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span>
+
+        <span class="c1"># The numerator of the FDR</span>
+        <span class="n">ii</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">searchsorted</span><span class="p">(</span><span class="n">unq</span><span class="p">,</span> <span class="o">-</span><span class="n">unq</span><span class="p">,</span> <span class="n">side</span><span class="o">=</span><span class="s1">&#39;right&#39;</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span>
+        <span class="n">numer</span> <span class="o">=</span> <span class="n">cc</span><span class="p">[</span><span class="n">ii</span><span class="p">]</span>
+        <span class="n">numer</span><span class="p">[</span><span class="n">ii</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
+
+        <span class="c1"># The knockoff+ estimated FDR</span>
+        <span class="n">fdrp</span> <span class="o">=</span> <span class="p">(</span><span class="mi">1</span> <span class="o">+</span> <span class="n">numer</span><span class="p">)</span> <span class="o">/</span> <span class="n">denom</span>
+
+        <span class="c1"># The knockoff estimated FDR</span>
+        <span class="n">fdr</span> <span class="o">=</span> <span class="n">numer</span> <span class="o">/</span> <span class="n">denom</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">fdr</span> <span class="o">=</span> <span class="n">fdr</span><span class="p">[</span><span class="n">inv</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">fdrp</span> <span class="o">=</span> <span class="n">fdrp</span><span class="p">[</span><span class="n">inv</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_ufdr</span> <span class="o">=</span> <span class="n">fdr</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_unq</span> <span class="o">=</span> <span class="n">unq</span>
+
+        <span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">index</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">xnames</span><span class="p">)</span>
+        <span class="n">df</span><span class="p">[</span><span class="s2">&quot;Stat&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">stats</span>
+        <span class="n">df</span><span class="p">[</span><span class="s2">&quot;FDR+&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">fdrp</span>
+        <span class="n">df</span><span class="p">[</span><span class="s2">&quot;FDR&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">fdr</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">fdr_df</span> <span class="o">=</span> <span class="n">df</span>
+
+<div class="viewcode-block" id="RegressionFDR.threshold"><a class="viewcode-back" href="../../../generated/statsmodels.stats.multitest.RegressionFDR.threshold.html#statsmodels.stats.multitest.RegressionFDR.threshold">[docs]</a>    <span class="k">def</span> <span class="nf">threshold</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tfdr</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Returns the threshold statistic for a given target FDR.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_ufdr</span><span class="p">)</span> <span class="o">&lt;=</span> <span class="n">tfdr</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_unq</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_ufdr</span> <span class="o">&lt;=</span> <span class="n">tfdr</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span></div>
+
+<div class="viewcode-block" id="RegressionFDR.summary"><a class="viewcode-back" href="../../../generated/statsmodels.stats.multitest.RegressionFDR.summary.html#statsmodels.stats.multitest.RegressionFDR.summary">[docs]</a>    <span class="k">def</span> <span class="nf">summary</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+
+        <span class="n">summ</span> <span class="o">=</span> <span class="n">summary2</span><span class="o">.</span><span class="n">Summary</span><span class="p">()</span>
+        <span class="n">summ</span><span class="o">.</span><span class="n">add_title</span><span class="p">(</span><span class="s2">&quot;Regression FDR results&quot;</span><span class="p">)</span>
+        <span class="n">summ</span><span class="o">.</span><span class="n">add_df</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">fdr_df</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">summ</span></div></div>
+
+
+<span class="k">def</span> <span class="nf">_design_knockoff_sdp</span><span class="p">(</span><span class="n">exog</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Use semidefinite programming to construct a knockoff design</span>
+<span class="sd">    matrix.</span>
+
+<span class="sd">    Requires cvxopt to be installed.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">try</span><span class="p">:</span>
+        <span class="kn">from</span> <span class="nn">cvxopt</span> <span class="k">import</span> <span class="n">solvers</span><span class="p">,</span> <span class="n">matrix</span>
+    <span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;SDP knockoff designs require installation of cvxopt&quot;</span><span class="p">)</span>
+
+    <span class="n">nobs</span><span class="p">,</span> <span class="n">nvar</span> <span class="o">=</span> <span class="n">exog</span><span class="o">.</span><span class="n">shape</span>
+
+    <span class="c1"># Standardize exog</span>
+    <span class="n">xnm</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">exog</span><span class="o">**</span><span class="mi">2</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+    <span class="n">xnm</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">xnm</span><span class="p">)</span>
+    <span class="n">exog</span> <span class="o">=</span> <span class="n">exog</span> <span class="o">/</span> <span class="n">xnm</span>
+
+    <span class="n">Sigma</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">exog</span><span class="o">.</span><span class="n">T</span><span class="p">,</span> <span class="n">exog</span><span class="p">)</span>
+
+    <span class="n">c</span> <span class="o">=</span> <span class="n">matrix</span><span class="p">(</span><span class="o">-</span><span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">nvar</span><span class="p">))</span>
+
+    <span class="n">h0</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">((</span><span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">nvar</span><span class="p">),</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">nvar</span><span class="p">)))</span>
+    <span class="n">h0</span> <span class="o">=</span> <span class="n">matrix</span><span class="p">(</span><span class="n">h0</span><span class="p">)</span>
+    <span class="n">G0</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">((</span><span class="o">-</span><span class="n">np</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="n">nvar</span><span class="p">),</span> <span class="n">np</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="n">nvar</span><span class="p">)),</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+    <span class="n">G0</span> <span class="o">=</span> <span class="n">matrix</span><span class="p">(</span><span class="n">G0</span><span class="p">)</span>
+
+    <span class="n">h1</span> <span class="o">=</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">Sigma</span>
+    <span class="n">h1</span> <span class="o">=</span> <span class="n">matrix</span><span class="p">(</span><span class="n">h1</span><span class="p">)</span>
+    <span class="n">i</span><span class="p">,</span> <span class="n">j</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">diag_indices</span><span class="p">(</span><span class="n">nvar</span><span class="p">)</span>
+    <span class="n">G1</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">nvar</span><span class="o">*</span><span class="n">nvar</span><span class="p">,</span> <span class="n">nvar</span><span class="p">))</span>
+    <span class="n">G1</span><span class="p">[</span><span class="n">i</span><span class="o">*</span><span class="n">nvar</span> <span class="o">+</span> <span class="n">j</span><span class="p">,</span> <span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span>
+    <span class="n">G1</span> <span class="o">=</span> <span class="n">matrix</span><span class="p">(</span><span class="n">G1</span><span class="p">)</span>
+
+    <span class="n">solvers</span><span class="o">.</span><span class="n">options</span><span class="p">[</span><span class="s1">&#39;show_progress&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="n">sol</span> <span class="o">=</span> <span class="n">solvers</span><span class="o">.</span><span class="n">sdp</span><span class="p">(</span><span class="n">c</span><span class="p">,</span> <span class="n">G0</span><span class="p">,</span> <span class="n">h0</span><span class="p">,</span> <span class="p">[</span><span class="n">G1</span><span class="p">],</span> <span class="p">[</span><span class="n">h1</span><span class="p">])</span>
+    <span class="n">sl</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">sol</span><span class="p">[</span><span class="s1">&#39;x&#39;</span><span class="p">])</span><span class="o">.</span><span class="n">ravel</span><span class="p">()</span>
+
+    <span class="n">xcov</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">exog</span><span class="o">.</span><span class="n">T</span><span class="p">,</span> <span class="n">exog</span><span class="p">)</span>
+    <span class="n">exogn</span> <span class="o">=</span> <span class="n">_get_knmat</span><span class="p">(</span><span class="n">exog</span><span class="p">,</span> <span class="n">xcov</span><span class="p">,</span> <span class="n">sl</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">exog</span><span class="p">,</span> <span class="n">exogn</span><span class="p">,</span> <span class="n">sl</span>
+
+
+<span class="k">def</span> <span class="nf">_design_knockoff_equi</span><span class="p">(</span><span class="n">exog</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Construct an equivariant design matrix for knockoff analysis.</span>
+
+<span class="sd">    Follows the &#39;equi-correlated knockoff approach of equation 2.4 in</span>
+<span class="sd">    Barber and Candes.</span>
+
+<span class="sd">    Constructs a pair of design matrices exogs, exogn such that exogs</span>
+<span class="sd">    is a scaled/centered version of the input matrix exog, exogn is</span>
+<span class="sd">    another matrix of the same shape with cov(exogn) = cov(exogs), and</span>
+<span class="sd">    the covariances between corresponding columns of exogn and exogs</span>
+<span class="sd">    are as small as possible.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">nobs</span><span class="p">,</span> <span class="n">nvar</span> <span class="o">=</span> <span class="n">exog</span><span class="o">.</span><span class="n">shape</span>
+
+    <span class="k">if</span> <span class="n">nobs</span> <span class="o">&lt;</span> <span class="mi">2</span><span class="o">*</span><span class="n">nvar</span><span class="p">:</span>
+        <span class="n">msg</span> <span class="o">=</span> <span class="s2">&quot;The equivariant knockoff can ony be used when n &gt;= 2*p&quot;</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+
+    <span class="c1"># Standardize exog</span>
+    <span class="n">xnm</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">exog</span><span class="o">**</span><span class="mi">2</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+    <span class="n">xnm</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">xnm</span><span class="p">)</span>
+    <span class="n">exog</span> <span class="o">=</span> <span class="n">exog</span> <span class="o">/</span> <span class="n">xnm</span>
+
+    <span class="n">xcov</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">exog</span><span class="o">.</span><span class="n">T</span><span class="p">,</span> <span class="n">exog</span><span class="p">)</span>
+    <span class="n">ev</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">eig</span><span class="p">(</span><span class="n">xcov</span><span class="p">)</span>
+    <span class="n">evmin</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">ev</span><span class="p">)</span>
+
+    <span class="n">sl</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="mi">2</span><span class="o">*</span><span class="n">evmin</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+    <span class="n">sl</span> <span class="o">=</span> <span class="n">sl</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">nvar</span><span class="p">)</span>
+
+    <span class="n">exogn</span> <span class="o">=</span> <span class="n">_get_knmat</span><span class="p">(</span><span class="n">exog</span><span class="p">,</span> <span class="n">xcov</span><span class="p">,</span> <span class="n">sl</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">exog</span><span class="p">,</span> <span class="n">exogn</span><span class="p">,</span> <span class="n">sl</span>
+
+
+<span class="k">def</span> <span class="nf">_get_knmat</span><span class="p">(</span><span class="n">exog</span><span class="p">,</span> <span class="n">xcov</span><span class="p">,</span> <span class="n">sl</span><span class="p">):</span>
+    <span class="c1"># Utility function, see equation 2.2 of Barber &amp; Candes.</span>
+
+    <span class="n">nobs</span><span class="p">,</span> <span class="n">nvar</span> <span class="o">=</span> <span class="n">exog</span><span class="o">.</span><span class="n">shape</span>
+
+    <span class="n">ash</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">inv</span><span class="p">(</span><span class="n">xcov</span><span class="p">)</span>
+    <span class="n">ash</span> <span class="o">*=</span> <span class="o">-</span><span class="n">np</span><span class="o">.</span><span class="n">outer</span><span class="p">(</span><span class="n">sl</span><span class="p">,</span> <span class="n">sl</span><span class="p">)</span>
+    <span class="n">i</span><span class="p">,</span> <span class="n">j</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">diag_indices</span><span class="p">(</span><span class="n">nvar</span><span class="p">)</span>
+    <span class="n">ash</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="n">j</span><span class="p">]</span> <span class="o">+=</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">sl</span>
+
+    <span class="n">umat</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="n">size</span><span class="o">=</span><span class="p">(</span><span class="n">nobs</span><span class="p">,</span> <span class="n">nvar</span><span class="p">))</span>
+    <span class="n">u</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">qr</span><span class="p">(</span><span class="n">exog</span><span class="p">)</span>
+    <span class="n">umat</span> <span class="o">-=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">u</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">u</span><span class="o">.</span><span class="n">T</span><span class="p">,</span> <span class="n">umat</span><span class="p">))</span>
+    <span class="n">umat</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">qr</span><span class="p">(</span><span class="n">umat</span><span class="p">)</span>
+
+    <span class="n">ashr</span><span class="p">,</span> <span class="n">xc</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">svd</span><span class="p">(</span><span class="n">ash</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+    <span class="n">ashr</span> <span class="o">*=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">xc</span><span class="p">)</span>
+    <span class="n">ashr</span> <span class="o">=</span> <span class="n">ashr</span><span class="o">.</span><span class="n">T</span>
+
+    <span class="n">ex</span> <span class="o">=</span> <span class="p">(</span><span class="n">sl</span><span class="p">[:,</span> <span class="kc">None</span><span class="p">]</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">solve</span><span class="p">(</span><span class="n">xcov</span><span class="p">,</span> <span class="n">exog</span><span class="o">.</span><span class="n">T</span><span class="p">))</span><span class="o">.</span><span class="n">T</span>
+    <span class="n">exogn</span> <span class="o">=</span> <span class="n">exog</span> <span class="o">-</span> <span class="n">ex</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">umat</span><span class="p">,</span> <span class="n">ashr</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">exogn</span>
+</pre></div>
+
+
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../../../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" />
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer" role="contentinfo">
+        &#169; Copyright 2009-2018, Josef Perktold, Skipper Seabold, Jonathan Taylor, statsmodels-developers.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 2.1.2.
+    </div>
+  </body>
+</html>

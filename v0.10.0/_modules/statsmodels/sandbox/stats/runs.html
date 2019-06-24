@@ -1,0 +1,769 @@
+
+
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta charset="utf-8" />
+    <title>statsmodels.sandbox.stats.runs &#8212; statsmodels v0.10.0 documentation</title>
+    <link rel="stylesheet" href="../../../../_static/nature.css" type="text/css" />
+    <link rel="stylesheet" href="../../../../_static/pygments.css" type="text/css" />
+    <link rel="stylesheet" type="text/css" href="../../../../_static/graphviz.css" />
+    <script type="text/javascript" id="documentation_options" data-url_root="../../../../" src="../../../../_static/documentation_options.js"></script>
+    <script type="text/javascript" src="../../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../../_static/doctools.js"></script>
+    <script type="text/javascript" src="../../../../_static/language_data.js"></script>
+    <script async="async" type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/latest.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="shortcut icon" href="../../../../_static/statsmodels_hybi_favico.ico"/>
+    <link rel="author" title="About these documents" href="../../../../about.html" />
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" />
+<link rel="stylesheet" href="../../../../_static/examples.css" type="text/css" />
+<link rel="stylesheet" href="../../../../_static/facebox.css" type="text/css" />
+<script type="text/javascript" src="../../../../_static/scripts.js">
+</script>
+<script type="text/javascript" src="../../../../_static/facebox.js">
+</script>
+<script type="text/javascript">
+$.facebox.settings.closeImage = "../../../../_static/closelabel.png"
+$.facebox.settings.loadingImage = "../../../../_static/loading.gif"
+</script>
+
+<script>
+$(document).ready(function() {
+  $.getJSON("../../../../../versions.json", function(versions) {
+    var dropdown = document.createElement("div");
+    dropdown.className = "dropdown";
+    var button = document.createElement("button");
+    button.className = "dropbtn";
+    button.innerHTML = "Other Versions";
+    var content = document.createElement("div");
+    content.className = "dropdown-content";
+    dropdown.appendChild(button);
+    dropdown.appendChild(content);
+    $(".header").prepend(dropdown);
+    for (var i = 0; i < versions.length; i++) {
+      if (versions[i].substring(0, 1) == "v") {
+        versions[i] = [versions[i], versions[i].substring(1)];
+      } else {
+        versions[i] = [versions[i], versions[i]];
+      };
+    };
+    for (var i = 0; i < versions.length; i++) {
+      var a = document.createElement("a");
+      a.innerHTML = versions[i][1];
+      a.href = "../../../../../" + versions[i][0] + "/index.html";
+      a.title = versions[i][1];
+      $(".dropdown-content").append(a);
+    };
+  });
+});
+</script>
+
+
+  </head><body>
+<div class="headerwrap">
+    <div class = "header">
+        
+        <a href = "../../../../index.html">
+<img src="../../../../_static/statsmodels_hybi_banner.png" alt="Logo"
+    style="padding-left: 15px"/></a>
+        
+    </div>
+</div>
+
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+<li><a href ="../../../../install.html">Install</a></li> &nbsp;|&nbsp;
+<li><a href="https://groups.google.com/forum/?hl=en#!forum/pystatsmodels">Support</a></li> &nbsp;|&nbsp;
+<li><a href="https://github.com/statsmodels/statsmodels/issues">Bugs</a></li> &nbsp;|&nbsp;
+<li><a href="../../../../dev/index.html">Develop</a></li> &nbsp;|&nbsp;
+<li><a href="../../../../examples/index.html">Examples</a></li> &nbsp;|&nbsp;
+<li><a href="../../../../faq.html">FAQ</a></li> &nbsp;|&nbsp;
+
+          <li class="nav-item nav-item-1"><a href="../../../index.html" accesskey="U">Module code</a> |</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+
+
+
+
+  <h1>Source code for statsmodels.sandbox.stats.runs</h1><div class="highlight"><pre>
+<span></span><span class="sd">&#39;&#39;&#39;runstest</span>
+
+<span class="sd">formulas for mean and var of runs taken from SAS manual NPAR tests, also idea</span>
+<span class="sd">for runstest_1samp and runstest_2samp</span>
+
+<span class="sd">Description in NIST handbook and dataplot doesn&#39;t explain their expected</span>
+<span class="sd">values, or variance</span>
+
+<span class="sd">Note:</span>
+<span class="sd">There are (at least) two definitions of runs used in literature. The classical</span>
+<span class="sd">definition which is also used here, is that runs are sequences of identical</span>
+<span class="sd">observations separated by observations with different realizations.</span>
+<span class="sd">The second definition allows for overlapping runs, or runs where counting a</span>
+<span class="sd">run is also started after a run of a fixed length of the same kind.</span>
+
+
+<span class="sd">TODO</span>
+<span class="sd">* add one-sided tests where possible or where it makes sense</span>
+
+<span class="sd">&#39;&#39;&#39;</span>
+
+<span class="kn">from</span> <span class="nn">__future__</span> <span class="k">import</span> <span class="n">print_function</span>
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+<span class="kn">from</span> <span class="nn">scipy</span> <span class="k">import</span> <span class="n">stats</span>
+<span class="kn">from</span> <span class="nn">scipy.special</span> <span class="k">import</span> <span class="n">comb</span>
+<span class="kn">import</span> <span class="nn">warnings</span>
+
+<div class="viewcode-block" id="Runs"><a class="viewcode-back" href="../../../../generated/statsmodels.sandbox.stats.runs.Runs.html#statsmodels.sandbox.stats.runs.Runs">[docs]</a><span class="k">class</span> <span class="nc">Runs</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;class for runs in a binary sequence</span>
+
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    x : array_like, 1d</span>
+<span class="sd">        data array,</span>
+
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    This was written as a more general class for runs. This has some redundant</span>
+<span class="sd">    calculations when only the runs_test is used.</span>
+
+<span class="sd">    TODO: make it lazy</span>
+
+<span class="sd">    The runs test could be generalized to more than 1d if there is a use case</span>
+<span class="sd">    for it.</span>
+
+<span class="sd">    This should be extended once I figure out what the distribution of runs</span>
+<span class="sd">    of any length k is.</span>
+
+<span class="sd">    The exact distribution for the runs test is also available but not yet</span>
+<span class="sd">    verified.</span>
+
+<span class="sd">    &#39;&#39;&#39;</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">runstart</span> <span class="o">=</span> <span class="n">runstart</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nonzero</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">diff</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">r_</span><span class="p">[[</span><span class="o">-</span><span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">],</span> <span class="n">x</span><span class="p">,</span> <span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">]]))[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">runs</span> <span class="o">=</span> <span class="n">runs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">diff</span><span class="p">(</span><span class="n">runstart</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">runs_sign</span> <span class="o">=</span> <span class="n">runs_sign</span> <span class="o">=</span> <span class="n">x</span><span class="p">[</span><span class="n">runstart</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">runs_pos</span> <span class="o">=</span> <span class="n">runs</span><span class="p">[</span><span class="n">runs_sign</span><span class="o">==</span><span class="mi">1</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">runs_neg</span> <span class="o">=</span> <span class="n">runs</span><span class="p">[</span><span class="n">runs_sign</span><span class="o">==</span><span class="mi">0</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">runs_freqs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">bincount</span><span class="p">(</span><span class="n">runs</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">n_runs</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">runs</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">n_pos</span> <span class="o">=</span> <span class="p">(</span><span class="n">x</span><span class="o">==</span><span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
+
+<div class="viewcode-block" id="Runs.runs_test"><a class="viewcode-back" href="../../../../generated/statsmodels.sandbox.stats.runs.Runs.runs_test.html#statsmodels.sandbox.stats.runs.Runs.runs_test">[docs]</a>    <span class="k">def</span> <span class="nf">runs_test</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">correction</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;basic version of runs test</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        correction: bool</span>
+<span class="sd">            Following the SAS manual, for samplesize below 50, the test</span>
+<span class="sd">            statistic is corrected by 0.5. This can be turned off with</span>
+<span class="sd">            correction=False, and was included to match R, tseries, which</span>
+<span class="sd">            does not use any correction.</span>
+
+<span class="sd">        pvalue based on normal distribution, with integer correction</span>
+
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">npo</span> <span class="o">=</span> <span class="n">npo</span> <span class="o">=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">runs_pos</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">nne</span> <span class="o">=</span> <span class="n">nne</span> <span class="o">=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">runs_neg</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
+
+        <span class="c1">#n_r = self.n_runs</span>
+        <span class="n">n</span> <span class="o">=</span> <span class="n">npo</span> <span class="o">+</span> <span class="n">nne</span>
+        <span class="n">npn</span> <span class="o">=</span> <span class="n">npo</span> <span class="o">*</span> <span class="n">nne</span>
+        <span class="n">rmean</span> <span class="o">=</span> <span class="mf">2.</span> <span class="o">*</span> <span class="n">npn</span> <span class="o">/</span> <span class="n">n</span> <span class="o">+</span> <span class="mi">1</span>
+        <span class="n">rvar</span> <span class="o">=</span> <span class="mf">2.</span> <span class="o">*</span> <span class="n">npn</span> <span class="o">*</span> <span class="p">(</span><span class="mf">2.</span><span class="o">*</span><span class="n">npn</span> <span class="o">-</span> <span class="n">n</span><span class="p">)</span> <span class="o">/</span> <span class="n">n</span><span class="o">**</span><span class="mf">2.</span> <span class="o">/</span> <span class="p">(</span><span class="n">n</span><span class="o">-</span><span class="mf">1.</span><span class="p">)</span>
+        <span class="n">rstd</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">rvar</span><span class="p">)</span>
+        <span class="n">rdemean</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_runs</span> <span class="o">-</span> <span class="n">rmean</span>
+        <span class="k">if</span> <span class="n">n</span> <span class="o">&gt;=</span> <span class="mi">50</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">correction</span><span class="p">:</span>
+            <span class="n">z</span> <span class="o">=</span> <span class="n">rdemean</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">rdemean</span> <span class="o">&gt;</span> <span class="mf">0.5</span><span class="p">:</span>
+                <span class="n">z</span> <span class="o">=</span> <span class="n">rdemean</span> <span class="o">-</span> <span class="mf">0.5</span>
+            <span class="k">elif</span> <span class="n">rdemean</span> <span class="o">&lt;</span> <span class="mf">0.5</span><span class="p">:</span>
+                <span class="n">z</span> <span class="o">=</span> <span class="n">rdemean</span> <span class="o">+</span> <span class="mf">0.5</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">z</span> <span class="o">=</span> <span class="mf">0.</span>
+
+        <span class="n">z</span> <span class="o">/=</span> <span class="n">rstd</span>
+        <span class="n">pval</span> <span class="o">=</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">stats</span><span class="o">.</span><span class="n">norm</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">z</span><span class="p">))</span>
+        <span class="k">return</span> <span class="n">z</span><span class="p">,</span> <span class="n">pval</span></div></div>
+
+<div class="viewcode-block" id="runstest_1samp"><a class="viewcode-back" href="../../../../generated/statsmodels.sandbox.stats.runs.runstest_1samp.html#statsmodels.sandbox.stats.runs.runstest_1samp">[docs]</a><span class="k">def</span> <span class="nf">runstest_1samp</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">cutoff</span><span class="o">=</span><span class="s1">&#39;mean&#39;</span><span class="p">,</span> <span class="n">correction</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;use runs test on binary discretized data above/below cutoff</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    x : array_like</span>
+<span class="sd">        data, numeric</span>
+<span class="sd">    cutoff : {&#39;mean&#39;, &#39;median&#39;} or number</span>
+<span class="sd">        This specifies the cutoff to split the data into large and small</span>
+<span class="sd">        values.</span>
+<span class="sd">    correction: bool</span>
+<span class="sd">        Following the SAS manual, for samplesize below 50, the test</span>
+<span class="sd">        statistic is corrected by 0.5. This can be turned off with</span>
+<span class="sd">        correction=False, and was included to match R, tseries, which</span>
+<span class="sd">        does not use any correction.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    z_stat : float</span>
+<span class="sd">        test statistic, asymptotically normally distributed</span>
+<span class="sd">    p-value : float</span>
+<span class="sd">        p-value, reject the null hypothesis if it is below an type 1 error</span>
+<span class="sd">        level, alpha .</span>
+
+<span class="sd">    &#39;&#39;&#39;</span>
+
+    <span class="k">if</span> <span class="n">cutoff</span> <span class="o">==</span> <span class="s1">&#39;mean&#39;</span><span class="p">:</span>
+        <span class="n">cutoff</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">cutoff</span> <span class="o">==</span> <span class="s1">&#39;median&#39;</span><span class="p">:</span>
+        <span class="n">cutoff</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">median</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+    <span class="n">xindicator</span> <span class="o">=</span> <span class="p">(</span><span class="n">x</span> <span class="o">&gt;=</span> <span class="n">cutoff</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">int</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">Runs</span><span class="p">(</span><span class="n">xindicator</span><span class="p">)</span><span class="o">.</span><span class="n">runs_test</span><span class="p">(</span><span class="n">correction</span><span class="o">=</span><span class="n">correction</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="runstest_2samp"><a class="viewcode-back" href="../../../../generated/statsmodels.sandbox.stats.runs.runstest_2samp.html#statsmodels.sandbox.stats.runs.runstest_2samp">[docs]</a><span class="k">def</span> <span class="nf">runstest_2samp</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">groups</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">correction</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;Wald-Wolfowitz runstest for two samples</span>
+
+<span class="sd">    This tests whether two samples come from the same distribution.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    x : array_like</span>
+<span class="sd">        data, numeric, contains either one group, if y is also given, or</span>
+<span class="sd">        both groups, if additionally a group indicator is provided</span>
+<span class="sd">    y : array_like (optional)</span>
+<span class="sd">        data, numeric</span>
+<span class="sd">    groups : array_like</span>
+<span class="sd">        group labels or indicator the data for both groups is given in a</span>
+<span class="sd">        single 1-dimensional array, x. If group labels are not [0,1], then</span>
+<span class="sd">    correction: bool</span>
+<span class="sd">        Following the SAS manual, for samplesize below 50, the test</span>
+<span class="sd">        statistic is corrected by 0.5. This can be turned off with</span>
+<span class="sd">        correction=False, and was included to match R, tseries, which</span>
+<span class="sd">        does not use any correction.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    z_stat : float</span>
+<span class="sd">        test statistic, asymptotically normally distributed</span>
+<span class="sd">    p-value : float</span>
+<span class="sd">        p-value, reject the null hypothesis if it is below an type 1 error</span>
+<span class="sd">        level, alpha .</span>
+
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    Wald-Wolfowitz runs test.</span>
+
+<span class="sd">    If there are ties, then then the test statistic and p-value that is</span>
+<span class="sd">    reported, is based on the higher p-value between sorting all tied</span>
+<span class="sd">    observations of the same group</span>
+
+
+<span class="sd">    This test is intended for continuous distributions</span>
+<span class="sd">    SAS has treatment for ties, but not clear, and sounds more complicated</span>
+<span class="sd">    (minimum and maximum possible runs prevent use of argsort)</span>
+<span class="sd">    (maybe it&#39;s not so difficult, idea: add small positive noise to first</span>
+<span class="sd">    one, run test, then to the other, run test, take max(?) p-value - DONE</span>
+<span class="sd">    This gives not the minimum and maximum of the number of runs, but should</span>
+<span class="sd">    be close. Not true, this is close to minimum but far away from maximum.</span>
+<span class="sd">    maximum number of runs would use alternating groups in the ties.)</span>
+<span class="sd">    Maybe adding random noise would be the better approach.</span>
+
+<span class="sd">    SAS has exact distribution for sample size &lt;=30, doesn&#39;t look standard</span>
+<span class="sd">    but should be easy to add.</span>
+
+<span class="sd">    currently two-sided test only</span>
+
+<span class="sd">    This has not been verified against a reference implementation. In a short</span>
+<span class="sd">    Monte Carlo simulation where both samples are normally distribute, the test</span>
+<span class="sd">    seems to be correctly sized for larger number of observations (30 or</span>
+<span class="sd">    larger), but conservative (i.e. reject less often than nominal) with a</span>
+<span class="sd">    sample size of 10 in each group.</span>
+
+<span class="sd">    See Also</span>
+<span class="sd">    --------</span>
+<span class="sd">    runs_test_1samp</span>
+<span class="sd">    Runs</span>
+<span class="sd">    RunsProb</span>
+
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">y</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">y</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">y</span><span class="p">)</span>
+        <span class="n">groups</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">((</span><span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">x</span><span class="p">)),</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">y</span><span class="p">))))</span>
+        <span class="c1"># note reassigning x</span>
+        <span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">((</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">))</span>
+        <span class="n">gruni</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">groups</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">gruni</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">unique</span><span class="p">(</span><span class="n">groups</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">gruni</span><span class="o">.</span><span class="n">size</span> <span class="o">!=</span> <span class="mi">2</span><span class="p">:</span>  <span class="c1"># pylint: disable=E1103</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;not exactly two groups specified&#39;</span><span class="p">)</span>
+        <span class="c1">#require groups to be numeric ???</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;either y or groups is necessary&#39;</span><span class="p">)</span>
+
+    <span class="n">xargsort</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+    <span class="c1">#check for ties</span>
+    <span class="n">x_sorted</span> <span class="o">=</span> <span class="n">x</span><span class="p">[</span><span class="n">xargsort</span><span class="p">]</span>
+    <span class="n">x_diff</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">diff</span><span class="p">(</span><span class="n">x_sorted</span><span class="p">)</span>  <span class="c1"># used for detecting and handling ties</span>
+    <span class="k">if</span> <span class="n">x_diff</span><span class="o">.</span><span class="n">min</span><span class="p">()</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;ties detected&#39;</span><span class="p">)</span>   <span class="c1">#replace with warning</span>
+        <span class="n">x_mindiff</span> <span class="o">=</span> <span class="n">x_diff</span><span class="p">[</span><span class="n">x_diff</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">min</span><span class="p">()</span>
+        <span class="n">eps</span> <span class="o">=</span> <span class="n">x_mindiff</span><span class="o">/</span><span class="mf">2.</span>
+        <span class="n">xx</span> <span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>  <span class="c1">#don&#39;t change original, just in case</span>
+
+        <span class="n">xx</span><span class="p">[</span><span class="n">groups</span><span class="o">==</span><span class="n">gruni</span><span class="p">[</span><span class="mi">0</span><span class="p">]]</span> <span class="o">+=</span> <span class="n">eps</span>
+        <span class="n">xargsort</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">xx</span><span class="p">)</span>
+        <span class="n">xindicator</span> <span class="o">=</span> <span class="n">groups</span><span class="p">[</span><span class="n">xargsort</span><span class="p">]</span>
+        <span class="n">z0</span><span class="p">,</span> <span class="n">p0</span> <span class="o">=</span> <span class="n">Runs</span><span class="p">(</span><span class="n">xindicator</span><span class="p">)</span><span class="o">.</span><span class="n">runs_test</span><span class="p">(</span><span class="n">correction</span><span class="o">=</span><span class="n">correction</span><span class="p">)</span>
+
+        <span class="n">xx</span><span class="p">[</span><span class="n">groups</span><span class="o">==</span><span class="n">gruni</span><span class="p">[</span><span class="mi">0</span><span class="p">]]</span> <span class="o">-=</span> <span class="n">eps</span>   <span class="c1">#restore xx = x</span>
+        <span class="n">xx</span><span class="p">[</span><span class="n">groups</span><span class="o">==</span><span class="n">gruni</span><span class="p">[</span><span class="mi">1</span><span class="p">]]</span> <span class="o">+=</span> <span class="n">eps</span>
+        <span class="n">xargsort</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">xx</span><span class="p">)</span>
+        <span class="n">xindicator</span> <span class="o">=</span> <span class="n">groups</span><span class="p">[</span><span class="n">xargsort</span><span class="p">]</span>
+        <span class="n">z1</span><span class="p">,</span> <span class="n">p1</span> <span class="o">=</span> <span class="n">Runs</span><span class="p">(</span><span class="n">xindicator</span><span class="p">)</span><span class="o">.</span><span class="n">runs_test</span><span class="p">(</span><span class="n">correction</span><span class="o">=</span><span class="n">correction</span><span class="p">)</span>
+
+        <span class="n">idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argmax</span><span class="p">([</span><span class="n">p0</span><span class="p">,</span><span class="n">p1</span><span class="p">])</span>
+        <span class="k">return</span> <span class="p">[</span><span class="n">z0</span><span class="p">,</span> <span class="n">z1</span><span class="p">][</span><span class="n">idx</span><span class="p">],</span> <span class="p">[</span><span class="n">p0</span><span class="p">,</span> <span class="n">p1</span><span class="p">][</span><span class="n">idx</span><span class="p">]</span>
+
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">xindicator</span> <span class="o">=</span> <span class="n">groups</span><span class="p">[</span><span class="n">xargsort</span><span class="p">]</span>
+        <span class="k">return</span> <span class="n">Runs</span><span class="p">(</span><span class="n">xindicator</span><span class="p">)</span><span class="o">.</span><span class="n">runs_test</span><span class="p">(</span><span class="n">correction</span><span class="o">=</span><span class="n">correction</span><span class="p">)</span></div>
+
+
+<span class="k">class</span> <span class="nc">TotalRunsProb</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;class for the probability distribution of total runs</span>
+
+<span class="sd">    This is the exact probability distribution for the (Wald-Wolfowitz)</span>
+<span class="sd">    runs test. The random variable is the total number of runs if the</span>
+<span class="sd">    sample has (n0, n1) observations of groups 0 and 1.</span>
+
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    Written as a class so I can store temporary calculations, but I don&#39;t</span>
+<span class="sd">    think it matters much.</span>
+
+<span class="sd">    Formulas taken from SAS manual for one-sided significance level.</span>
+
+<span class="sd">    Could be converted to a full univariate distribution, subclassing</span>
+<span class="sd">    scipy.stats.distributions.</span>
+
+<span class="sd">    *Status*</span>
+<span class="sd">    Not verified yet except for mean.</span>
+
+
+
+<span class="sd">    &#39;&#39;&#39;</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">n0</span><span class="p">,</span> <span class="n">n1</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">n0</span> <span class="o">=</span> <span class="n">n0</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">n1</span> <span class="o">=</span> <span class="n">n1</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">n</span> <span class="o">=</span> <span class="n">n</span> <span class="o">=</span> <span class="n">n0</span> <span class="o">+</span> <span class="n">n1</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">comball</span> <span class="o">=</span> <span class="n">comb</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">n1</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">runs_prob_even</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">r</span><span class="p">):</span>
+        <span class="n">n0</span><span class="p">,</span> <span class="n">n1</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">n0</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">n1</span>
+        <span class="n">tmp0</span> <span class="o">=</span> <span class="n">comb</span><span class="p">(</span><span class="n">n0</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">r</span><span class="o">//</span><span class="mi">2</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+        <span class="n">tmp1</span> <span class="o">=</span> <span class="n">comb</span><span class="p">(</span><span class="n">n1</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">r</span><span class="o">//</span><span class="mi">2</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">tmp0</span> <span class="o">*</span> <span class="n">tmp1</span> <span class="o">*</span> <span class="mf">2.</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">comball</span>
+
+    <span class="k">def</span> <span class="nf">runs_prob_odd</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">r</span><span class="p">):</span>
+        <span class="n">n0</span><span class="p">,</span> <span class="n">n1</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">n0</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">n1</span>
+        <span class="n">k</span> <span class="o">=</span> <span class="p">(</span><span class="n">r</span><span class="o">+</span><span class="mi">1</span><span class="p">)</span><span class="o">//</span><span class="mi">2</span>
+        <span class="n">tmp0</span> <span class="o">=</span> <span class="n">comb</span><span class="p">(</span><span class="n">n0</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">k</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+        <span class="n">tmp1</span> <span class="o">=</span> <span class="n">comb</span><span class="p">(</span><span class="n">n1</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">k</span><span class="o">-</span><span class="mi">2</span><span class="p">)</span>
+        <span class="n">tmp3</span> <span class="o">=</span> <span class="n">comb</span><span class="p">(</span><span class="n">n0</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">k</span><span class="o">-</span><span class="mi">2</span><span class="p">)</span>
+        <span class="n">tmp4</span> <span class="o">=</span> <span class="n">comb</span><span class="p">(</span><span class="n">n1</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">k</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+        <span class="k">return</span> <span class="p">(</span><span class="n">tmp0</span> <span class="o">*</span> <span class="n">tmp1</span> <span class="o">+</span> <span class="n">tmp3</span> <span class="o">*</span> <span class="n">tmp4</span><span class="p">)</span>  <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">comball</span>
+
+    <span class="k">def</span> <span class="nf">pdf</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">r</span><span class="p">):</span>
+        <span class="n">r</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">r</span><span class="p">)</span>
+        <span class="n">r_isodd</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">mod</span><span class="p">(</span><span class="n">r</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span>
+        <span class="n">r_odd</span> <span class="o">=</span> <span class="n">r</span><span class="p">[</span><span class="n">r_isodd</span><span class="p">]</span>
+        <span class="n">r_even</span> <span class="o">=</span> <span class="n">r</span><span class="p">[</span><span class="o">~</span><span class="n">r_isodd</span><span class="p">]</span>
+        <span class="n">runs_pdf</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">r</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
+        <span class="n">runs_pdf</span><span class="p">[</span><span class="n">r_isodd</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">runs_prob_odd</span><span class="p">(</span><span class="n">r_odd</span><span class="p">)</span>
+        <span class="n">runs_pdf</span><span class="p">[</span><span class="o">~</span><span class="n">r_isodd</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">runs_prob_even</span><span class="p">(</span><span class="n">r_even</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">runs_pdf</span>
+
+
+    <span class="k">def</span> <span class="nf">cdf</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">r</span><span class="p">):</span>
+        <span class="n">r_</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span><span class="n">r</span><span class="o">+</span><span class="mi">1</span><span class="p">)</span>
+        <span class="n">cdfval</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">runs_prob_even</span><span class="p">(</span><span class="n">r_</span><span class="p">[::</span><span class="mi">2</span><span class="p">])</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
+        <span class="n">cdfval</span> <span class="o">+=</span> <span class="bp">self</span><span class="o">.</span><span class="n">runs_prob_odd</span><span class="p">(</span><span class="n">r_</span><span class="p">[</span><span class="mi">1</span><span class="p">::</span><span class="mi">2</span><span class="p">])</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
+        <span class="k">return</span> <span class="n">cdfval</span>
+
+
+<span class="k">class</span> <span class="nc">RunsProb</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;distribution of success runs of length k or more (classical definition)</span>
+
+<span class="sd">    The underlying process is assumed to be a sequence of Bernoulli trials</span>
+<span class="sd">    of a given length n.</span>
+
+<span class="sd">    not sure yet, how to interpret or use the distribution for runs</span>
+<span class="sd">    of length k or more.</span>
+
+<span class="sd">    Musseli also has longest success run, and waiting time distribution</span>
+<span class="sd">    negative binomial of order k and geometric of order k</span>
+
+<span class="sd">    need to compare with Godpole</span>
+
+<span class="sd">    need a MonteCarlo function to do some quick tests before doing more</span>
+
+
+<span class="sd">    &#39;&#39;&#39;</span>
+
+
+
+    <span class="k">def</span> <span class="nf">pdf</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">k</span><span class="p">,</span> <span class="n">n</span><span class="p">,</span> <span class="n">p</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;distribution of success runs of length k or more</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        x : float</span>
+<span class="sd">            count of runs of length n</span>
+<span class="sd">        k : int</span>
+<span class="sd">            length of runs</span>
+<span class="sd">        n : int</span>
+<span class="sd">            total number of observations or trials</span>
+<span class="sd">        p : float</span>
+<span class="sd">            probability of success in each Bernoulli trial</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        pdf : float</span>
+<span class="sd">            probability that x runs of length of k are observed</span>
+
+<span class="sd">        Notes</span>
+<span class="sd">        -----</span>
+<span class="sd">        not yet vectorized</span>
+
+<span class="sd">        References</span>
+<span class="sd">        ----------</span>
+<span class="sd">        Muselli 1996, theorem 3</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+
+        <span class="n">q</span> <span class="o">=</span> <span class="mi">1</span><span class="o">-</span><span class="n">p</span>
+        <span class="n">m</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="p">(</span><span class="n">n</span><span class="o">+</span><span class="mi">1</span><span class="p">)</span><span class="o">//</span><span class="p">(</span><span class="n">k</span><span class="o">+</span><span class="mi">1</span><span class="p">)</span><span class="o">+</span><span class="mi">1</span><span class="p">)[:,</span><span class="kc">None</span><span class="p">]</span>
+        <span class="n">terms</span> <span class="o">=</span> <span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span><span class="o">**</span><span class="p">(</span><span class="n">m</span><span class="o">-</span><span class="n">x</span><span class="p">)</span> <span class="o">*</span> <span class="n">comb</span><span class="p">(</span><span class="n">m</span><span class="p">,</span> <span class="n">x</span><span class="p">)</span> <span class="o">*</span> <span class="n">p</span><span class="o">**</span><span class="p">(</span><span class="n">m</span><span class="o">*</span><span class="n">k</span><span class="p">)</span> <span class="o">*</span> <span class="n">q</span><span class="o">**</span><span class="p">(</span><span class="n">m</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span> \
+                <span class="o">*</span> <span class="p">(</span><span class="n">comb</span><span class="p">(</span><span class="n">n</span> <span class="o">-</span> <span class="n">m</span><span class="o">*</span><span class="n">k</span><span class="p">,</span> <span class="n">m</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span> <span class="o">+</span> <span class="n">q</span> <span class="o">*</span> <span class="n">comb</span><span class="p">(</span><span class="n">n</span> <span class="o">-</span> <span class="n">m</span><span class="o">*</span><span class="n">k</span><span class="p">,</span> <span class="n">m</span><span class="p">))</span>
+        <span class="k">return</span> <span class="n">terms</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">pdf_nb</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">k</span><span class="p">,</span> <span class="n">n</span><span class="p">,</span> <span class="n">p</span><span class="p">):</span>
+        <span class="k">pass</span>
+        <span class="c1">#y = np.arange(m-1, n-mk+1</span>
+
+<span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">&gt;&gt;&gt; [np.sum([RunsProb().pdf(xi, k, 16, 10/16.) for xi in range(0,16)]) for k in range(16)]</span>
+<span class="sd">[0.99999332193894064, 0.99999999999999367, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]</span>
+<span class="sd">&gt;&gt;&gt; [(np.arange(0,16) * [RunsProb().pdf(xi, k, 16, 10/16.) for xi in range(0,16)]).sum() for k in range(16)]</span>
+<span class="sd">[6.9998931510341809, 4.1406249999999929, 2.4414062500000075, 1.4343261718749996, 0.83923339843749856, 0.48875808715820324, 0.28312206268310569, 0.1629814505577086, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]</span>
+<span class="sd">&gt;&gt;&gt; np.array([(np.arange(0,16) * [RunsProb().pdf(xi, k, 16, 10/16.) for xi in range(0,16)]).sum() for k in range(16)])/11</span>
+<span class="sd">array([ 0.63635392,  0.37642045,  0.22194602,  0.13039329,  0.07629395,</span>
+<span class="sd">        0.04443255,  0.02573837,  0.0148165 ,  0.        ,  0.        ,</span>
+<span class="sd">        0.        ,  0.        ,  0.        ,  0.        ,  0.        ,  0.        ])</span>
+<span class="sd">&gt;&gt;&gt; np.diff([(np.arange(0,16) * [RunsProb().pdf(xi, k, 16, 10/16.) for xi in range(0,16)]).sum() for k in range(16)][::-1])</span>
+<span class="sd">array([ 0.        ,  0.        ,  0.        ,  0.        ,  0.        ,</span>
+<span class="sd">        0.        ,  0.        ,  0.16298145,  0.12014061,  0.20563602,</span>
+<span class="sd">        0.35047531,  0.59509277,  1.00708008,  1.69921875,  2.85926815])</span>
+<span class="sd">&#39;&#39;&#39;</span>
+
+
+
+<div class="viewcode-block" id="median_test_ksample"><a class="viewcode-back" href="../../../../generated/statsmodels.sandbox.stats.runs.median_test_ksample.html#statsmodels.sandbox.stats.runs.median_test_ksample">[docs]</a><span class="k">def</span> <span class="nf">median_test_ksample</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">groups</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;chisquare test for equality of median/location</span>
+
+<span class="sd">    This tests whether all groups have the same fraction of observations</span>
+<span class="sd">    above the median.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    x : array_like</span>
+<span class="sd">        data values stacked for all groups</span>
+<span class="sd">    groups : array_like</span>
+<span class="sd">        group labels or indicator</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    stat : float</span>
+<span class="sd">       test statistic</span>
+<span class="sd">    pvalue : float</span>
+<span class="sd">       pvalue from the chisquare distribution</span>
+<span class="sd">    others ????</span>
+<span class="sd">       currently some test output, table and expected</span>
+
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+    <span class="n">gruni</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">unique</span><span class="p">(</span><span class="n">groups</span><span class="p">)</span>
+    <span class="n">xli</span> <span class="o">=</span> <span class="p">[</span><span class="n">x</span><span class="p">[</span><span class="n">groups</span><span class="o">==</span><span class="n">group</span><span class="p">]</span> <span class="k">for</span> <span class="n">group</span> <span class="ow">in</span> <span class="n">gruni</span><span class="p">]</span>
+    <span class="n">xmedian</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">median</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+    <span class="n">counts_larger</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([(</span><span class="n">xg</span> <span class="o">&gt;</span> <span class="n">xmedian</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span> <span class="k">for</span> <span class="n">xg</span> <span class="ow">in</span> <span class="n">xli</span><span class="p">])</span>
+    <span class="n">counts</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="nb">len</span><span class="p">(</span><span class="n">xg</span><span class="p">)</span> <span class="k">for</span> <span class="n">xg</span> <span class="ow">in</span> <span class="n">xli</span><span class="p">])</span>
+    <span class="n">counts_smaller</span> <span class="o">=</span> <span class="n">counts</span> <span class="o">-</span> <span class="n">counts_larger</span>
+    <span class="n">nobs</span> <span class="o">=</span> <span class="n">counts</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
+    <span class="n">n_larger</span> <span class="o">=</span> <span class="p">(</span><span class="n">x</span> <span class="o">&gt;</span> <span class="n">xmedian</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
+    <span class="n">n_smaller</span> <span class="o">=</span> <span class="n">nobs</span> <span class="o">-</span> <span class="n">n_larger</span>
+    <span class="n">table</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">((</span><span class="n">counts_smaller</span><span class="p">,</span> <span class="n">counts_larger</span><span class="p">))</span>
+
+    <span class="c1">#the following should be replaced by chisquare_contingency table</span>
+    <span class="n">expected</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">((</span><span class="n">counts</span> <span class="o">*</span> <span class="mf">1.</span> <span class="o">/</span> <span class="n">nobs</span> <span class="o">*</span> <span class="n">n_smaller</span><span class="p">,</span>
+                          <span class="n">counts</span> <span class="o">*</span> <span class="mf">1.</span> <span class="o">/</span> <span class="n">nobs</span> <span class="o">*</span> <span class="n">n_larger</span><span class="p">))</span>
+
+    <span class="k">if</span> <span class="p">(</span><span class="n">expected</span> <span class="o">&lt;</span> <span class="mi">5</span><span class="p">)</span><span class="o">.</span><span class="n">any</span><span class="p">():</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;Warning: There are cells with less than 5 expected&#39;</span> \
+        <span class="s1">&#39;observations. The chisquare distribution might not be a good&#39;</span> \
+        <span class="s1">&#39;approximation for the true distribution.&#39;</span><span class="p">)</span>
+
+    <span class="c1">#check ddof</span>
+    <span class="k">return</span> <span class="n">stats</span><span class="o">.</span><span class="n">chisquare</span><span class="p">(</span><span class="n">table</span><span class="o">.</span><span class="n">ravel</span><span class="p">(),</span> <span class="n">expected</span><span class="o">.</span><span class="n">ravel</span><span class="p">(),</span> <span class="n">ddof</span><span class="o">=</span><span class="mi">1</span><span class="p">),</span> <span class="n">table</span><span class="p">,</span> <span class="n">expected</span></div>
+
+
+
+
+<div class="viewcode-block" id="cochrans_q"><a class="viewcode-back" href="../../../../generated/statsmodels.sandbox.stats.runs.cochrans_q.html#statsmodels.sandbox.stats.runs.cochrans_q">[docs]</a><span class="k">def</span> <span class="nf">cochrans_q</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;Cochran&#39;s Q test for identical effect of k treatments</span>
+
+<span class="sd">    Cochran&#39;s Q is a k-sample extension of the McNemar test. If there are only</span>
+<span class="sd">    two treatments, then Cochran&#39;s Q test and McNemar test are equivalent.</span>
+
+<span class="sd">    Test that the probability of success is the same for each treatment.</span>
+<span class="sd">    The alternative is that at least two treatments have a different</span>
+<span class="sd">    probability of success.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    x : array_like, 2d (N,k)</span>
+<span class="sd">        data with N cases and k variables</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    q_stat : float</span>
+<span class="sd">       test statistic</span>
+<span class="sd">    pvalue : float</span>
+<span class="sd">       pvalue from the chisquare distribution</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    In Wikipedia terminology, rows are blocks and columns are treatments.</span>
+<span class="sd">    The number of rows N, should be large for the chisquare distribution to be</span>
+<span class="sd">    a good approximation.</span>
+<span class="sd">    The Null hypothesis of the test is that all treatments have the</span>
+<span class="sd">    same effect.</span>
+
+<span class="sd">    References</span>
+<span class="sd">    ----------</span>
+<span class="sd">    http://en.wikipedia.org/wiki/Cochran_test</span>
+<span class="sd">    SAS Manual for NPAR TESTS</span>
+
+<span class="sd">    &#39;&#39;&#39;</span>
+
+    <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="s2">&quot;Deprecated, use stats.cochrans_q instead&quot;</span><span class="p">,</span> <span class="ne">DeprecationWarning</span><span class="p">)</span>
+
+    <span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+    <span class="n">gruni</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">unique</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+    <span class="n">N</span><span class="p">,</span> <span class="n">k</span> <span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">shape</span>
+    <span class="n">count_row_success</span> <span class="o">=</span> <span class="p">(</span><span class="n">x</span><span class="o">==</span><span class="n">gruni</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="nb">float</span><span class="p">)</span>
+    <span class="n">count_col_success</span> <span class="o">=</span> <span class="p">(</span><span class="n">x</span><span class="o">==</span><span class="n">gruni</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="nb">float</span><span class="p">)</span>
+    <span class="n">count_row_ss</span> <span class="o">=</span> <span class="n">count_row_success</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
+    <span class="n">count_col_ss</span> <span class="o">=</span> <span class="n">count_col_success</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
+    <span class="k">assert</span> <span class="n">count_row_ss</span> <span class="o">==</span> <span class="n">count_col_ss</span>  <span class="c1">#just a calculation check</span>
+
+
+    <span class="c1">#this is SAS manual</span>
+    <span class="n">q_stat</span> <span class="o">=</span> <span class="p">(</span><span class="n">k</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="n">k</span> <span class="o">*</span>  <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">count_col_success</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span> <span class="o">-</span> <span class="n">count_col_ss</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span> \
+             <span class="o">/</span> <span class="p">(</span><span class="n">k</span> <span class="o">*</span> <span class="n">count_row_ss</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">count_row_success</span><span class="o">**</span><span class="mi">2</span><span class="p">))</span>
+
+    <span class="c1">#Note: the denominator looks just like k times the variance of the</span>
+    <span class="c1">#columns</span>
+
+    <span class="c1">#Wikipedia uses a different, but equivalent expression</span>
+<span class="c1">##    q_stat = (k-1) * (k *  np.sum(count_row_success**2) - count_row_ss**2) \</span>
+<span class="c1">##             / (k * count_col_ss - np.sum(count_col_success**2))</span>
+
+    <span class="k">return</span> <span class="n">q_stat</span><span class="p">,</span> <span class="n">stats</span><span class="o">.</span><span class="n">chi2</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="n">q_stat</span><span class="p">,</span> <span class="n">k</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="mcnemar"><a class="viewcode-back" href="../../../../generated/statsmodels.sandbox.stats.runs.mcnemar.html#statsmodels.sandbox.stats.runs.mcnemar">[docs]</a><span class="k">def</span> <span class="nf">mcnemar</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">exact</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">correction</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;McNemar test</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    x, y : array_like</span>
+<span class="sd">        two paired data samples. If y is None, then x can be a 2 by 2</span>
+<span class="sd">        contingency table. x and y can have more than one dimension, then</span>
+<span class="sd">        the results are calculated under the assumption that axis zero</span>
+<span class="sd">        contains the observation for the samples.</span>
+<span class="sd">    exact : bool</span>
+<span class="sd">        If exact is true, then the binomial distribution will be used.</span>
+<span class="sd">        If exact is false, then the chisquare distribution will be used, which</span>
+<span class="sd">        is the approximation to the distribution of the test statistic for</span>
+<span class="sd">        large sample sizes.</span>
+<span class="sd">    correction : bool</span>
+<span class="sd">        If true, then a continuity correction is used for the chisquare</span>
+<span class="sd">        distribution (if exact is false.)</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    stat : float or int, array</span>
+<span class="sd">        The test statistic is the chisquare statistic if exact is false. If the</span>
+<span class="sd">        exact binomial distribution is used, then this contains the min(n1, n2),</span>
+<span class="sd">        where n1, n2 are cases that are zero in one sample but one in the other</span>
+<span class="sd">        sample.</span>
+
+<span class="sd">    pvalue : float or array</span>
+<span class="sd">        p-value of the null hypothesis of equal effects.</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    This is a special case of Cochran&#39;s Q test. The results when the chisquare</span>
+<span class="sd">    distribution is used are identical, except for continuity correction.</span>
+
+<span class="sd">    &#39;&#39;&#39;</span>
+
+    <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="s2">&quot;Deprecated, use stats.TableSymmetry instead&quot;</span><span class="p">,</span> <span class="ne">DeprecationWarning</span><span class="p">)</span>
+
+    <span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">y</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]:</span>
+        <span class="k">if</span> <span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">!=</span> <span class="mi">2</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;table needs to be 2 by 2&#39;</span><span class="p">)</span>
+        <span class="n">n1</span><span class="p">,</span> <span class="n">n2</span> <span class="o">=</span> <span class="n">x</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span> <span class="n">x</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="c1"># I&#39;m not checking here whether x and y are binary,</span>
+        <span class="c1"># isn&#39;t this also paired sign test</span>
+        <span class="n">n1</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">x</span> <span class="o">&lt;</span> <span class="n">y</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+        <span class="n">n2</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">x</span> <span class="o">&gt;</span> <span class="n">y</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">exact</span><span class="p">:</span>
+        <span class="n">stat</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">minimum</span><span class="p">(</span><span class="n">n1</span><span class="p">,</span> <span class="n">n2</span><span class="p">)</span>
+        <span class="c1"># binom is symmetric with p=0.5</span>
+        <span class="n">pval</span> <span class="o">=</span> <span class="n">stats</span><span class="o">.</span><span class="n">binom</span><span class="o">.</span><span class="n">cdf</span><span class="p">(</span><span class="n">stat</span><span class="p">,</span> <span class="n">n1</span> <span class="o">+</span> <span class="n">n2</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">)</span> <span class="o">*</span> <span class="mi">2</span>
+        <span class="n">pval</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">minimum</span><span class="p">(</span><span class="n">pval</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>  <span class="c1"># limit to 1 if n1==n2</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">corr</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">correction</span><span class="p">)</span> <span class="c1"># convert bool to 0 or 1</span>
+        <span class="n">stat</span> <span class="o">=</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">n1</span> <span class="o">-</span> <span class="n">n2</span><span class="p">)</span> <span class="o">-</span> <span class="n">corr</span><span class="p">)</span><span class="o">**</span><span class="mi">2</span> <span class="o">/</span> <span class="p">(</span><span class="mf">1.</span> <span class="o">*</span> <span class="p">(</span><span class="n">n1</span> <span class="o">+</span> <span class="n">n2</span><span class="p">))</span>
+        <span class="n">df</span> <span class="o">=</span> <span class="mi">1</span>
+        <span class="n">pval</span> <span class="o">=</span> <span class="n">stats</span><span class="o">.</span><span class="n">chi2</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="n">stat</span><span class="p">,</span> <span class="n">df</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">stat</span><span class="p">,</span> <span class="n">pval</span></div>
+
+
+<div class="viewcode-block" id="symmetry_bowker"><a class="viewcode-back" href="../../../../generated/statsmodels.sandbox.stats.runs.symmetry_bowker.html#statsmodels.sandbox.stats.runs.symmetry_bowker">[docs]</a><span class="k">def</span> <span class="nf">symmetry_bowker</span><span class="p">(</span><span class="n">table</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;Test for symmetry of a (k, k) square contingency table</span>
+
+<span class="sd">    This is an extension of the McNemar test to test the Null hypothesis</span>
+<span class="sd">    that the contingency table is symmetric around the main diagonal, that is</span>
+
+<span class="sd">    n_{i, j} = n_{j, i}  for all i, j</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    table : array_like, 2d, (k, k)</span>
+<span class="sd">        a square contingency table that contains the count for k categories</span>
+<span class="sd">        in rows and columns.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    statistic : float</span>
+<span class="sd">        chisquare test statistic</span>
+<span class="sd">    p-value : float</span>
+<span class="sd">        p-value of the test statistic based on chisquare distribution</span>
+<span class="sd">    df : int</span>
+<span class="sd">        degrees of freedom of the chisquare distribution</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    Implementation is based on the SAS documentation, R includes it in</span>
+<span class="sd">    `mcnemar.test` if the table is not 2 by 2.</span>
+
+<span class="sd">    The pvalue is based on the chisquare distribution which requires that the</span>
+<span class="sd">    sample size is not very small to be a good approximation of the true</span>
+<span class="sd">    distribution. For 2x2 contingency tables exact distribution can be</span>
+<span class="sd">    obtained with `mcnemar`</span>
+
+<span class="sd">    See Also</span>
+<span class="sd">    --------</span>
+<span class="sd">    mcnemar</span>
+
+
+<span class="sd">    &#39;&#39;&#39;</span>
+
+    <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="s2">&quot;Deprecated, use stats.TableSymmetry instead&quot;</span><span class="p">,</span> <span class="ne">DeprecationWarning</span><span class="p">)</span>
+
+    <span class="n">table</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">table</span><span class="p">)</span>
+    <span class="n">k</span><span class="p">,</span> <span class="n">k2</span> <span class="o">=</span> <span class="n">table</span><span class="o">.</span><span class="n">shape</span>
+    <span class="k">if</span> <span class="n">k</span> <span class="o">!=</span> <span class="n">k2</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;table needs to be square&#39;</span><span class="p">)</span>
+
+    <span class="c1">#low_idx = np.tril_indices(k, -1)  # this doesn&#39;t have Fortran order</span>
+    <span class="n">upp_idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">triu_indices</span><span class="p">(</span><span class="n">k</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+
+    <span class="n">tril</span> <span class="o">=</span> <span class="n">table</span><span class="o">.</span><span class="n">T</span><span class="p">[</span><span class="n">upp_idx</span><span class="p">]</span>   <span class="c1"># lower triangle in column order</span>
+    <span class="n">triu</span> <span class="o">=</span> <span class="n">table</span><span class="p">[</span><span class="n">upp_idx</span><span class="p">]</span>     <span class="c1"># upper triangle in row order</span>
+
+    <span class="n">stat</span> <span class="o">=</span> <span class="p">((</span><span class="n">tril</span> <span class="o">-</span> <span class="n">triu</span><span class="p">)</span><span class="o">**</span><span class="mi">2</span> <span class="o">/</span> <span class="p">(</span><span class="n">tril</span> <span class="o">+</span> <span class="n">triu</span> <span class="o">+</span> <span class="mf">1e-20</span><span class="p">))</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
+    <span class="n">df</span> <span class="o">=</span> <span class="n">k</span> <span class="o">*</span> <span class="p">(</span><span class="n">k</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span> <span class="o">/</span> <span class="mf">2.</span>
+    <span class="n">pval</span> <span class="o">=</span> <span class="n">stats</span><span class="o">.</span><span class="n">chi2</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="n">stat</span><span class="p">,</span> <span class="n">df</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">stat</span><span class="p">,</span> <span class="n">pval</span><span class="p">,</span> <span class="n">df</span></div>
+
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s1">&#39;__main__&#39;</span><span class="p">:</span>
+
+    <span class="n">x1</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">])</span>
+
+    <span class="nb">print</span><span class="p">(</span><span class="n">Runs</span><span class="p">(</span><span class="n">x1</span><span class="p">)</span><span class="o">.</span><span class="n">runs_test</span><span class="p">())</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">runstest_1samp</span><span class="p">(</span><span class="n">x1</span><span class="p">,</span> <span class="n">cutoff</span><span class="o">=</span><span class="s1">&#39;mean&#39;</span><span class="p">))</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">runstest_2samp</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="mi">16</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="o">-</span><span class="mi">1</span><span class="p">),</span> <span class="n">groups</span><span class="o">=</span><span class="n">x1</span><span class="p">))</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">TotalRunsProb</span><span class="p">(</span><span class="mi">7</span><span class="p">,</span><span class="mi">9</span><span class="p">)</span><span class="o">.</span><span class="n">cdf</span><span class="p">(</span><span class="mi">11</span><span class="p">))</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">median_test_ksample</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randn</span><span class="p">(</span><span class="mi">100</span><span class="p">),</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="mi">2</span><span class="p">,</span><span class="mi">100</span><span class="p">)))</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">cochrans_q</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="mi">2</span><span class="p">,(</span><span class="mi">100</span><span class="p">,</span><span class="mi">8</span><span class="p">))))</span>
+</pre></div>
+
+
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../../../../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" />
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer" role="contentinfo">
+        &#169; Copyright 2009-2018, Josef Perktold, Skipper Seabold, Jonathan Taylor, statsmodels-developers.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 2.1.2.
+    </div>
+  </body>
+</html>

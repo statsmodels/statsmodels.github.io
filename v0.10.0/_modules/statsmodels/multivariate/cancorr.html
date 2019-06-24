@@ -1,0 +1,316 @@
+
+
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta charset="utf-8" />
+    <title>statsmodels.multivariate.cancorr &#8212; statsmodels v0.10.0 documentation</title>
+    <link rel="stylesheet" href="../../../_static/nature.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css" />
+    <script type="text/javascript" id="documentation_options" data-url_root="../../../" src="../../../_static/documentation_options.js"></script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <script type="text/javascript" src="../../../_static/language_data.js"></script>
+    <script async="async" type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/latest.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="shortcut icon" href="../../../_static/statsmodels_hybi_favico.ico"/>
+    <link rel="author" title="About these documents" href="../../../about.html" />
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+<link rel="stylesheet" href="../../../_static/examples.css" type="text/css" />
+<link rel="stylesheet" href="../../../_static/facebox.css" type="text/css" />
+<script type="text/javascript" src="../../../_static/scripts.js">
+</script>
+<script type="text/javascript" src="../../../_static/facebox.js">
+</script>
+<script type="text/javascript">
+$.facebox.settings.closeImage = "../../../_static/closelabel.png"
+$.facebox.settings.loadingImage = "../../../_static/loading.gif"
+</script>
+
+<script>
+$(document).ready(function() {
+  $.getJSON("../../../../versions.json", function(versions) {
+    var dropdown = document.createElement("div");
+    dropdown.className = "dropdown";
+    var button = document.createElement("button");
+    button.className = "dropbtn";
+    button.innerHTML = "Other Versions";
+    var content = document.createElement("div");
+    content.className = "dropdown-content";
+    dropdown.appendChild(button);
+    dropdown.appendChild(content);
+    $(".header").prepend(dropdown);
+    for (var i = 0; i < versions.length; i++) {
+      if (versions[i].substring(0, 1) == "v") {
+        versions[i] = [versions[i], versions[i].substring(1)];
+      } else {
+        versions[i] = [versions[i], versions[i]];
+      };
+    };
+    for (var i = 0; i < versions.length; i++) {
+      var a = document.createElement("a");
+      a.innerHTML = versions[i][1];
+      a.href = "../../../../" + versions[i][0] + "/index.html";
+      a.title = versions[i][1];
+      $(".dropdown-content").append(a);
+    };
+  });
+});
+</script>
+
+
+  </head><body>
+<div class="headerwrap">
+    <div class = "header">
+        
+        <a href = "../../../index.html">
+<img src="../../../_static/statsmodels_hybi_banner.png" alt="Logo"
+    style="padding-left: 15px"/></a>
+        
+    </div>
+</div>
+
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+<li><a href ="../../../install.html">Install</a></li> &nbsp;|&nbsp;
+<li><a href="https://groups.google.com/forum/?hl=en#!forum/pystatsmodels">Support</a></li> &nbsp;|&nbsp;
+<li><a href="https://github.com/statsmodels/statsmodels/issues">Bugs</a></li> &nbsp;|&nbsp;
+<li><a href="../../../dev/index.html">Develop</a></li> &nbsp;|&nbsp;
+<li><a href="../../../examples/index.html">Examples</a></li> &nbsp;|&nbsp;
+<li><a href="../../../faq.html">FAQ</a></li> &nbsp;|&nbsp;
+
+          <li class="nav-item nav-item-1"><a href="../../index.html" accesskey="U">Module code</a> |</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+
+
+
+
+  <h1>Source code for statsmodels.multivariate.cancorr</h1><div class="highlight"><pre>
+<span></span><span class="c1"># -*- coding: utf-8 -*-</span>
+
+<span class="sd">&quot;&quot;&quot;Canonical correlation analysis</span>
+
+<span class="sd">author: Yichuan Liu</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="kn">from</span> <span class="nn">__future__</span> <span class="k">import</span> <span class="n">division</span>
+
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+<span class="kn">from</span> <span class="nn">numpy.linalg</span> <span class="k">import</span> <span class="n">svd</span>
+<span class="kn">import</span> <span class="nn">scipy</span>
+<span class="kn">import</span> <span class="nn">pandas</span> <span class="k">as</span> <span class="nn">pd</span>
+
+<span class="kn">from</span> <span class="nn">statsmodels.base.model</span> <span class="k">import</span> <span class="n">Model</span>
+<span class="kn">from</span> <span class="nn">statsmodels.iolib</span> <span class="k">import</span> <span class="n">summary2</span>
+<span class="kn">from</span> <span class="nn">.multivariate_ols</span> <span class="k">import</span> <span class="n">multivariate_stats</span>
+
+
+<div class="viewcode-block" id="CanCorr"><a class="viewcode-back" href="../../../generated/statsmodels.multivariate.cancorr.CanCorr.html#statsmodels.multivariate.cancorr.CanCorr">[docs]</a><span class="k">class</span> <span class="nc">CanCorr</span><span class="p">(</span><span class="n">Model</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Canonical correlation analysis using singluar value decomposition</span>
+
+<span class="sd">    For matrices exog=x and endog=y, find projections x_cancoef and y_cancoef</span>
+<span class="sd">    such that:</span>
+
+<span class="sd">        x1 = x * x_cancoef, x1&#39; * x1 is identity matrix</span>
+<span class="sd">        y1 = y * y_cancoef, y1&#39; * y1 is identity matrix</span>
+
+<span class="sd">    and the correlation between x1 and y1 is maximized.</span>
+
+<span class="sd">    Attributes</span>
+<span class="sd">    ----------</span>
+<span class="sd">    endog : array</span>
+<span class="sd">        See Parameters.</span>
+<span class="sd">    exog : array</span>
+<span class="sd">        See Parameters.</span>
+<span class="sd">    cancorr : array</span>
+<span class="sd">        The canonical correlation values</span>
+<span class="sd">    y_cancoeff: array</span>
+<span class="sd">        The canonical coeefficients for endog</span>
+<span class="sd">    x_cancoeff: array</span>
+<span class="sd">        The canonical coefficients for exog</span>
+
+<span class="sd">    References</span>
+<span class="sd">    ----------</span>
+<span class="sd">    .. [*] http://numerical.recipes/whp/notes/CanonCorrBySVD.pdf</span>
+<span class="sd">    .. [*] http://www.csun.edu/~ata20315/psy524/docs/Psy524%20Lecture%208%20CC.pdf</span>
+<span class="sd">    .. [*] http://www.mathematica-journal.com/2014/06/canonical-correlation-analysis/</span>
+<span class="sd">    &quot;&quot;&quot;</span>  <span class="c1"># noqa:E501</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">endog</span><span class="p">,</span> <span class="n">exog</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="mf">1e-8</span><span class="p">,</span> <span class="n">missing</span><span class="o">=</span><span class="s1">&#39;none&#39;</span><span class="p">,</span> <span class="n">hasconst</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">CanCorr</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">endog</span><span class="p">,</span> <span class="n">exog</span><span class="p">,</span> <span class="n">missing</span><span class="o">=</span><span class="n">missing</span><span class="p">,</span>
+                                      <span class="n">hasconst</span><span class="o">=</span><span class="n">hasconst</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_fit</span><span class="p">(</span><span class="n">tolerance</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_fit</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="mf">1e-8</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Fit the model</span>
+
+<span class="sd">        A ValueError is raised if there are singular values smaller than the</span>
+<span class="sd">        tolerance. The treatment of singular arrays might change in future.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        tolerance : float</span>
+<span class="sd">            eigenvalue tolerance, values smaller than which is considered 0</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">nobs</span><span class="p">,</span> <span class="n">k_yvar</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">endog</span><span class="o">.</span><span class="n">shape</span>
+        <span class="n">nobs</span><span class="p">,</span> <span class="n">k_xvar</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">exog</span><span class="o">.</span><span class="n">shape</span>
+        <span class="n">k</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">([</span><span class="n">k_yvar</span><span class="p">,</span> <span class="n">k_xvar</span><span class="p">])</span>
+
+        <span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">exog</span><span class="p">)</span>
+        <span class="n">x</span> <span class="o">=</span> <span class="n">x</span> <span class="o">-</span> <span class="n">x</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+        <span class="n">y</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">endog</span><span class="p">)</span>
+        <span class="n">y</span> <span class="o">=</span> <span class="n">y</span> <span class="o">-</span> <span class="n">y</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+
+        <span class="n">ux</span><span class="p">,</span> <span class="n">sx</span><span class="p">,</span> <span class="n">vx</span> <span class="o">=</span> <span class="n">svd</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+        <span class="c1"># vx_ds = vx.T divided by sx</span>
+        <span class="n">vx_ds</span> <span class="o">=</span> <span class="n">vx</span><span class="o">.</span><span class="n">T</span>
+        <span class="n">mask</span> <span class="o">=</span> <span class="n">sx</span> <span class="o">&gt;</span> <span class="n">tolerance</span>
+        <span class="k">if</span> <span class="n">mask</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="n">mask</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;exog is collinear.&#39;</span><span class="p">)</span>
+        <span class="n">vx_ds</span><span class="p">[:,</span> <span class="n">mask</span><span class="p">]</span> <span class="o">/=</span> <span class="n">sx</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span>
+        <span class="n">uy</span><span class="p">,</span> <span class="n">sy</span><span class="p">,</span> <span class="n">vy</span> <span class="o">=</span> <span class="n">svd</span><span class="p">(</span><span class="n">y</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+        <span class="c1"># vy_ds = vy.T divided by sy</span>
+        <span class="n">vy_ds</span> <span class="o">=</span> <span class="n">vy</span><span class="o">.</span><span class="n">T</span>
+        <span class="n">mask</span> <span class="o">=</span> <span class="n">sy</span> <span class="o">&gt;</span> <span class="n">tolerance</span>
+        <span class="k">if</span> <span class="n">mask</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="n">mask</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;endog is collinear.&#39;</span><span class="p">)</span>
+        <span class="n">vy_ds</span><span class="p">[:,</span> <span class="n">mask</span><span class="p">]</span> <span class="o">/=</span> <span class="n">sy</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span>
+        <span class="n">u</span><span class="p">,</span> <span class="n">s</span><span class="p">,</span> <span class="n">v</span> <span class="o">=</span> <span class="n">svd</span><span class="p">(</span><span class="n">ux</span><span class="o">.</span><span class="n">T</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">uy</span><span class="p">),</span> <span class="mi">0</span><span class="p">)</span>
+
+        <span class="c1"># Correct any roundoff</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">cancorr</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="nb">max</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="nb">min</span><span class="p">(</span><span class="n">s</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="mi">1</span><span class="p">))</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">s</span><span class="p">))])</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">x_cancoef</span> <span class="o">=</span> <span class="n">vx_ds</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">u</span><span class="p">[:,</span> <span class="p">:</span><span class="n">k</span><span class="p">])</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">y_cancoef</span> <span class="o">=</span> <span class="n">vy_ds</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">v</span><span class="o">.</span><span class="n">T</span><span class="p">[:,</span> <span class="p">:</span><span class="n">k</span><span class="p">])</span>
+
+<div class="viewcode-block" id="CanCorr.corr_test"><a class="viewcode-back" href="../../../generated/statsmodels.multivariate.cancorr.CanCorr.corr_test.html#statsmodels.multivariate.cancorr.CanCorr.corr_test">[docs]</a>    <span class="k">def</span> <span class="nf">corr_test</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Approximate F test</span>
+<span class="sd">        Perform multivariate statistical tests of the hypothesis that</span>
+<span class="sd">        there is no canonical correlation between endog and exog.</span>
+<span class="sd">        For each canonical correlation, testing its significance based on</span>
+<span class="sd">        Wilks&#39; lambda.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        CanCorrTestResults instance</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">nobs</span><span class="p">,</span> <span class="n">k_yvar</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">endog</span><span class="o">.</span><span class="n">shape</span>
+        <span class="n">nobs</span><span class="p">,</span> <span class="n">k_xvar</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">exog</span><span class="o">.</span><span class="n">shape</span>
+        <span class="n">eigenvals</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">power</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">cancorr</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span>
+        <span class="n">stats</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">columns</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;Canonical Correlation&#39;</span><span class="p">,</span> <span class="s2">&quot;Wilks&#39; lambda&quot;</span><span class="p">,</span>
+                                      <span class="s1">&#39;Num DF&#39;</span><span class="p">,</span><span class="s1">&#39;Den DF&#39;</span><span class="p">,</span> <span class="s1">&#39;F Value&#39;</span><span class="p">,</span><span class="s1">&#39;Pr &gt; F&#39;</span><span class="p">],</span>
+                             <span class="n">index</span><span class="o">=</span><span class="nb">list</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">eigenvals</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)))</span>
+        <span class="n">prod</span> <span class="o">=</span> <span class="mi">1</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">eigenvals</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">):</span>
+            <span class="n">prod</span> <span class="o">*=</span> <span class="mi">1</span> <span class="o">-</span> <span class="n">eigenvals</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+            <span class="n">p</span> <span class="o">=</span> <span class="n">k_yvar</span> <span class="o">-</span> <span class="n">i</span>
+            <span class="n">q</span> <span class="o">=</span> <span class="n">k_xvar</span> <span class="o">-</span> <span class="n">i</span>
+            <span class="n">r</span> <span class="o">=</span> <span class="p">(</span><span class="n">nobs</span> <span class="o">-</span> <span class="n">k_yvar</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span> <span class="o">-</span> <span class="p">(</span><span class="n">p</span> <span class="o">-</span> <span class="n">q</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="o">/</span> <span class="mi">2</span>
+            <span class="n">u</span> <span class="o">=</span> <span class="p">(</span><span class="n">p</span> <span class="o">*</span> <span class="n">q</span> <span class="o">-</span> <span class="mi">2</span><span class="p">)</span> <span class="o">/</span> <span class="mi">4</span>
+            <span class="n">df1</span> <span class="o">=</span> <span class="n">p</span> <span class="o">*</span> <span class="n">q</span>
+            <span class="k">if</span> <span class="n">p</span> <span class="o">**</span> <span class="mi">2</span> <span class="o">+</span> <span class="n">q</span> <span class="o">**</span> <span class="mi">2</span> <span class="o">-</span> <span class="mi">5</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="n">t</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(((</span><span class="n">p</span> <span class="o">*</span> <span class="n">q</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span> <span class="o">-</span> <span class="mi">4</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="n">p</span> <span class="o">**</span> <span class="mi">2</span> <span class="o">+</span> <span class="n">q</span> <span class="o">**</span> <span class="mi">2</span> <span class="o">-</span> <span class="mi">5</span><span class="p">))</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">t</span> <span class="o">=</span> <span class="mi">1</span>
+            <span class="n">df2</span> <span class="o">=</span> <span class="n">r</span> <span class="o">*</span> <span class="n">t</span> <span class="o">-</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">u</span>
+            <span class="n">lmd</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">power</span><span class="p">(</span><span class="n">prod</span><span class="p">,</span> <span class="mi">1</span> <span class="o">/</span> <span class="n">t</span><span class="p">)</span>
+            <span class="n">F</span> <span class="o">=</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">lmd</span><span class="p">)</span> <span class="o">/</span> <span class="n">lmd</span> <span class="o">*</span> <span class="n">df2</span> <span class="o">/</span> <span class="n">df1</span>
+            <span class="n">stats</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="s1">&#39;Canonical Correlation&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">cancorr</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+            <span class="n">stats</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="s2">&quot;Wilks&#39; lambda&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">prod</span>
+            <span class="n">stats</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="s1">&#39;Num DF&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">df1</span>
+            <span class="n">stats</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="s1">&#39;Den DF&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">df2</span>
+            <span class="n">stats</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="s1">&#39;F Value&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">F</span>
+            <span class="n">pval</span> <span class="o">=</span> <span class="n">scipy</span><span class="o">.</span><span class="n">stats</span><span class="o">.</span><span class="n">f</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="n">F</span><span class="p">,</span> <span class="n">df1</span><span class="p">,</span> <span class="n">df2</span><span class="p">)</span>
+            <span class="n">stats</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="s1">&#39;Pr &gt; F&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">pval</span>
+            <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">            # Wilk&#39;s Chi square test of each canonical correlation</span>
+<span class="sd">            df = (p - i + 1) * (q - i + 1)</span>
+<span class="sd">            chi2 = a * np.log(prod)</span>
+<span class="sd">            pval = stats.chi2.sf(chi2, df)</span>
+<span class="sd">            stats.loc[i, &#39;Canonical correlation&#39;] = self.cancorr[i]</span>
+<span class="sd">            stats.loc[i, &#39;Chi-square&#39;] = chi2</span>
+<span class="sd">            stats.loc[i, &#39;DF&#39;] = df</span>
+<span class="sd">            stats.loc[i, &#39;Pr &gt; ChiSq&#39;] = pval</span>
+<span class="sd">            &#39;&#39;&#39;</span>
+        <span class="n">ind</span> <span class="o">=</span> <span class="n">stats</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">values</span><span class="p">[::</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+        <span class="n">stats</span> <span class="o">=</span> <span class="n">stats</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">ind</span><span class="p">,</span> <span class="p">:]</span>
+
+        <span class="c1"># Multivariate tests (remember x has mean removed)</span>
+        <span class="n">stats_mv</span> <span class="o">=</span> <span class="n">multivariate_stats</span><span class="p">(</span><span class="n">eigenvals</span><span class="p">,</span>
+                                      <span class="n">k_yvar</span><span class="p">,</span> <span class="n">k_xvar</span><span class="p">,</span> <span class="n">nobs</span> <span class="o">-</span> <span class="n">k_xvar</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">CanCorrTestResults</span><span class="p">(</span><span class="n">stats</span><span class="p">,</span> <span class="n">stats_mv</span><span class="p">)</span></div></div>
+
+
+<span class="k">class</span> <span class="nc">CanCorrTestResults</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Canonical correlation results class</span>
+
+<span class="sd">    Attributes</span>
+<span class="sd">    ----------</span>
+<span class="sd">    stats : DataFrame</span>
+<span class="sd">        Contain statistical tests results for each canonical correlation</span>
+<span class="sd">    stats_mv : DataFrame</span>
+<span class="sd">        Contain the multivariate statistical tests results</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">stats</span><span class="p">,</span> <span class="n">stats_mv</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">stats</span> <span class="o">=</span> <span class="n">stats</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">stats_mv</span> <span class="o">=</span> <span class="n">stats_mv</span>
+
+    <span class="k">def</span> <span class="nf">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">summary</span><span class="p">()</span><span class="o">.</span><span class="fm">__str__</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">summary</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">summ</span> <span class="o">=</span> <span class="n">summary2</span><span class="o">.</span><span class="n">Summary</span><span class="p">()</span>
+        <span class="n">summ</span><span class="o">.</span><span class="n">add_title</span><span class="p">(</span><span class="s1">&#39;Cancorr results&#39;</span><span class="p">)</span>
+        <span class="n">summ</span><span class="o">.</span><span class="n">add_df</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">stats</span><span class="p">)</span>
+        <span class="n">summ</span><span class="o">.</span><span class="n">add_dict</span><span class="p">({</span><span class="s1">&#39;&#39;</span><span class="p">:</span> <span class="s1">&#39;&#39;</span><span class="p">})</span>
+        <span class="n">summ</span><span class="o">.</span><span class="n">add_dict</span><span class="p">({</span><span class="s1">&#39;Multivariate Statistics and F Approximations&#39;</span><span class="p">:</span> <span class="s1">&#39;&#39;</span><span class="p">})</span>
+        <span class="n">summ</span><span class="o">.</span><span class="n">add_df</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">stats_mv</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">summ</span>
+</pre></div>
+
+
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../../../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" />
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer" role="contentinfo">
+        &#169; Copyright 2009-2018, Josef Perktold, Skipper Seabold, Jonathan Taylor, statsmodels-developers.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 2.1.2.
+    </div>
+  </body>
+</html>

@@ -1,0 +1,1284 @@
+
+
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta charset="utf-8" />
+    <title>statsmodels.emplike.descriptive &#8212; statsmodels v0.10.0 documentation</title>
+    <link rel="stylesheet" href="../../../_static/nature.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css" />
+    <script type="text/javascript" id="documentation_options" data-url_root="../../../" src="../../../_static/documentation_options.js"></script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <script type="text/javascript" src="../../../_static/language_data.js"></script>
+    <script async="async" type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/latest.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="shortcut icon" href="../../../_static/statsmodels_hybi_favico.ico"/>
+    <link rel="author" title="About these documents" href="../../../about.html" />
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+<link rel="stylesheet" href="../../../_static/examples.css" type="text/css" />
+<link rel="stylesheet" href="../../../_static/facebox.css" type="text/css" />
+<script type="text/javascript" src="../../../_static/scripts.js">
+</script>
+<script type="text/javascript" src="../../../_static/facebox.js">
+</script>
+<script type="text/javascript">
+$.facebox.settings.closeImage = "../../../_static/closelabel.png"
+$.facebox.settings.loadingImage = "../../../_static/loading.gif"
+</script>
+
+<script>
+$(document).ready(function() {
+  $.getJSON("../../../../versions.json", function(versions) {
+    var dropdown = document.createElement("div");
+    dropdown.className = "dropdown";
+    var button = document.createElement("button");
+    button.className = "dropbtn";
+    button.innerHTML = "Other Versions";
+    var content = document.createElement("div");
+    content.className = "dropdown-content";
+    dropdown.appendChild(button);
+    dropdown.appendChild(content);
+    $(".header").prepend(dropdown);
+    for (var i = 0; i < versions.length; i++) {
+      if (versions[i].substring(0, 1) == "v") {
+        versions[i] = [versions[i], versions[i].substring(1)];
+      } else {
+        versions[i] = [versions[i], versions[i]];
+      };
+    };
+    for (var i = 0; i < versions.length; i++) {
+      var a = document.createElement("a");
+      a.innerHTML = versions[i][1];
+      a.href = "../../../../" + versions[i][0] + "/index.html";
+      a.title = versions[i][1];
+      $(".dropdown-content").append(a);
+    };
+  });
+});
+</script>
+
+
+  </head><body>
+<div class="headerwrap">
+    <div class = "header">
+        
+        <a href = "../../../index.html">
+<img src="../../../_static/statsmodels_hybi_banner.png" alt="Logo"
+    style="padding-left: 15px"/></a>
+        
+    </div>
+</div>
+
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+<li><a href ="../../../install.html">Install</a></li> &nbsp;|&nbsp;
+<li><a href="https://groups.google.com/forum/?hl=en#!forum/pystatsmodels">Support</a></li> &nbsp;|&nbsp;
+<li><a href="https://github.com/statsmodels/statsmodels/issues">Bugs</a></li> &nbsp;|&nbsp;
+<li><a href="../../../dev/index.html">Develop</a></li> &nbsp;|&nbsp;
+<li><a href="../../../examples/index.html">Examples</a></li> &nbsp;|&nbsp;
+<li><a href="../../../faq.html">FAQ</a></li> &nbsp;|&nbsp;
+
+          <li class="nav-item nav-item-1"><a href="../../index.html" accesskey="U">Module code</a> |</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+
+
+
+
+  <h1>Source code for statsmodels.emplike.descriptive</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Empirical likelihood inference on descriptive statistics</span>
+
+<span class="sd">This module conducts hypothesis tests and constructs confidence</span>
+<span class="sd">intervals for the mean, variance, skewness, kurtosis and correlation.</span>
+
+<span class="sd">If matplotlib is installed, this module can also generate multivariate</span>
+<span class="sd">confidence region plots as well as mean-variance contour plots.</span>
+
+<span class="sd">See _OptFuncts docstring for technical details and optimization variable</span>
+<span class="sd">definitions.</span>
+
+<span class="sd">General References:</span>
+<span class="sd">------------------</span>
+<span class="sd">Owen, A. (2001). &quot;Empirical Likelihood.&quot; Chapman and Hall</span>
+
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="kn">from</span> <span class="nn">__future__</span> <span class="k">import</span> <span class="n">division</span>
+
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+<span class="kn">from</span> <span class="nn">scipy</span> <span class="k">import</span> <span class="n">optimize</span>
+<span class="kn">from</span> <span class="nn">scipy.stats</span> <span class="k">import</span> <span class="n">chi2</span><span class="p">,</span> <span class="n">skew</span><span class="p">,</span> <span class="n">kurtosis</span>
+<span class="kn">from</span> <span class="nn">statsmodels.base.optimizer</span> <span class="k">import</span> <span class="n">_fit_newton</span>
+<span class="kn">import</span> <span class="nn">itertools</span>
+<span class="kn">from</span> <span class="nn">statsmodels.graphics</span> <span class="k">import</span> <span class="n">utils</span>
+
+
+<div class="viewcode-block" id="DescStat"><a class="viewcode-back" href="../../../generated/statsmodels.emplike.descriptive.DescStat.html#statsmodels.emplike.descriptive.DescStat">[docs]</a><span class="k">def</span> <span class="nf">DescStat</span><span class="p">(</span><span class="n">endog</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Returns an instance to conduct inference on descriptive statistics</span>
+<span class="sd">    via empirical likelihood.  See DescStatUV and DescStatMV for more</span>
+<span class="sd">    information.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    endog : ndarray</span>
+<span class="sd">         Array of data</span>
+
+<span class="sd">    Returns : DescStat instance</span>
+<span class="sd">        If k=1, the function returns a univariate instance, DescStatUV.</span>
+<span class="sd">        If k&gt;1, the function returns a multivariate instance, DescStatMV.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">endog</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="n">endog</span> <span class="o">=</span> <span class="n">endog</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">endog</span><span class="p">),</span> <span class="mi">1</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">endog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">DescStatUV</span><span class="p">(</span><span class="n">endog</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">endog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">DescStatMV</span><span class="p">(</span><span class="n">endog</span><span class="p">)</span></div>
+
+
+<span class="k">class</span> <span class="nc">_OptFuncts</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A class that holds functions that are optimized/solved.</span>
+
+<span class="sd">    The general setup of the class is simple.  Any method that starts with</span>
+<span class="sd">    _opt_ creates a vector of estimating equations named est_vect such that</span>
+<span class="sd">    np.dot(p, (est_vect))=0 where p is the weight on each</span>
+<span class="sd">    observation as a 1 x n array and est_vect is n x k.  Then _modif_Newton is</span>
+<span class="sd">    called to determine the optimal p by solving for the Lagrange multiplier</span>
+<span class="sd">    (eta) in the profile likelihood maximization problem.  In the presence</span>
+<span class="sd">    of nuisance parameters, _opt_ functions are  optimized over to profile</span>
+<span class="sd">    out the nuisance parameters.</span>
+
+<span class="sd">    Any method starting with _ci_limits calculates the log likelihood</span>
+<span class="sd">    ratio for a specific value of a parameter and then subtracts a</span>
+<span class="sd">    pre-specified critical value.  This is solved so that llr - crit = 0.</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">endog</span><span class="p">):</span>
+        <span class="k">pass</span>
+
+    <span class="k">def</span> <span class="nf">_log_star</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">eta</span><span class="p">,</span> <span class="n">est_vect</span><span class="p">,</span> <span class="n">weights</span><span class="p">,</span> <span class="n">nobs</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Transforms the log of observation probabilities in terms of the</span>
+<span class="sd">        Lagrange multiplier to the log &#39;star&#39; of the probabilities.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        eta : float</span>
+<span class="sd">            Lagrange multiplier</span>
+
+<span class="sd">        est_vect : ndarray (n,k)</span>
+<span class="sd">            Estimating equations vector</span>
+
+<span class="sd">        wts : nx1 array</span>
+<span class="sd">            Observation weights</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        ------</span>
+<span class="sd">        data_star : array</span>
+<span class="sd">            The weighted logstar of the estimting equations</span>
+
+<span class="sd">        Notes</span>
+<span class="sd">        -----</span>
+<span class="sd">        This function is only a placeholder for the _fit_Newton.</span>
+<span class="sd">        The function value is not used in optimization and the optimal value</span>
+<span class="sd">        is disregarded when computing the log likelihood ratio.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">data_star</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">weights</span><span class="p">)</span> <span class="o">+</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">weights</span><span class="p">)</span> <span class="o">+</span>\
+                                       <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">est_vect</span><span class="p">,</span> <span class="n">eta</span><span class="p">))</span>
+        <span class="n">idx</span> <span class="o">=</span> <span class="n">data_star</span> <span class="o">&lt;</span> <span class="mf">1.</span> <span class="o">/</span> <span class="n">nobs</span>
+        <span class="n">not_idx</span> <span class="o">=</span> <span class="o">~</span><span class="n">idx</span>
+        <span class="n">nx</span> <span class="o">=</span> <span class="n">nobs</span> <span class="o">*</span> <span class="n">data_star</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span>
+        <span class="n">data_star</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="mf">1.</span> <span class="o">/</span> <span class="n">nobs</span><span class="p">)</span> <span class="o">-</span> <span class="mf">1.5</span> <span class="o">+</span> <span class="n">nx</span> <span class="o">*</span> <span class="p">(</span><span class="mf">2.</span> <span class="o">-</span> <span class="n">nx</span> <span class="o">/</span> <span class="mi">2</span><span class="p">)</span>
+        <span class="n">data_star</span><span class="p">[</span><span class="n">not_idx</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">data_star</span><span class="p">[</span><span class="n">not_idx</span><span class="p">])</span>
+        <span class="k">return</span> <span class="n">data_star</span>
+
+    <span class="k">def</span> <span class="nf">_hess</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">eta</span><span class="p">,</span> <span class="n">est_vect</span><span class="p">,</span> <span class="n">weights</span><span class="p">,</span> <span class="n">nobs</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Calculates the hessian of a weighted empirical likelihood</span>
+<span class="sd">        problem.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        eta : ndarray, (1,m)</span>
+<span class="sd">            Lagrange multiplier in the profile likelihood maximization</span>
+
+<span class="sd">        est_vect : ndarray (n,k)</span>
+<span class="sd">            Estimating equations vector</span>
+
+<span class="sd">        weights : 1darray</span>
+<span class="sd">            Observation weights</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        hess : m x m array</span>
+<span class="sd">            Weighted hessian used in _wtd_modif_newton</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1">#eta = np.squeeze(eta)</span>
+        <span class="n">data_star_doub_prime</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">weights</span><span class="p">)</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">est_vect</span><span class="p">,</span> <span class="n">eta</span><span class="p">)</span>
+        <span class="n">idx</span> <span class="o">=</span> <span class="n">data_star_doub_prime</span> <span class="o">&lt;</span> <span class="mf">1.</span> <span class="o">/</span> <span class="n">nobs</span>
+        <span class="n">not_idx</span> <span class="o">=</span> <span class="o">~</span><span class="n">idx</span>
+        <span class="n">data_star_doub_prime</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span> <span class="n">nobs</span> <span class="o">**</span> <span class="mi">2</span>
+        <span class="n">data_star_doub_prime</span><span class="p">[</span><span class="n">not_idx</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span> <span class="p">(</span><span class="n">data_star_doub_prime</span><span class="p">[</span><span class="n">not_idx</span><span class="p">])</span> <span class="o">**</span> <span class="o">-</span><span class="mi">2</span>
+        <span class="n">wtd_dsdp</span> <span class="o">=</span> <span class="n">weights</span> <span class="o">*</span> <span class="n">data_star_doub_prime</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">est_vect</span><span class="o">.</span><span class="n">T</span><span class="p">,</span> <span class="n">wtd_dsdp</span><span class="p">[:,</span> <span class="kc">None</span><span class="p">]</span> <span class="o">*</span> <span class="n">est_vect</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_grad</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">eta</span><span class="p">,</span> <span class="n">est_vect</span><span class="p">,</span> <span class="n">weights</span><span class="p">,</span> <span class="n">nobs</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Calculates the gradient of a weighted empirical likelihood</span>
+<span class="sd">        problem</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        eta : ndarray, (1,m)</span>
+<span class="sd">            Lagrange multiplier in the profile likelihood maximization</span>
+
+<span class="sd">        est_vect : ndarray, (n,k)</span>
+<span class="sd">            Estimating equations vector</span>
+
+<span class="sd">        weights : 1darray</span>
+<span class="sd">            Observation weights</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        gradient : ndarray (m,1)</span>
+<span class="sd">            The gradient used in _wtd_modif_newton</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1">#eta = np.squeeze(eta)</span>
+        <span class="n">data_star_prime</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">weights</span><span class="p">)</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">est_vect</span><span class="p">,</span> <span class="n">eta</span><span class="p">)</span>
+        <span class="n">idx</span> <span class="o">=</span> <span class="n">data_star_prime</span> <span class="o">&lt;</span> <span class="mf">1.</span> <span class="o">/</span> <span class="n">nobs</span>
+        <span class="n">not_idx</span> <span class="o">=</span> <span class="o">~</span><span class="n">idx</span>
+        <span class="n">data_star_prime</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span> <span class="o">=</span> <span class="n">nobs</span> <span class="o">*</span> <span class="p">(</span><span class="mi">2</span> <span class="o">-</span> <span class="n">nobs</span> <span class="o">*</span> <span class="n">data_star_prime</span><span class="p">[</span><span class="n">idx</span><span class="p">])</span>
+        <span class="n">data_star_prime</span><span class="p">[</span><span class="n">not_idx</span><span class="p">]</span> <span class="o">=</span> <span class="mf">1.</span> <span class="o">/</span> <span class="n">data_star_prime</span><span class="p">[</span><span class="n">not_idx</span><span class="p">]</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">weights</span> <span class="o">*</span> <span class="n">data_star_prime</span><span class="p">,</span> <span class="n">est_vect</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_modif_newton</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>  <span class="n">eta</span><span class="p">,</span> <span class="n">est_vect</span><span class="p">,</span> <span class="n">weights</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Modified Newton&#39;s method for maximizing the log &#39;star&#39; equation.  This</span>
+<span class="sd">        function calls _fit_newton to find the optimal values of eta.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        eta : ndarray, (1,m)</span>
+<span class="sd">            Lagrange multiplier in the profile likelihood maximization</span>
+
+<span class="sd">        est_vect : ndarray, (n,k)</span>
+<span class="sd">            Estimating equations vector</span>
+
+<span class="sd">        weights : 1darray</span>
+<span class="sd">            Observation weights</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        params : 1xm array</span>
+<span class="sd">            Lagrange multiplier that maximizes the log-likelihood</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">nobs</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">est_vect</span><span class="p">)</span>
+        <span class="n">f</span> <span class="o">=</span> <span class="k">lambda</span> <span class="n">x0</span><span class="p">:</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_log_star</span><span class="p">(</span><span class="n">x0</span><span class="p">,</span> <span class="n">est_vect</span><span class="p">,</span> <span class="n">weights</span><span class="p">,</span> <span class="n">nobs</span><span class="p">))</span>
+        <span class="n">grad</span> <span class="o">=</span> <span class="k">lambda</span> <span class="n">x0</span><span class="p">:</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">_grad</span><span class="p">(</span><span class="n">x0</span><span class="p">,</span> <span class="n">est_vect</span><span class="p">,</span> <span class="n">weights</span><span class="p">,</span> <span class="n">nobs</span><span class="p">)</span>
+        <span class="n">hess</span> <span class="o">=</span> <span class="k">lambda</span> <span class="n">x0</span><span class="p">:</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">_hess</span><span class="p">(</span><span class="n">x0</span><span class="p">,</span> <span class="n">est_vect</span><span class="p">,</span> <span class="n">weights</span><span class="p">,</span> <span class="n">nobs</span><span class="p">)</span>
+        <span class="n">kwds</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;tol&#39;</span><span class="p">:</span> <span class="mf">1e-8</span><span class="p">}</span>
+        <span class="n">eta</span> <span class="o">=</span> <span class="n">eta</span><span class="o">.</span><span class="n">squeeze</span><span class="p">()</span>
+        <span class="n">res</span> <span class="o">=</span> <span class="n">_fit_newton</span><span class="p">(</span><span class="n">f</span><span class="p">,</span> <span class="n">grad</span><span class="p">,</span> <span class="n">eta</span><span class="p">,</span> <span class="p">(),</span> <span class="n">kwds</span><span class="p">,</span> <span class="n">hess</span><span class="o">=</span><span class="n">hess</span><span class="p">,</span> <span class="n">maxiter</span><span class="o">=</span><span class="mi">50</span><span class="p">,</span> \
+                              <span class="n">disp</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">res</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+    <span class="k">def</span> <span class="nf">_find_eta</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">eta</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Finding the root of sum(xi-h0)/(1+eta(xi-mu)) solves for</span>
+<span class="sd">        eta when computing ELR for univariate mean.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        eta : float</span>
+<span class="sd">            Lagrange multiplier in the empirical likelihood maximization</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        llr : float</span>
+<span class="sd">            n times the log likelihood value for a given value of eta</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">((</span><span class="bp">self</span><span class="o">.</span><span class="n">endog</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">mu0</span><span class="p">)</span> <span class="o">/</span> \
+              <span class="p">(</span><span class="mf">1.</span> <span class="o">+</span> <span class="n">eta</span> <span class="o">*</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">endog</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">mu0</span><span class="p">)))</span>
+
+    <span class="k">def</span> <span class="nf">_ci_limits_mu</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">mu</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Calculates the difference between the log likelihood of mu_test and a</span>
+<span class="sd">        specified critical value.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        mu : float</span>
+<span class="sd">           Hypothesized value of the mean.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        diff : float</span>
+<span class="sd">            The difference between the log likelihood value of mu0 and</span>
+<span class="sd">            a specified value.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">test_mean</span><span class="p">(</span><span class="n">mu</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">r0</span>
+
+    <span class="k">def</span> <span class="nf">_find_gamma</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">gamma</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Finds gamma that satisfies</span>
+<span class="sd">        sum(log(n * w(gamma))) - log(r0) = 0</span>
+
+<span class="sd">        Used for confidence intervals for the mean</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        gamma : float</span>
+<span class="sd">            Lagrange multiplier when computing confidence interval</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        diff : float</span>
+<span class="sd">            The difference between the log-liklihood when the Lagrange</span>
+<span class="sd">            multiplier is gamma and a pre-specified value</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">denom</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">((</span><span class="bp">self</span><span class="o">.</span><span class="n">endog</span> <span class="o">-</span> <span class="n">gamma</span><span class="p">)</span> <span class="o">**</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+        <span class="n">new_weights</span> <span class="o">=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">endog</span> <span class="o">-</span> <span class="n">gamma</span><span class="p">)</span> <span class="o">**</span> <span class="o">-</span><span class="mi">1</span> <span class="o">/</span> <span class="n">denom</span>
+        <span class="k">return</span> <span class="o">-</span><span class="mi">2</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">nobs</span> <span class="o">*</span> <span class="n">new_weights</span><span class="p">))</span> <span class="o">-</span> \
+            <span class="bp">self</span><span class="o">.</span><span class="n">r0</span>
+
+    <span class="k">def</span> <span class="nf">_opt_var</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">nuisance_mu</span><span class="p">,</span> <span class="n">pval</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        This is the function to be optimized over a nuisance mean parameter</span>
+<span class="sd">        to determine the likelihood ratio for the variance</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        nuisance_mu : float</span>
+<span class="sd">            Value of a nuisance mean parameter</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        llr : float</span>
+<span class="sd">            Log likelihood of a pre-specified variance holding the nuisance</span>
+<span class="sd">            parameter constant</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">endog</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">endog</span>
+        <span class="n">nobs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span>
+        <span class="n">sig_data</span> <span class="o">=</span> <span class="p">((</span><span class="n">endog</span> <span class="o">-</span> <span class="n">nuisance_mu</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span> \
+                    <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">sig2_0</span><span class="p">)</span>
+        <span class="n">mu_data</span> <span class="o">=</span> <span class="p">(</span><span class="n">endog</span> <span class="o">-</span> <span class="n">nuisance_mu</span><span class="p">)</span>
+        <span class="n">est_vect</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">column_stack</span><span class="p">((</span><span class="n">mu_data</span><span class="p">,</span> <span class="n">sig_data</span><span class="p">))</span>
+        <span class="n">eta_star</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_modif_newton</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">1.</span> <span class="o">/</span> <span class="n">nobs</span><span class="p">,</span>
+                                               <span class="mf">1.</span> <span class="o">/</span> <span class="n">nobs</span><span class="p">]),</span> <span class="n">est_vect</span><span class="p">,</span>
+                                                <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">nobs</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="mf">1.</span> <span class="o">/</span> <span class="n">nobs</span><span class="p">))</span>
+
+        <span class="n">denom</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">eta_star</span><span class="p">,</span> <span class="n">est_vect</span><span class="o">.</span><span class="n">T</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">new_weights</span> <span class="o">=</span> <span class="mf">1.</span> <span class="o">/</span> <span class="n">nobs</span> <span class="o">*</span> <span class="mf">1.</span> <span class="o">/</span> <span class="n">denom</span>
+        <span class="n">llr</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">nobs</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">new_weights</span><span class="p">))</span>
+        <span class="k">if</span> <span class="n">pval</span><span class="p">:</span>  <span class="c1"># Used for contour plotting</span>
+            <span class="k">return</span> <span class="n">chi2</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="o">-</span><span class="mi">2</span> <span class="o">*</span> <span class="n">llr</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="k">return</span> <span class="o">-</span><span class="mi">2</span> <span class="o">*</span> <span class="n">llr</span>
+
+    <span class="k">def</span> <span class="nf">_ci_limits_var</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">var</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Used to determine the confidence intervals for the variance.</span>
+<span class="sd">        It calls test_var and when called by an optimizer,</span>
+<span class="sd">        finds the value of sig2_0 that is chi2.ppf(significance-level)</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        var_test : float</span>
+<span class="sd">            Hypothesized value of the variance</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        diff : float</span>
+<span class="sd">            The difference between the log likelihood ratio at var_test and a</span>
+<span class="sd">            pre-specified value.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">test_var</span><span class="p">(</span><span class="n">var</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">r0</span>
+
+    <span class="k">def</span> <span class="nf">_opt_skew</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">nuis_params</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Called by test_skew.  This function is optimized over</span>
+<span class="sd">        nuisance parameters mu and sigma</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        nuis_params : 1darray</span>
+<span class="sd">            An array with a  nuisance mean and variance parameter</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        llr : float</span>
+<span class="sd">            The log likelihood ratio of a pre-specified skewness holding</span>
+<span class="sd">            the nuisance parameters constant.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">endog</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">endog</span>
+        <span class="n">nobs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span>
+        <span class="n">mu_data</span> <span class="o">=</span> <span class="n">endog</span> <span class="o">-</span> <span class="n">nuis_params</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">sig_data</span> <span class="o">=</span> <span class="p">((</span><span class="n">endog</span> <span class="o">-</span> <span class="n">nuis_params</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="o">**</span> <span class="mi">2</span><span class="p">)</span> <span class="o">-</span> <span class="n">nuis_params</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+        <span class="n">skew_data</span> <span class="o">=</span> <span class="p">((((</span><span class="n">endog</span> <span class="o">-</span> <span class="n">nuis_params</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="o">**</span> <span class="mi">3</span><span class="p">)</span> <span class="o">/</span>
+                    <span class="p">(</span><span class="n">nuis_params</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">**</span> <span class="mf">1.5</span><span class="p">)))</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">skew0</span>
+        <span class="n">est_vect</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">column_stack</span><span class="p">((</span><span class="n">mu_data</span><span class="p">,</span> <span class="n">sig_data</span><span class="p">,</span> <span class="n">skew_data</span><span class="p">))</span>
+        <span class="n">eta_star</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_modif_newton</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">1.</span> <span class="o">/</span> <span class="n">nobs</span><span class="p">,</span>
+                                               <span class="mf">1.</span> <span class="o">/</span> <span class="n">nobs</span><span class="p">,</span>
+                                               <span class="mf">1.</span> <span class="o">/</span> <span class="n">nobs</span><span class="p">]),</span> <span class="n">est_vect</span><span class="p">,</span>
+                                               <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">nobs</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="mf">1.</span> <span class="o">/</span> <span class="n">nobs</span><span class="p">))</span>
+        <span class="n">denom</span> <span class="o">=</span> <span class="mf">1.</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">eta_star</span><span class="p">,</span> <span class="n">est_vect</span><span class="o">.</span><span class="n">T</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">new_weights</span> <span class="o">=</span> <span class="mf">1.</span> <span class="o">/</span> <span class="n">nobs</span> <span class="o">*</span> <span class="mf">1.</span> <span class="o">/</span> <span class="n">denom</span>
+        <span class="n">llr</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">nobs</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">new_weights</span><span class="p">))</span>
+        <span class="k">return</span> <span class="o">-</span><span class="mi">2</span> <span class="o">*</span> <span class="n">llr</span>
+
+    <span class="k">def</span> <span class="nf">_opt_kurt</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">nuis_params</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Called by test_kurt.  This function is optimized over</span>
+<span class="sd">        nuisance parameters mu and sigma</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        nuis_params : 1darray</span>
+<span class="sd">            An array with a nuisance mean and variance parameter</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        llr : float</span>
+<span class="sd">            The log likelihood ratio of a pre-speified kurtosis holding the</span>
+<span class="sd">            nuisance parameters constant</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">endog</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">endog</span>
+        <span class="n">nobs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span>
+        <span class="n">mu_data</span> <span class="o">=</span> <span class="n">endog</span> <span class="o">-</span> <span class="n">nuis_params</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">sig_data</span> <span class="o">=</span> <span class="p">((</span><span class="n">endog</span> <span class="o">-</span> <span class="n">nuis_params</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="o">**</span> <span class="mi">2</span><span class="p">)</span> <span class="o">-</span> <span class="n">nuis_params</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+        <span class="n">kurt_data</span> <span class="o">=</span> <span class="p">(((((</span><span class="n">endog</span> <span class="o">-</span> <span class="n">nuis_params</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="o">**</span> <span class="mi">4</span><span class="p">)</span> <span class="o">/</span> \
+                    <span class="p">(</span><span class="n">nuis_params</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">**</span> <span class="mi">2</span><span class="p">)))</span> <span class="o">-</span> <span class="mi">3</span><span class="p">)</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">kurt0</span>
+        <span class="n">est_vect</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">column_stack</span><span class="p">((</span><span class="n">mu_data</span><span class="p">,</span> <span class="n">sig_data</span><span class="p">,</span> <span class="n">kurt_data</span><span class="p">))</span>
+        <span class="n">eta_star</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_modif_newton</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">1.</span> <span class="o">/</span> <span class="n">nobs</span><span class="p">,</span>
+                                               <span class="mf">1.</span> <span class="o">/</span> <span class="n">nobs</span><span class="p">,</span>
+                                               <span class="mf">1.</span> <span class="o">/</span> <span class="n">nobs</span><span class="p">]),</span> <span class="n">est_vect</span><span class="p">,</span>
+                                               <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">nobs</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="mf">1.</span> <span class="o">/</span> <span class="n">nobs</span><span class="p">))</span>
+        <span class="n">denom</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">eta_star</span><span class="p">,</span> <span class="n">est_vect</span><span class="o">.</span><span class="n">T</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">new_weights</span> <span class="o">=</span> <span class="mf">1.</span> <span class="o">/</span> <span class="n">nobs</span> <span class="o">*</span> <span class="mf">1.</span> <span class="o">/</span> <span class="n">denom</span>
+        <span class="n">llr</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">nobs</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">new_weights</span><span class="p">))</span>
+        <span class="k">return</span> <span class="o">-</span><span class="mi">2</span> <span class="o">*</span> <span class="n">llr</span>
+
+    <span class="k">def</span> <span class="nf">_opt_skew_kurt</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">nuis_params</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Called by test_joint_skew_kurt.  This function is optimized over</span>
+<span class="sd">        nuisance parameters mu and sigma</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        nuis_params : 1darray</span>
+<span class="sd">            An array with a nuisance mean and variance parameter</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        ------</span>
+<span class="sd">        llr : float</span>
+<span class="sd">            The log likelihood ratio of a pre-speified skewness and</span>
+<span class="sd">            kurtosis holding the nuisance parameters constant.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">endog</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">endog</span>
+        <span class="n">nobs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span>
+        <span class="n">mu_data</span> <span class="o">=</span> <span class="n">endog</span> <span class="o">-</span> <span class="n">nuis_params</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">sig_data</span> <span class="o">=</span> <span class="p">((</span><span class="n">endog</span> <span class="o">-</span> <span class="n">nuis_params</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="o">**</span> <span class="mi">2</span><span class="p">)</span> <span class="o">-</span> <span class="n">nuis_params</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+        <span class="n">skew_data</span> <span class="o">=</span> <span class="p">((((</span><span class="n">endog</span> <span class="o">-</span> <span class="n">nuis_params</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="o">**</span> <span class="mi">3</span><span class="p">)</span> <span class="o">/</span> \
+                    <span class="p">(</span><span class="n">nuis_params</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">**</span> <span class="mf">1.5</span><span class="p">)))</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">skew0</span>
+        <span class="n">kurt_data</span> <span class="o">=</span> <span class="p">(((((</span><span class="n">endog</span> <span class="o">-</span> <span class="n">nuis_params</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="o">**</span> <span class="mi">4</span><span class="p">)</span> <span class="o">/</span> \
+                    <span class="p">(</span><span class="n">nuis_params</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">**</span> <span class="mi">2</span><span class="p">)))</span> <span class="o">-</span> <span class="mi">3</span><span class="p">)</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">kurt0</span>
+        <span class="n">est_vect</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">column_stack</span><span class="p">((</span><span class="n">mu_data</span><span class="p">,</span> <span class="n">sig_data</span><span class="p">,</span> <span class="n">skew_data</span><span class="p">,</span> <span class="n">kurt_data</span><span class="p">))</span>
+        <span class="n">eta_star</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_modif_newton</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">1.</span> <span class="o">/</span> <span class="n">nobs</span><span class="p">,</span>
+                                               <span class="mf">1.</span> <span class="o">/</span> <span class="n">nobs</span><span class="p">,</span>
+                                               <span class="mf">1.</span> <span class="o">/</span> <span class="n">nobs</span><span class="p">,</span>
+                                               <span class="mf">1.</span> <span class="o">/</span> <span class="n">nobs</span><span class="p">]),</span> <span class="n">est_vect</span><span class="p">,</span>
+                                               <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">nobs</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="mf">1.</span> <span class="o">/</span> <span class="n">nobs</span><span class="p">))</span>
+        <span class="n">denom</span> <span class="o">=</span> <span class="mf">1.</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">eta_star</span><span class="p">,</span> <span class="n">est_vect</span><span class="o">.</span><span class="n">T</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">new_weights</span> <span class="o">=</span> <span class="mf">1.</span> <span class="o">/</span> <span class="n">nobs</span> <span class="o">*</span> <span class="mf">1.</span> <span class="o">/</span> <span class="n">denom</span>
+        <span class="n">llr</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">nobs</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">new_weights</span><span class="p">))</span>
+        <span class="k">return</span> <span class="o">-</span><span class="mi">2</span> <span class="o">*</span> <span class="n">llr</span>
+
+    <span class="k">def</span> <span class="nf">_ci_limits_skew</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">skew</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        skew0 : float</span>
+<span class="sd">            Hypothesized value of skewness</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        diff : float</span>
+<span class="sd">            The difference between the log likelihood ratio at skew and a</span>
+<span class="sd">            pre-specified value.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">test_skew</span><span class="p">(</span><span class="n">skew</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">r0</span>
+
+    <span class="k">def</span> <span class="nf">_ci_limits_kurt</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">kurt</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        skew0 : float</span>
+<span class="sd">            Hypothesized value of kurtosis</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        diff : float</span>
+<span class="sd">            The difference between the log likelihood ratio at kurt and a</span>
+<span class="sd">            pre-specified value.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">test_kurt</span><span class="p">(</span><span class="n">kurt</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">r0</span>
+
+    <span class="k">def</span> <span class="nf">_opt_correl</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">nuis_params</span><span class="p">,</span> <span class="n">corr0</span><span class="p">,</span> <span class="n">endog</span><span class="p">,</span> <span class="n">nobs</span><span class="p">,</span> <span class="n">x0</span><span class="p">,</span> <span class="n">weights0</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        nuis_params : 1darray</span>
+<span class="sd">            Array containing two nuisance means and two nuisance variances</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        llr : float</span>
+<span class="sd">            The log-likelihood of the correlation coefficient holding nuisance</span>
+<span class="sd">            parameters constant</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">mu1_data</span><span class="p">,</span> <span class="n">mu2_data</span> <span class="o">=</span> <span class="p">(</span><span class="n">endog</span> <span class="o">-</span> <span class="n">nuis_params</span><span class="p">[::</span><span class="mi">2</span><span class="p">])</span><span class="o">.</span><span class="n">T</span>
+        <span class="n">sig1_data</span> <span class="o">=</span> <span class="n">mu1_data</span> <span class="o">**</span> <span class="mi">2</span> <span class="o">-</span> <span class="n">nuis_params</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+        <span class="n">sig2_data</span> <span class="o">=</span> <span class="n">mu2_data</span> <span class="o">**</span> <span class="mi">2</span> <span class="o">-</span> <span class="n">nuis_params</span><span class="p">[</span><span class="mi">3</span><span class="p">]</span>
+        <span class="n">correl_data</span> <span class="o">=</span> <span class="p">((</span><span class="n">mu1_data</span> <span class="o">*</span> <span class="n">mu2_data</span><span class="p">)</span> <span class="o">-</span> <span class="n">corr0</span> <span class="o">*</span>
+                    <span class="p">(</span><span class="n">nuis_params</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">*</span> <span class="n">nuis_params</span><span class="p">[</span><span class="mi">3</span><span class="p">])</span> <span class="o">**</span> <span class="o">.</span><span class="mi">5</span><span class="p">)</span>
+        <span class="n">est_vect</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">column_stack</span><span class="p">((</span><span class="n">mu1_data</span><span class="p">,</span> <span class="n">sig1_data</span><span class="p">,</span>
+                                    <span class="n">mu2_data</span><span class="p">,</span> <span class="n">sig2_data</span><span class="p">,</span> <span class="n">correl_data</span><span class="p">))</span>
+        <span class="n">eta_star</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_modif_newton</span><span class="p">(</span><span class="n">x0</span><span class="p">,</span> <span class="n">est_vect</span><span class="p">,</span> <span class="n">weights0</span><span class="p">)</span>
+        <span class="n">denom</span> <span class="o">=</span> <span class="mf">1.</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">est_vect</span><span class="p">,</span> <span class="n">eta_star</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">new_weights</span> <span class="o">=</span> <span class="mf">1.</span> <span class="o">/</span> <span class="n">nobs</span> <span class="o">*</span> <span class="mf">1.</span> <span class="o">/</span> <span class="n">denom</span>
+        <span class="n">llr</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">nobs</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">new_weights</span><span class="p">))</span>
+        <span class="k">return</span> <span class="o">-</span><span class="mi">2</span> <span class="o">*</span> <span class="n">llr</span>
+
+    <span class="k">def</span> <span class="nf">_ci_limits_corr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">corr</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">test_corr</span><span class="p">(</span><span class="n">corr</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">r0</span>
+
+
+<div class="viewcode-block" id="DescStatUV"><a class="viewcode-back" href="../../../generated/statsmodels.emplike.descriptive.DescStatUV.html#statsmodels.emplike.descriptive.DescStatUV">[docs]</a><span class="k">class</span> <span class="nc">DescStatUV</span><span class="p">(</span><span class="n">_OptFuncts</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A class to compute confidence intervals and hypothesis tests involving</span>
+<span class="sd">    mean, variance, kurtosis and skewness of a univariate random variable.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    endog : 1darray</span>
+<span class="sd">        Data to be analyzed</span>
+
+<span class="sd">    Attributes</span>
+<span class="sd">    ----------</span>
+<span class="sd">    endog : 1darray</span>
+<span class="sd">        Data to be analyzed</span>
+
+<span class="sd">    nobs : float</span>
+<span class="sd">        Number of observations</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">endog</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">endog</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">squeeze</span><span class="p">(</span><span class="n">endog</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span> <span class="o">=</span> <span class="n">endog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+<div class="viewcode-block" id="DescStatUV.test_mean"><a class="viewcode-back" href="../../../generated/statsmodels.emplike.descriptive.DescStatUV.test_mean.html#statsmodels.emplike.descriptive.DescStatUV.test_mean">[docs]</a>    <span class="k">def</span> <span class="nf">test_mean</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">mu0</span><span class="p">,</span> <span class="n">return_weights</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Returns - 2 x log-likelihood ratio, p-value and weights</span>
+<span class="sd">        for a hypothesis test of the mean.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        mu0 : float</span>
+<span class="sd">            Mean value to be tested</span>
+
+<span class="sd">        return_weights : bool</span>
+<span class="sd">            If return_weights is True the funtion returns</span>
+<span class="sd">            the weights of the observations under the null hypothesis.</span>
+<span class="sd">            Default is False</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        test_results : tuple</span>
+<span class="sd">            The log-likelihood ratio and p-value of mu0</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">mu0</span> <span class="o">=</span> <span class="n">mu0</span>
+        <span class="n">endog</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">endog</span>
+        <span class="n">nobs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span>
+        <span class="n">eta_min</span> <span class="o">=</span> <span class="p">(</span><span class="mf">1.</span> <span class="o">-</span> <span class="p">(</span><span class="mf">1.</span> <span class="o">/</span> <span class="n">nobs</span><span class="p">))</span> <span class="o">/</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">mu0</span> <span class="o">-</span> <span class="nb">max</span><span class="p">(</span><span class="n">endog</span><span class="p">))</span>
+        <span class="n">eta_max</span> <span class="o">=</span> <span class="p">(</span><span class="mf">1.</span> <span class="o">-</span> <span class="p">(</span><span class="mf">1.</span> <span class="o">/</span> <span class="n">nobs</span><span class="p">))</span> <span class="o">/</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">mu0</span> <span class="o">-</span> <span class="nb">min</span><span class="p">(</span><span class="n">endog</span><span class="p">))</span>
+        <span class="n">eta_star</span> <span class="o">=</span> <span class="n">optimize</span><span class="o">.</span><span class="n">brentq</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_find_eta</span><span class="p">,</span> <span class="n">eta_min</span><span class="p">,</span> <span class="n">eta_max</span><span class="p">)</span>
+        <span class="n">new_weights</span> <span class="o">=</span> <span class="p">(</span><span class="mf">1.</span> <span class="o">/</span> <span class="n">nobs</span><span class="p">)</span> <span class="o">*</span> <span class="mf">1.</span> <span class="o">/</span> <span class="p">(</span><span class="mf">1.</span> <span class="o">+</span> <span class="n">eta_star</span> <span class="o">*</span> <span class="p">(</span><span class="n">endog</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">mu0</span><span class="p">))</span>
+        <span class="n">llr</span> <span class="o">=</span> <span class="o">-</span><span class="mi">2</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">nobs</span> <span class="o">*</span> <span class="n">new_weights</span><span class="p">))</span>
+        <span class="k">if</span> <span class="n">return_weights</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">llr</span><span class="p">,</span> <span class="n">chi2</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="n">llr</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span> <span class="n">new_weights</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">llr</span><span class="p">,</span> <span class="n">chi2</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="n">llr</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="DescStatUV.ci_mean"><a class="viewcode-back" href="../../../generated/statsmodels.emplike.descriptive.DescStatUV.ci_mean.html#statsmodels.emplike.descriptive.DescStatUV.ci_mean">[docs]</a>    <span class="k">def</span> <span class="nf">ci_mean</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sig</span><span class="o">=.</span><span class="mi">05</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s1">&#39;gamma&#39;</span><span class="p">,</span> <span class="n">epsilon</span><span class="o">=</span><span class="mi">10</span> <span class="o">**</span> <span class="o">-</span><span class="mi">8</span><span class="p">,</span>
+                 <span class="n">gamma_low</span><span class="o">=-</span><span class="mi">10</span> <span class="o">**</span> <span class="mi">10</span><span class="p">,</span> <span class="n">gamma_high</span><span class="o">=</span><span class="mi">10</span> <span class="o">**</span> <span class="mi">10</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Returns the confidence interval for the mean.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        sig : float</span>
+<span class="sd">            significance level. Default is .05</span>
+
+<span class="sd">        method : str</span>
+<span class="sd">            Root finding method,  Can be &#39;nested-brent&#39; or</span>
+<span class="sd">            &#39;gamma&#39;.  Default is &#39;gamma&#39;</span>
+
+<span class="sd">            &#39;gamma&#39; Tries to solve for the gamma parameter in the</span>
+<span class="sd">            Lagrange (see Owen pg 22) and then determine the weights.</span>
+
+<span class="sd">            &#39;nested brent&#39; uses brents method to find the confidence</span>
+<span class="sd">            intervals but must maximize the likelihhod ratio on every</span>
+<span class="sd">            iteration.</span>
+
+<span class="sd">            gamma is generally much faster.  If the optimizations does not</span>
+<span class="sd">            converge, try expanding the gamma_high and gamma_low</span>
+<span class="sd">            variable.</span>
+
+<span class="sd">        gamma_low : float</span>
+<span class="sd">            Lower bound for gamma when finding lower limit.</span>
+<span class="sd">            If function returns f(a) and f(b) must have different signs,</span>
+<span class="sd">            consider lowering gamma_low.</span>
+
+<span class="sd">        gamma_high : float</span>
+<span class="sd">            Upper bound for gamma when finding upper limit.</span>
+<span class="sd">            If function returns f(a) and f(b) must have different signs,</span>
+<span class="sd">            consider raising gamma_high.</span>
+
+<span class="sd">        epsilon : float</span>
+<span class="sd">            When using &#39;nested-brent&#39;, amount to decrease (increase)</span>
+<span class="sd">            from the maximum (minimum) of the data when</span>
+<span class="sd">            starting the search.  This is to protect against the</span>
+<span class="sd">            likelihood ratio being zero at the maximum (minimum)</span>
+<span class="sd">            value of the data.  If data is very small in absolute value</span>
+<span class="sd">            (&lt;10 ``**`` -6) consider shrinking epsilon</span>
+
+<span class="sd">            When using &#39;gamma&#39;, amount to decrease (increase) the</span>
+<span class="sd">            minimum (maximum) by to start the search for gamma.</span>
+<span class="sd">            If fucntion returns f(a) and f(b) must have differnt signs,</span>
+<span class="sd">            consider lowering epsilon.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        Interval : tuple</span>
+<span class="sd">            Confidence interval for the mean</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">endog</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">endog</span>
+        <span class="n">sig</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">-</span> <span class="n">sig</span>
+        <span class="k">if</span> <span class="n">method</span> <span class="o">==</span> <span class="s1">&#39;nested-brent&#39;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">r0</span> <span class="o">=</span> <span class="n">chi2</span><span class="o">.</span><span class="n">ppf</span><span class="p">(</span><span class="n">sig</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+            <span class="n">middle</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">endog</span><span class="p">)</span>
+            <span class="n">epsilon_u</span> <span class="o">=</span> <span class="p">(</span><span class="nb">max</span><span class="p">(</span><span class="n">endog</span><span class="p">)</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">endog</span><span class="p">))</span> <span class="o">*</span> <span class="n">epsilon</span>
+            <span class="n">epsilon_l</span> <span class="o">=</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">endog</span><span class="p">)</span> <span class="o">-</span> <span class="nb">min</span><span class="p">(</span><span class="n">endog</span><span class="p">))</span> <span class="o">*</span> <span class="n">epsilon</span>
+            <span class="n">ulim</span> <span class="o">=</span> <span class="n">optimize</span><span class="o">.</span><span class="n">brentq</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_ci_limits_mu</span><span class="p">,</span> <span class="n">middle</span><span class="p">,</span>
+                <span class="nb">max</span><span class="p">(</span><span class="n">endog</span><span class="p">)</span> <span class="o">-</span> <span class="n">epsilon_u</span><span class="p">)</span>
+            <span class="n">llim</span> <span class="o">=</span> <span class="n">optimize</span><span class="o">.</span><span class="n">brentq</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_ci_limits_mu</span><span class="p">,</span> <span class="n">middle</span><span class="p">,</span>
+                <span class="nb">min</span><span class="p">(</span><span class="n">endog</span><span class="p">)</span> <span class="o">+</span> <span class="n">epsilon_l</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">llim</span><span class="p">,</span> <span class="n">ulim</span>
+
+        <span class="k">if</span> <span class="n">method</span> <span class="o">==</span> <span class="s1">&#39;gamma&#39;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">r0</span> <span class="o">=</span> <span class="n">chi2</span><span class="o">.</span><span class="n">ppf</span><span class="p">(</span><span class="n">sig</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+            <span class="n">gamma_star_l</span> <span class="o">=</span> <span class="n">optimize</span><span class="o">.</span><span class="n">brentq</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_find_gamma</span><span class="p">,</span> <span class="n">gamma_low</span><span class="p">,</span>
+                <span class="nb">min</span><span class="p">(</span><span class="n">endog</span><span class="p">)</span> <span class="o">-</span> <span class="n">epsilon</span><span class="p">)</span>
+            <span class="n">gamma_star_u</span> <span class="o">=</span> <span class="n">optimize</span><span class="o">.</span><span class="n">brentq</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_find_gamma</span><span class="p">,</span> \
+                         <span class="nb">max</span><span class="p">(</span><span class="n">endog</span><span class="p">)</span> <span class="o">+</span> <span class="n">epsilon</span><span class="p">,</span> <span class="n">gamma_high</span><span class="p">)</span>
+            <span class="n">weights_low</span> <span class="o">=</span> <span class="p">((</span><span class="n">endog</span> <span class="o">-</span> <span class="n">gamma_star_l</span><span class="p">)</span> <span class="o">**</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span> <span class="o">/</span> \
+                <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">((</span><span class="n">endog</span> <span class="o">-</span> <span class="n">gamma_star_l</span><span class="p">)</span> <span class="o">**</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+            <span class="n">weights_high</span> <span class="o">=</span> <span class="p">((</span><span class="n">endog</span> <span class="o">-</span> <span class="n">gamma_star_u</span><span class="p">)</span> <span class="o">**</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span> <span class="o">/</span> \
+                <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">((</span><span class="n">endog</span> <span class="o">-</span> <span class="n">gamma_star_u</span><span class="p">)</span> <span class="o">**</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+            <span class="n">mu_low</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">weights_low</span> <span class="o">*</span> <span class="n">endog</span><span class="p">)</span>
+            <span class="n">mu_high</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">weights_high</span> <span class="o">*</span> <span class="n">endog</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">mu_low</span><span class="p">,</span>  <span class="n">mu_high</span></div>
+
+<div class="viewcode-block" id="DescStatUV.test_var"><a class="viewcode-back" href="../../../generated/statsmodels.emplike.descriptive.DescStatUV.test_var.html#statsmodels.emplike.descriptive.DescStatUV.test_var">[docs]</a>    <span class="k">def</span> <span class="nf">test_var</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sig2_0</span><span class="p">,</span> <span class="n">return_weights</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Returns  -2 x log-likelihoog ratio and the p-value for the</span>
+<span class="sd">        hypothesized variance</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        sig2_0 : float</span>
+<span class="sd">            Hypothesized variance to be tested</span>
+
+<span class="sd">        return_weights : bool</span>
+<span class="sd">            If True, returns the weights that maximize the</span>
+<span class="sd">            likelihood of observing sig2_0. Default is False</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        test_results : tuple</span>
+<span class="sd">            The  log-likelihood ratio and the p_value  of sig2_0</span>
+
+<span class="sd">        Examples</span>
+<span class="sd">        --------</span>
+<span class="sd">        &gt;&gt;&gt; import numpy as np</span>
+<span class="sd">        &gt;&gt;&gt; import statsmodels.api as sm</span>
+<span class="sd">        &gt;&gt;&gt; random_numbers = np.random.standard_normal(1000)*100</span>
+<span class="sd">        &gt;&gt;&gt; el_analysis = sm.emplike.DescStat(random_numbers)</span>
+<span class="sd">        &gt;&gt;&gt; hyp_test = el_analysis.test_var(9500)</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">sig2_0</span> <span class="o">=</span> <span class="n">sig2_0</span>
+        <span class="n">mu_max</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">endog</span><span class="p">)</span>
+        <span class="n">mu_min</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">endog</span><span class="p">)</span>
+        <span class="n">llr</span> <span class="o">=</span> <span class="n">optimize</span><span class="o">.</span><span class="n">fminbound</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_opt_var</span><span class="p">,</span> <span class="n">mu_min</span><span class="p">,</span> <span class="n">mu_max</span><span class="p">,</span> \
+                                 <span class="n">full_output</span><span class="o">=</span><span class="mi">1</span><span class="p">)[</span><span class="mi">1</span><span class="p">]</span>
+        <span class="n">p_val</span> <span class="o">=</span> <span class="n">chi2</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="n">llr</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">return_weights</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">llr</span><span class="p">,</span> <span class="n">p_val</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">new_weights</span><span class="o">.</span><span class="n">T</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">llr</span><span class="p">,</span> <span class="n">p_val</span></div>
+
+<div class="viewcode-block" id="DescStatUV.ci_var"><a class="viewcode-back" href="../../../generated/statsmodels.emplike.descriptive.DescStatUV.ci_var.html#statsmodels.emplike.descriptive.DescStatUV.ci_var">[docs]</a>    <span class="k">def</span> <span class="nf">ci_var</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lower_bound</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">upper_bound</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">sig</span><span class="o">=.</span><span class="mi">05</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Returns the confidence interval for the variance.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        lower_bound : float</span>
+<span class="sd">            The minimum value the lower confidence interval can</span>
+<span class="sd">            take. The p-value from test_var(lower_bound) must be lower</span>
+<span class="sd">            than 1 - significance level. Default is .99 confidence</span>
+<span class="sd">            limit assuming normality</span>
+
+<span class="sd">        upper_bound : float</span>
+<span class="sd">            The maximum value the upper confidence interval</span>
+<span class="sd">            can take. The p-value from test_var(upper_bound) must be lower</span>
+<span class="sd">            than 1 - significance level.  Default is .99 confidence</span>
+<span class="sd">            limit assuming normality</span>
+
+<span class="sd">        sig : float</span>
+<span class="sd">            The significance level. Default is .05</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        Interval : tuple</span>
+<span class="sd">            Confidence interval for the variance</span>
+
+<span class="sd">        Examples</span>
+<span class="sd">        --------</span>
+<span class="sd">        &gt;&gt;&gt; import numpy as np</span>
+<span class="sd">        &gt;&gt;&gt; import statsmodels.api as sm</span>
+<span class="sd">        &gt;&gt;&gt; random_numbers = np.random.standard_normal(100)</span>
+<span class="sd">        &gt;&gt;&gt; el_analysis = sm.emplike.DescStat(random_numbers)</span>
+<span class="sd">        &gt;&gt;&gt; el_analysis.ci_var()</span>
+<span class="sd">        (0.7539322567470305, 1.229998852496268)</span>
+<span class="sd">        &gt;&gt;&gt; el_analysis.ci_var(.5, 2)</span>
+<span class="sd">        (0.7539322567469926, 1.2299988524962664)</span>
+
+<span class="sd">        Notes</span>
+<span class="sd">        -----</span>
+<span class="sd">        If the function returns the error f(a) and f(b) must have</span>
+<span class="sd">        different signs, consider lowering lower_bound and raising</span>
+<span class="sd">        upper_bound.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">endog</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">endog</span>
+        <span class="k">if</span> <span class="n">upper_bound</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">upper_bound</span> <span class="o">=</span> <span class="p">((</span><span class="bp">self</span><span class="o">.</span><span class="n">nobs</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span> <span class="o">*</span> <span class="n">endog</span><span class="o">.</span><span class="n">var</span><span class="p">())</span> <span class="o">/</span> \
+              <span class="p">(</span><span class="n">chi2</span><span class="o">.</span><span class="n">ppf</span><span class="p">(</span><span class="o">.</span><span class="mi">0001</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span> <span class="o">-</span> <span class="mi">1</span><span class="p">))</span>
+        <span class="k">if</span> <span class="n">lower_bound</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">lower_bound</span> <span class="o">=</span> <span class="p">((</span><span class="bp">self</span><span class="o">.</span><span class="n">nobs</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span> <span class="o">*</span> <span class="n">endog</span><span class="o">.</span><span class="n">var</span><span class="p">())</span> <span class="o">/</span> \
+              <span class="p">(</span><span class="n">chi2</span><span class="o">.</span><span class="n">ppf</span><span class="p">(</span><span class="o">.</span><span class="mi">9999</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span> <span class="o">-</span> <span class="mi">1</span><span class="p">))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">r0</span> <span class="o">=</span> <span class="n">chi2</span><span class="o">.</span><span class="n">ppf</span><span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">sig</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="n">llim</span> <span class="o">=</span> <span class="n">optimize</span><span class="o">.</span><span class="n">brentq</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_ci_limits_var</span><span class="p">,</span> <span class="n">lower_bound</span><span class="p">,</span> <span class="n">endog</span><span class="o">.</span><span class="n">var</span><span class="p">())</span>
+        <span class="n">ulim</span> <span class="o">=</span> <span class="n">optimize</span><span class="o">.</span><span class="n">brentq</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_ci_limits_var</span><span class="p">,</span> <span class="n">endog</span><span class="o">.</span><span class="n">var</span><span class="p">(),</span> <span class="n">upper_bound</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">llim</span><span class="p">,</span> <span class="n">ulim</span></div>
+
+<div class="viewcode-block" id="DescStatUV.plot_contour"><a class="viewcode-back" href="../../../generated/statsmodels.emplike.descriptive.DescStatUV.plot_contour.html#statsmodels.emplike.descriptive.DescStatUV.plot_contour">[docs]</a>    <span class="k">def</span> <span class="nf">plot_contour</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">mu_low</span><span class="p">,</span> <span class="n">mu_high</span><span class="p">,</span> <span class="n">var_low</span><span class="p">,</span> <span class="n">var_high</span><span class="p">,</span> <span class="n">mu_step</span><span class="p">,</span>
+                        <span class="n">var_step</span><span class="p">,</span>
+                        <span class="n">levs</span><span class="o">=</span><span class="p">[</span><span class="o">.</span><span class="mi">2</span><span class="p">,</span> <span class="o">.</span><span class="mi">1</span><span class="p">,</span> <span class="o">.</span><span class="mi">05</span><span class="p">,</span> <span class="o">.</span><span class="mi">01</span><span class="p">,</span> <span class="o">.</span><span class="mi">001</span><span class="p">]):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Returns a plot of the confidence region for a univariate</span>
+<span class="sd">        mean and variance.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        mu_low : float</span>
+<span class="sd">            Lowest value of the mean to plot</span>
+
+<span class="sd">        mu_high : float</span>
+<span class="sd">            Highest value of the mean to plot</span>
+
+<span class="sd">        var_low : float</span>
+<span class="sd">            Lowest value of the variance to plot</span>
+
+<span class="sd">        var_high : float</span>
+<span class="sd">            Highest value of the variance to plot</span>
+
+<span class="sd">        mu_step : float</span>
+<span class="sd">            Increments to evaluate the mean</span>
+
+<span class="sd">        var_step : float</span>
+<span class="sd">            Increments to evaluate the mean</span>
+
+<span class="sd">        levs : list</span>
+<span class="sd">            Which values of significance the contour lines will be drawn.</span>
+<span class="sd">            Default is [.2, .1, .05, .01, .001]</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        fig : matplotlib figure instance</span>
+<span class="sd">            The contour plot</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">fig</span><span class="p">,</span> <span class="n">ax</span> <span class="o">=</span> <span class="n">utils</span><span class="o">.</span><span class="n">create_mpl_ax</span><span class="p">()</span>
+        <span class="n">ax</span><span class="o">.</span><span class="n">set_ylabel</span><span class="p">(</span><span class="s1">&#39;Variance&#39;</span><span class="p">)</span>
+        <span class="n">ax</span><span class="o">.</span><span class="n">set_xlabel</span><span class="p">(</span><span class="s1">&#39;Mean&#39;</span><span class="p">)</span>
+        <span class="n">mu_vect</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">mu_low</span><span class="p">,</span> <span class="n">mu_high</span><span class="p">,</span> <span class="n">mu_step</span><span class="p">))</span>
+        <span class="n">var_vect</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">var_low</span><span class="p">,</span> <span class="n">var_high</span><span class="p">,</span> <span class="n">var_step</span><span class="p">))</span>
+        <span class="n">z</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">sig0</span> <span class="ow">in</span> <span class="n">var_vect</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">sig2_0</span> <span class="o">=</span> <span class="n">sig0</span>
+            <span class="k">for</span> <span class="n">mu0</span> <span class="ow">in</span> <span class="n">mu_vect</span><span class="p">:</span>
+                <span class="n">z</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_opt_var</span><span class="p">(</span><span class="n">mu0</span><span class="p">,</span> <span class="n">pval</span><span class="o">=</span><span class="kc">True</span><span class="p">))</span>
+        <span class="n">z</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">z</span><span class="p">)</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">var_vect</span><span class="p">),</span> <span class="nb">len</span><span class="p">(</span><span class="n">mu_vect</span><span class="p">))</span>
+        <span class="n">ax</span><span class="o">.</span><span class="n">contour</span><span class="p">(</span><span class="n">mu_vect</span><span class="p">,</span> <span class="n">var_vect</span><span class="p">,</span> <span class="n">z</span><span class="p">,</span> <span class="n">levels</span><span class="o">=</span><span class="n">levs</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">fig</span></div>
+
+<div class="viewcode-block" id="DescStatUV.test_skew"><a class="viewcode-back" href="../../../generated/statsmodels.emplike.descriptive.DescStatUV.test_skew.html#statsmodels.emplike.descriptive.DescStatUV.test_skew">[docs]</a>    <span class="k">def</span> <span class="nf">test_skew</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">skew0</span><span class="p">,</span> <span class="n">return_weights</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Returns  -2 x log-likelihood and p-value for the hypothesized</span>
+<span class="sd">        skewness.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        skew0 : float</span>
+<span class="sd">            Skewness value to be tested</span>
+
+<span class="sd">        return_weights : bool</span>
+<span class="sd">            If True, function also returns the weights that</span>
+<span class="sd">            maximize the likelihood ratio. Default is False.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        test_results : tuple</span>
+<span class="sd">            The log-likelihood ratio and p_value of skew0</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">skew0</span> <span class="o">=</span> <span class="n">skew0</span>
+        <span class="n">start_nuisance</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="bp">self</span><span class="o">.</span><span class="n">endog</span><span class="o">.</span><span class="n">mean</span><span class="p">(),</span>
+                                       <span class="bp">self</span><span class="o">.</span><span class="n">endog</span><span class="o">.</span><span class="n">var</span><span class="p">()])</span>
+
+        <span class="n">llr</span> <span class="o">=</span> <span class="n">optimize</span><span class="o">.</span><span class="n">fmin_powell</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_opt_skew</span><span class="p">,</span> <span class="n">start_nuisance</span><span class="p">,</span>
+                                     <span class="n">full_output</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">disp</span><span class="o">=</span><span class="mi">0</span><span class="p">)[</span><span class="mi">1</span><span class="p">]</span>
+        <span class="n">p_val</span> <span class="o">=</span> <span class="n">chi2</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="n">llr</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">return_weights</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">llr</span><span class="p">,</span> <span class="n">p_val</span><span class="p">,</span>  <span class="bp">self</span><span class="o">.</span><span class="n">new_weights</span><span class="o">.</span><span class="n">T</span>
+        <span class="k">return</span> <span class="n">llr</span><span class="p">,</span> <span class="n">p_val</span></div>
+
+<div class="viewcode-block" id="DescStatUV.test_kurt"><a class="viewcode-back" href="../../../generated/statsmodels.emplike.descriptive.DescStatUV.test_kurt.html#statsmodels.emplike.descriptive.DescStatUV.test_kurt">[docs]</a>    <span class="k">def</span> <span class="nf">test_kurt</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">kurt0</span><span class="p">,</span> <span class="n">return_weights</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Returns -2 x log-likelihood and the p-value for the hypothesized</span>
+<span class="sd">        kurtosis.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        kurt0 : float</span>
+<span class="sd">            Kurtosis value to be tested</span>
+
+<span class="sd">        return_weights : bool</span>
+<span class="sd">            If True, function also returns the weights that</span>
+<span class="sd">            maximize the likelihood ratio. Default is False.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        test_results : tuple</span>
+<span class="sd">            The log-likelihood ratio and p-value of kurt0</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">kurt0</span> <span class="o">=</span> <span class="n">kurt0</span>
+        <span class="n">start_nuisance</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="bp">self</span><span class="o">.</span><span class="n">endog</span><span class="o">.</span><span class="n">mean</span><span class="p">(),</span>
+                                       <span class="bp">self</span><span class="o">.</span><span class="n">endog</span><span class="o">.</span><span class="n">var</span><span class="p">()])</span>
+
+        <span class="n">llr</span> <span class="o">=</span> <span class="n">optimize</span><span class="o">.</span><span class="n">fmin_powell</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_opt_kurt</span><span class="p">,</span> <span class="n">start_nuisance</span><span class="p">,</span>
+                                     <span class="n">full_output</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">disp</span><span class="o">=</span><span class="mi">0</span><span class="p">)[</span><span class="mi">1</span><span class="p">]</span>
+        <span class="n">p_val</span> <span class="o">=</span> <span class="n">chi2</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="n">llr</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">return_weights</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">llr</span><span class="p">,</span> <span class="n">p_val</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">new_weights</span><span class="o">.</span><span class="n">T</span>
+        <span class="k">return</span> <span class="n">llr</span><span class="p">,</span> <span class="n">p_val</span></div>
+
+<div class="viewcode-block" id="DescStatUV.test_joint_skew_kurt"><a class="viewcode-back" href="../../../generated/statsmodels.emplike.descriptive.DescStatUV.test_joint_skew_kurt.html#statsmodels.emplike.descriptive.DescStatUV.test_joint_skew_kurt">[docs]</a>    <span class="k">def</span> <span class="nf">test_joint_skew_kurt</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">skew0</span><span class="p">,</span> <span class="n">kurt0</span><span class="p">,</span> <span class="n">return_weights</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Returns - 2 x log-likelihood and the p-value for the joint</span>
+<span class="sd">        hypothesis test for skewness and kurtosis</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        skew0 : float</span>
+<span class="sd">            Skewness value to be tested</span>
+<span class="sd">        kurt0 : float</span>
+<span class="sd">            Kurtosis value to be tested</span>
+
+<span class="sd">        return_weights : bool</span>
+<span class="sd">            If True, function also returns the weights that</span>
+<span class="sd">            maximize the likelihood ratio. Default is False.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        test_results : tuple</span>
+<span class="sd">            The log-likelihood ratio and p-value  of the joint hypothesis test.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">skew0</span> <span class="o">=</span> <span class="n">skew0</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">kurt0</span> <span class="o">=</span> <span class="n">kurt0</span>
+        <span class="n">start_nuisance</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="bp">self</span><span class="o">.</span><span class="n">endog</span><span class="o">.</span><span class="n">mean</span><span class="p">(),</span>
+                                       <span class="bp">self</span><span class="o">.</span><span class="n">endog</span><span class="o">.</span><span class="n">var</span><span class="p">()])</span>
+
+        <span class="n">llr</span> <span class="o">=</span> <span class="n">optimize</span><span class="o">.</span><span class="n">fmin_powell</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_opt_skew_kurt</span><span class="p">,</span> <span class="n">start_nuisance</span><span class="p">,</span>
+                                     <span class="n">full_output</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">disp</span><span class="o">=</span><span class="mi">0</span><span class="p">)[</span><span class="mi">1</span><span class="p">]</span>
+        <span class="n">p_val</span> <span class="o">=</span> <span class="n">chi2</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="n">llr</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">return_weights</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">llr</span><span class="p">,</span> <span class="n">p_val</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">new_weights</span><span class="o">.</span><span class="n">T</span>
+        <span class="k">return</span> <span class="n">llr</span><span class="p">,</span> <span class="n">p_val</span></div>
+
+<div class="viewcode-block" id="DescStatUV.ci_skew"><a class="viewcode-back" href="../../../generated/statsmodels.emplike.descriptive.DescStatUV.ci_skew.html#statsmodels.emplike.descriptive.DescStatUV.ci_skew">[docs]</a>    <span class="k">def</span> <span class="nf">ci_skew</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sig</span><span class="o">=.</span><span class="mi">05</span><span class="p">,</span> <span class="n">upper_bound</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">lower_bound</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Returns the confidence interval for skewness.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        sig : float</span>
+<span class="sd">            The significance level.  Default is .05</span>
+
+<span class="sd">        upper_bound : float</span>
+<span class="sd">            Maximum value of skewness the upper limit can be.</span>
+<span class="sd">            Default is .99 confidence limit assuming normality.</span>
+
+<span class="sd">        lower_bound : float</span>
+<span class="sd">            Minimum value of skewness the lower limit can be.</span>
+<span class="sd">            Default is .99 confidence level assuming normality.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        Interval : tuple</span>
+<span class="sd">            Confidence interval for the skewness</span>
+
+<span class="sd">        Notes</span>
+<span class="sd">        -----</span>
+<span class="sd">        If function returns f(a) and f(b) must have different signs, consider</span>
+<span class="sd">        expanding lower and upper bounds</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">nobs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span>
+        <span class="n">endog</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">endog</span>
+        <span class="k">if</span> <span class="n">upper_bound</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">upper_bound</span> <span class="o">=</span> <span class="n">skew</span><span class="p">(</span><span class="n">endog</span><span class="p">)</span> <span class="o">+</span> \
+            <span class="mf">2.5</span> <span class="o">*</span> <span class="p">((</span><span class="mf">6.</span> <span class="o">*</span> <span class="n">nobs</span> <span class="o">*</span> <span class="p">(</span><span class="n">nobs</span> <span class="o">-</span> <span class="mf">1.</span><span class="p">))</span> <span class="o">/</span> \
+              <span class="p">((</span><span class="n">nobs</span> <span class="o">-</span> <span class="mf">2.</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="n">nobs</span> <span class="o">+</span> <span class="mf">1.</span><span class="p">)</span> <span class="o">*</span> \
+               <span class="p">(</span><span class="n">nobs</span> <span class="o">+</span> <span class="mf">3.</span><span class="p">)))</span> <span class="o">**</span> <span class="o">.</span><span class="mi">5</span>
+        <span class="k">if</span> <span class="n">lower_bound</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">lower_bound</span> <span class="o">=</span> <span class="n">skew</span><span class="p">(</span><span class="n">endog</span><span class="p">)</span> <span class="o">-</span> \
+            <span class="mf">2.5</span> <span class="o">*</span> <span class="p">((</span><span class="mf">6.</span> <span class="o">*</span> <span class="n">nobs</span> <span class="o">*</span> <span class="p">(</span><span class="n">nobs</span> <span class="o">-</span> <span class="mf">1.</span><span class="p">))</span> <span class="o">/</span> \
+              <span class="p">((</span><span class="n">nobs</span> <span class="o">-</span> <span class="mf">2.</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="n">nobs</span> <span class="o">+</span> <span class="mf">1.</span><span class="p">)</span> <span class="o">*</span> \
+               <span class="p">(</span><span class="n">nobs</span> <span class="o">+</span> <span class="mf">3.</span><span class="p">)))</span> <span class="o">**</span> <span class="o">.</span><span class="mi">5</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">r0</span> <span class="o">=</span> <span class="n">chi2</span><span class="o">.</span><span class="n">ppf</span><span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">sig</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="n">llim</span> <span class="o">=</span> <span class="n">optimize</span><span class="o">.</span><span class="n">brentq</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_ci_limits_skew</span><span class="p">,</span> <span class="n">lower_bound</span><span class="p">,</span> <span class="n">skew</span><span class="p">(</span><span class="n">endog</span><span class="p">))</span>
+        <span class="n">ulim</span> <span class="o">=</span> <span class="n">optimize</span><span class="o">.</span><span class="n">brentq</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_ci_limits_skew</span><span class="p">,</span> <span class="n">skew</span><span class="p">(</span><span class="n">endog</span><span class="p">),</span> <span class="n">upper_bound</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">llim</span><span class="p">,</span> <span class="n">ulim</span></div>
+
+<div class="viewcode-block" id="DescStatUV.ci_kurt"><a class="viewcode-back" href="../../../generated/statsmodels.emplike.descriptive.DescStatUV.ci_kurt.html#statsmodels.emplike.descriptive.DescStatUV.ci_kurt">[docs]</a>    <span class="k">def</span> <span class="nf">ci_kurt</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sig</span><span class="o">=.</span><span class="mi">05</span><span class="p">,</span> <span class="n">upper_bound</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">lower_bound</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Returns the confidence interval for kurtosis.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+
+<span class="sd">        sig : float</span>
+<span class="sd">            The significance level.  Default is .05</span>
+
+<span class="sd">        upper_bound : float</span>
+<span class="sd">            Maximum value of kurtosis the upper limit can be.</span>
+<span class="sd">            Default is .99 confidence limit assuming normality.</span>
+
+<span class="sd">        lower_bound : float</span>
+<span class="sd">            Minimum value of kurtosis the lower limit can be.</span>
+<span class="sd">            Default is .99 confidence limit assuming normality.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        Interval : tuple</span>
+<span class="sd">            Lower and upper confidence limit</span>
+
+<span class="sd">        Notes</span>
+<span class="sd">        -----</span>
+<span class="sd">        For small n, upper_bound and lower_bound may have to be</span>
+<span class="sd">        provided by the user.  Consider using test_kurt to find</span>
+<span class="sd">        values close to the desired significance level.</span>
+
+<span class="sd">        If function returns f(a) and f(b) must have different signs, consider</span>
+<span class="sd">        expanding the bounds.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">endog</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">endog</span>
+        <span class="n">nobs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span>
+        <span class="k">if</span> <span class="n">upper_bound</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">upper_bound</span> <span class="o">=</span> <span class="n">kurtosis</span><span class="p">(</span><span class="n">endog</span><span class="p">)</span> <span class="o">+</span> \
+            <span class="p">(</span><span class="mf">2.5</span> <span class="o">*</span> <span class="p">(</span><span class="mf">2.</span> <span class="o">*</span> <span class="p">((</span><span class="mf">6.</span> <span class="o">*</span> <span class="n">nobs</span> <span class="o">*</span> <span class="p">(</span><span class="n">nobs</span> <span class="o">-</span> <span class="mf">1.</span><span class="p">))</span> <span class="o">/</span> \
+              <span class="p">((</span><span class="n">nobs</span> <span class="o">-</span> <span class="mf">2.</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="n">nobs</span> <span class="o">+</span> <span class="mf">1.</span><span class="p">)</span> <span class="o">*</span> \
+               <span class="p">(</span><span class="n">nobs</span> <span class="o">+</span> <span class="mf">3.</span><span class="p">)))</span> <span class="o">**</span> <span class="o">.</span><span class="mi">5</span><span class="p">)</span> <span class="o">*</span> \
+               <span class="p">(((</span><span class="n">nobs</span> <span class="o">**</span> <span class="mf">2.</span><span class="p">)</span> <span class="o">-</span> <span class="mf">1.</span><span class="p">)</span> <span class="o">/</span> <span class="p">((</span><span class="n">nobs</span> <span class="o">-</span> <span class="mf">3.</span><span class="p">)</span> <span class="o">*</span>\
+                 <span class="p">(</span><span class="n">nobs</span> <span class="o">+</span> <span class="mf">5.</span><span class="p">)))</span> <span class="o">**</span> <span class="o">.</span><span class="mi">5</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">lower_bound</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">lower_bound</span> <span class="o">=</span> <span class="n">kurtosis</span><span class="p">(</span><span class="n">endog</span><span class="p">)</span> <span class="o">-</span> \
+            <span class="p">(</span><span class="mf">2.5</span> <span class="o">*</span> <span class="p">(</span><span class="mf">2.</span> <span class="o">*</span> <span class="p">((</span><span class="mf">6.</span> <span class="o">*</span> <span class="n">nobs</span> <span class="o">*</span> <span class="p">(</span><span class="n">nobs</span> <span class="o">-</span> <span class="mf">1.</span><span class="p">))</span> <span class="o">/</span> \
+              <span class="p">((</span><span class="n">nobs</span> <span class="o">-</span> <span class="mf">2.</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="n">nobs</span> <span class="o">+</span> <span class="mf">1.</span><span class="p">)</span> <span class="o">*</span> \
+               <span class="p">(</span><span class="n">nobs</span> <span class="o">+</span> <span class="mf">3.</span><span class="p">)))</span> <span class="o">**</span> <span class="o">.</span><span class="mi">5</span><span class="p">)</span> <span class="o">*</span> \
+               <span class="p">(((</span><span class="n">nobs</span> <span class="o">**</span> <span class="mf">2.</span><span class="p">)</span> <span class="o">-</span> <span class="mf">1.</span><span class="p">)</span> <span class="o">/</span> <span class="p">((</span><span class="n">nobs</span> <span class="o">-</span> <span class="mf">3.</span><span class="p">)</span> <span class="o">*</span>\
+                 <span class="p">(</span><span class="n">nobs</span> <span class="o">+</span> <span class="mf">5.</span><span class="p">)))</span> <span class="o">**</span> <span class="o">.</span><span class="mi">5</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">r0</span> <span class="o">=</span> <span class="n">chi2</span><span class="o">.</span><span class="n">ppf</span><span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">sig</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="n">llim</span> <span class="o">=</span> <span class="n">optimize</span><span class="o">.</span><span class="n">brentq</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_ci_limits_kurt</span><span class="p">,</span> <span class="n">lower_bound</span><span class="p">,</span> \
+                             <span class="n">kurtosis</span><span class="p">(</span><span class="n">endog</span><span class="p">))</span>
+        <span class="n">ulim</span> <span class="o">=</span> <span class="n">optimize</span><span class="o">.</span><span class="n">brentq</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_ci_limits_kurt</span><span class="p">,</span> <span class="n">kurtosis</span><span class="p">(</span><span class="n">endog</span><span class="p">),</span> \
+                             <span class="n">upper_bound</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">llim</span><span class="p">,</span> <span class="n">ulim</span></div></div>
+
+
+<div class="viewcode-block" id="DescStatMV"><a class="viewcode-back" href="../../../generated/statsmodels.emplike.descriptive.DescStatMV.html#statsmodels.emplike.descriptive.DescStatMV">[docs]</a><span class="k">class</span> <span class="nc">DescStatMV</span><span class="p">(</span><span class="n">_OptFuncts</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A class for conducting inference on multivariate means and correlation.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    endog : ndarray</span>
+<span class="sd">        Data to be analyzed</span>
+
+<span class="sd">    Attributes</span>
+<span class="sd">    ----------</span>
+<span class="sd">    endog : ndarray</span>
+<span class="sd">        Data to be analyzed</span>
+
+<span class="sd">    nobs : float</span>
+<span class="sd">        Number of observations</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">endog</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">endog</span> <span class="o">=</span> <span class="n">endog</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span> <span class="o">=</span> <span class="n">endog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+<div class="viewcode-block" id="DescStatMV.mv_test_mean"><a class="viewcode-back" href="../../../generated/statsmodels.emplike.descriptive.DescStatMV.mv_test_mean.html#statsmodels.emplike.descriptive.DescStatMV.mv_test_mean">[docs]</a>    <span class="k">def</span> <span class="nf">mv_test_mean</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">mu_array</span><span class="p">,</span> <span class="n">return_weights</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Returns -2 x log likelihood and the p-value</span>
+<span class="sd">        for a multivariate hypothesis test of the mean</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        mu_array  : 1d array</span>
+<span class="sd">            Hypothesized values for the mean.  Must have same number of</span>
+<span class="sd">            elements as columns in endog</span>
+
+<span class="sd">        return_weights : bool</span>
+<span class="sd">            If True, returns the weights that maximize the</span>
+<span class="sd">            likelihood of mu_array. Default is False.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        test_results : tuple</span>
+<span class="sd">            The log-likelihood ratio and p-value for mu_array</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">endog</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">endog</span>
+        <span class="n">nobs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">mu_array</span><span class="p">)</span> <span class="o">!=</span> <span class="n">endog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;mu_array must have the same number of &#39;</span>
+                             <span class="s1">&#39;elements as the columns of the data.&#39;</span><span class="p">)</span>
+        <span class="n">mu_array</span> <span class="o">=</span> <span class="n">mu_array</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">endog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+        <span class="n">means</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">((</span><span class="n">endog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">endog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]))</span>
+        <span class="n">means</span> <span class="o">=</span> <span class="n">mu_array</span> <span class="o">*</span> <span class="n">means</span>
+        <span class="n">est_vect</span> <span class="o">=</span> <span class="n">endog</span> <span class="o">-</span> <span class="n">means</span>
+        <span class="n">start_vals</span> <span class="o">=</span> <span class="mf">1.</span> <span class="o">/</span> <span class="n">nobs</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">endog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+        <span class="n">eta_star</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_modif_newton</span><span class="p">(</span><span class="n">start_vals</span><span class="p">,</span> <span class="n">est_vect</span><span class="p">,</span>
+                                      <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">nobs</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="mf">1.</span> <span class="o">/</span> <span class="n">nobs</span><span class="p">))</span>
+        <span class="n">denom</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">eta_star</span><span class="p">,</span> <span class="n">est_vect</span><span class="o">.</span><span class="n">T</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">new_weights</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">/</span> <span class="n">nobs</span> <span class="o">*</span> <span class="mi">1</span> <span class="o">/</span> <span class="n">denom</span>
+        <span class="n">llr</span> <span class="o">=</span> <span class="o">-</span><span class="mi">2</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">nobs</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">new_weights</span><span class="p">))</span>
+        <span class="n">p_val</span> <span class="o">=</span> <span class="n">chi2</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="n">llr</span><span class="p">,</span> <span class="n">mu_array</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+        <span class="k">if</span> <span class="n">return_weights</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">llr</span><span class="p">,</span> <span class="n">p_val</span><span class="p">,</span>  <span class="bp">self</span><span class="o">.</span><span class="n">new_weights</span><span class="o">.</span><span class="n">T</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">llr</span><span class="p">,</span> <span class="n">p_val</span></div>
+
+<div class="viewcode-block" id="DescStatMV.mv_mean_contour"><a class="viewcode-back" href="../../../generated/statsmodels.emplike.descriptive.DescStatMV.mv_mean_contour.html#statsmodels.emplike.descriptive.DescStatMV.mv_mean_contour">[docs]</a>    <span class="k">def</span> <span class="nf">mv_mean_contour</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">mu1_low</span><span class="p">,</span> <span class="n">mu1_upp</span><span class="p">,</span> <span class="n">mu2_low</span><span class="p">,</span> <span class="n">mu2_upp</span><span class="p">,</span> <span class="n">step1</span><span class="p">,</span> <span class="n">step2</span><span class="p">,</span>
+                        <span class="n">levs</span><span class="o">=</span><span class="p">(</span><span class="o">.</span><span class="mi">001</span><span class="p">,</span> <span class="o">.</span><span class="mi">01</span><span class="p">,</span> <span class="o">.</span><span class="mi">05</span><span class="p">,</span> <span class="o">.</span><span class="mi">1</span><span class="p">,</span> <span class="o">.</span><span class="mi">2</span><span class="p">),</span> <span class="n">var1_name</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                        <span class="n">var2_name</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">plot_dta</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Creates a confidence region plot for the mean of bivariate data</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        m1_low : float</span>
+<span class="sd">            Minimum value of the mean for variable 1</span>
+<span class="sd">        m1_upp : float</span>
+<span class="sd">            Maximum value of the mean for variable 1</span>
+<span class="sd">        mu2_low : float</span>
+<span class="sd">            Minimum value of the mean for variable 2</span>
+<span class="sd">        mu2_upp : float</span>
+<span class="sd">            Maximum value of the mean for variable 2</span>
+<span class="sd">        step1 : float</span>
+<span class="sd">            Increment of evaluations for variable 1</span>
+<span class="sd">        step2 : float</span>
+<span class="sd">            Increment of evaluations for variable 2</span>
+<span class="sd">        levs : list</span>
+<span class="sd">            Levels to be drawn on the contour plot.</span>
+<span class="sd">            Default =  (.001, .01, .05, .1, .2)</span>
+<span class="sd">        plot_dta : bool</span>
+<span class="sd">            If True, makes a scatter plot of the data on</span>
+<span class="sd">            top of the contour plot. Defaultis False.</span>
+<span class="sd">        var1_name : str</span>
+<span class="sd">            Name of variable 1 to be plotted on the x-axis</span>
+<span class="sd">        var2_name : str</span>
+<span class="sd">            Name of variable 2 to be plotted on the y-axis</span>
+
+<span class="sd">        Notes</span>
+<span class="sd">        -----</span>
+<span class="sd">        The smaller the step size, the more accurate the intervals</span>
+<span class="sd">        will be</span>
+
+<span class="sd">        If the function returns optimization failed, consider narrowing</span>
+<span class="sd">        the boundaries of the plot</span>
+
+<span class="sd">        Examples</span>
+<span class="sd">        --------</span>
+<span class="sd">        &gt;&gt;&gt; import statsmodels.api as sm</span>
+<span class="sd">        &gt;&gt;&gt; two_rvs = np.random.standard_normal((20,2))</span>
+<span class="sd">        &gt;&gt;&gt; el_analysis = sm.emplike.DescStat(two_rvs)</span>
+<span class="sd">        &gt;&gt;&gt; contourp = el_analysis.mv_mean_contour(-2, 2, -2, 2, .1, .1)</span>
+<span class="sd">        &gt;&gt;&gt; contourp.show()</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">endog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">!=</span> <span class="mi">2</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;Data must contain exactly two variables&#39;</span><span class="p">)</span>
+        <span class="n">fig</span><span class="p">,</span> <span class="n">ax</span> <span class="o">=</span> <span class="n">utils</span><span class="o">.</span><span class="n">create_mpl_ax</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">var2_name</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">ax</span><span class="o">.</span><span class="n">set_ylabel</span><span class="p">(</span><span class="s1">&#39;Variable 2&#39;</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">ax</span><span class="o">.</span><span class="n">set_ylabel</span><span class="p">(</span><span class="n">var2_name</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">var1_name</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">ax</span><span class="o">.</span><span class="n">set_xlabel</span><span class="p">(</span><span class="s1">&#39;Variable 1&#39;</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">ax</span><span class="o">.</span><span class="n">set_xlabel</span><span class="p">(</span><span class="n">var1_name</span><span class="p">)</span>
+        <span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">mu1_low</span><span class="p">,</span> <span class="n">mu1_upp</span><span class="p">,</span> <span class="n">step1</span><span class="p">)</span>
+        <span class="n">y</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">mu2_low</span><span class="p">,</span> <span class="n">mu2_upp</span><span class="p">,</span> <span class="n">step2</span><span class="p">)</span>
+        <span class="n">pairs</span> <span class="o">=</span> <span class="n">itertools</span><span class="o">.</span><span class="n">product</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">)</span>
+        <span class="n">z</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">pairs</span><span class="p">:</span>
+            <span class="n">z</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">mv_test_mean</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">i</span><span class="p">))[</span><span class="mi">0</span><span class="p">])</span>
+        <span class="n">X</span><span class="p">,</span> <span class="n">Y</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">meshgrid</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">)</span>
+        <span class="n">z</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">z</span><span class="p">)</span>
+        <span class="n">z</span> <span class="o">=</span> <span class="n">z</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">X</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">Y</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+        <span class="n">ax</span><span class="o">.</span><span class="n">contour</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">z</span><span class="o">.</span><span class="n">T</span><span class="p">,</span> <span class="n">levels</span><span class="o">=</span><span class="n">levs</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">plot_dta</span><span class="p">:</span>
+            <span class="n">ax</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">endog</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">],</span> <span class="bp">self</span><span class="o">.</span><span class="n">endog</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">],</span> <span class="s1">&#39;bo&#39;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">fig</span></div>
+
+<div class="viewcode-block" id="DescStatMV.test_corr"><a class="viewcode-back" href="../../../generated/statsmodels.emplike.descriptive.DescStatMV.test_corr.html#statsmodels.emplike.descriptive.DescStatMV.test_corr">[docs]</a>    <span class="k">def</span> <span class="nf">test_corr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">corr0</span><span class="p">,</span> <span class="n">return_weights</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Returns -2 x log-likelihood ratio and  p-value for the</span>
+<span class="sd">        correlation coefficient between 2 variables</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        corr0 : float</span>
+<span class="sd">            Hypothesized value to be tested</span>
+
+<span class="sd">        return_weights : bool</span>
+<span class="sd">            If true, returns the weights that maximize</span>
+<span class="sd">            the log-likelihood at the hypothesized value</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">nobs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span>
+        <span class="n">endog</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">endog</span>
+        <span class="k">if</span> <span class="n">endog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">!=</span> <span class="mi">2</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span><span class="s1">&#39;Correlation matrix not yet implemented&#39;</span><span class="p">)</span>
+        <span class="n">nuis0</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">endog</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">mean</span><span class="p">(),</span>
+                              <span class="n">endog</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">var</span><span class="p">(),</span>
+                              <span class="n">endog</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">mean</span><span class="p">(),</span>
+                              <span class="n">endog</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">var</span><span class="p">()])</span>
+
+        <span class="n">x0</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">5</span><span class="p">)</span>
+        <span class="n">weights0</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">1.</span> <span class="o">/</span> <span class="n">nobs</span><span class="p">]</span> <span class="o">*</span> <span class="nb">int</span><span class="p">(</span><span class="n">nobs</span><span class="p">))</span>
+        <span class="n">args</span> <span class="o">=</span> <span class="p">(</span><span class="n">corr0</span><span class="p">,</span> <span class="n">endog</span><span class="p">,</span> <span class="n">nobs</span><span class="p">,</span> <span class="n">x0</span><span class="p">,</span> <span class="n">weights0</span><span class="p">)</span>
+        <span class="n">llr</span> <span class="o">=</span> <span class="n">optimize</span><span class="o">.</span><span class="n">fmin</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_opt_correl</span><span class="p">,</span> <span class="n">nuis0</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="n">args</span><span class="p">,</span>
+                                     <span class="n">full_output</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">disp</span><span class="o">=</span><span class="mi">0</span><span class="p">)[</span><span class="mi">1</span><span class="p">]</span>
+        <span class="n">p_val</span> <span class="o">=</span> <span class="n">chi2</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="n">llr</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">return_weights</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">llr</span><span class="p">,</span> <span class="n">p_val</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">new_weights</span><span class="o">.</span><span class="n">T</span>
+        <span class="k">return</span> <span class="n">llr</span><span class="p">,</span> <span class="n">p_val</span></div>
+
+<div class="viewcode-block" id="DescStatMV.ci_corr"><a class="viewcode-back" href="../../../generated/statsmodels.emplike.descriptive.DescStatMV.ci_corr.html#statsmodels.emplike.descriptive.DescStatMV.ci_corr">[docs]</a>    <span class="k">def</span> <span class="nf">ci_corr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sig</span><span class="o">=.</span><span class="mi">05</span><span class="p">,</span> <span class="n">upper_bound</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">lower_bound</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Returns the confidence intervals for the correlation coefficient</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        sig : float</span>
+<span class="sd">            The significance level.  Default is .05</span>
+
+<span class="sd">        upper_bound : float</span>
+<span class="sd">            Maximum value the upper confidence limit can be.</span>
+<span class="sd">            Default is  99% confidence limit assuming normality.</span>
+
+<span class="sd">        lower_bound : float</span>
+<span class="sd">            Minimum value the lower condidence limit can be.</span>
+<span class="sd">            Default is 99% confidence limit assuming normality.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        interval : tuple</span>
+<span class="sd">            Confidence interval for the correlation</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">endog</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">endog</span>
+        <span class="n">nobs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">r0</span> <span class="o">=</span> <span class="n">chi2</span><span class="o">.</span><span class="n">ppf</span><span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">sig</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="n">point_est</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">corrcoef</span><span class="p">(</span><span class="n">endog</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">],</span> <span class="n">endog</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">])[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">upper_bound</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">upper_bound</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="o">.</span><span class="mi">999</span><span class="p">,</span> <span class="n">point_est</span> <span class="o">+</span> \
+                          <span class="mf">2.5</span> <span class="o">*</span> <span class="p">((</span><span class="mf">1.</span> <span class="o">-</span> <span class="n">point_est</span> <span class="o">**</span> <span class="mf">2.</span><span class="p">)</span> <span class="o">/</span> \
+                          <span class="p">(</span><span class="n">nobs</span> <span class="o">-</span> <span class="mf">2.</span><span class="p">))</span> <span class="o">**</span> <span class="o">.</span><span class="mi">5</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">lower_bound</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">lower_bound</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="o">-</span> <span class="o">.</span><span class="mi">999</span><span class="p">,</span> <span class="n">point_est</span> <span class="o">-</span> \
+                          <span class="mf">2.5</span> <span class="o">*</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">((</span><span class="mf">1.</span> <span class="o">-</span> <span class="n">point_est</span> <span class="o">**</span> <span class="mf">2.</span><span class="p">)</span> <span class="o">/</span> \
+                          <span class="p">(</span><span class="n">nobs</span> <span class="o">-</span> <span class="mf">2.</span><span class="p">))))</span>
+
+        <span class="n">llim</span> <span class="o">=</span> <span class="n">optimize</span><span class="o">.</span><span class="n">brenth</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_ci_limits_corr</span><span class="p">,</span> <span class="n">lower_bound</span><span class="p">,</span> <span class="n">point_est</span><span class="p">)</span>
+        <span class="n">ulim</span> <span class="o">=</span> <span class="n">optimize</span><span class="o">.</span><span class="n">brenth</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_ci_limits_corr</span><span class="p">,</span> <span class="n">point_est</span><span class="p">,</span> <span class="n">upper_bound</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">llim</span><span class="p">,</span> <span class="n">ulim</span></div></div>
+</pre></div>
+
+
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../../../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" />
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer" role="contentinfo">
+        &#169; Copyright 2009-2018, Josef Perktold, Skipper Seabold, Jonathan Taylor, statsmodels-developers.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 2.1.2.
+    </div>
+  </body>
+</html>

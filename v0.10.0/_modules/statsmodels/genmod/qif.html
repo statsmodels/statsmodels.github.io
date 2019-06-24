@@ -1,0 +1,649 @@
+
+
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta charset="utf-8" />
+    <title>statsmodels.genmod.qif &#8212; statsmodels v0.10.0 documentation</title>
+    <link rel="stylesheet" href="../../../_static/nature.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css" />
+    <script type="text/javascript" id="documentation_options" data-url_root="../../../" src="../../../_static/documentation_options.js"></script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <script type="text/javascript" src="../../../_static/language_data.js"></script>
+    <script async="async" type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/latest.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="shortcut icon" href="../../../_static/statsmodels_hybi_favico.ico"/>
+    <link rel="author" title="About these documents" href="../../../about.html" />
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+<link rel="stylesheet" href="../../../_static/examples.css" type="text/css" />
+<link rel="stylesheet" href="../../../_static/facebox.css" type="text/css" />
+<script type="text/javascript" src="../../../_static/scripts.js">
+</script>
+<script type="text/javascript" src="../../../_static/facebox.js">
+</script>
+<script type="text/javascript">
+$.facebox.settings.closeImage = "../../../_static/closelabel.png"
+$.facebox.settings.loadingImage = "../../../_static/loading.gif"
+</script>
+
+<script>
+$(document).ready(function() {
+  $.getJSON("../../../../versions.json", function(versions) {
+    var dropdown = document.createElement("div");
+    dropdown.className = "dropdown";
+    var button = document.createElement("button");
+    button.className = "dropbtn";
+    button.innerHTML = "Other Versions";
+    var content = document.createElement("div");
+    content.className = "dropdown-content";
+    dropdown.appendChild(button);
+    dropdown.appendChild(content);
+    $(".header").prepend(dropdown);
+    for (var i = 0; i < versions.length; i++) {
+      if (versions[i].substring(0, 1) == "v") {
+        versions[i] = [versions[i], versions[i].substring(1)];
+      } else {
+        versions[i] = [versions[i], versions[i]];
+      };
+    };
+    for (var i = 0; i < versions.length; i++) {
+      var a = document.createElement("a");
+      a.innerHTML = versions[i][1];
+      a.href = "../../../../" + versions[i][0] + "/index.html";
+      a.title = versions[i][1];
+      $(".dropdown-content").append(a);
+    };
+  });
+});
+</script>
+
+
+  </head><body>
+<div class="headerwrap">
+    <div class = "header">
+        
+        <a href = "../../../index.html">
+<img src="../../../_static/statsmodels_hybi_banner.png" alt="Logo"
+    style="padding-left: 15px"/></a>
+        
+    </div>
+</div>
+
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+<li><a href ="../../../install.html">Install</a></li> &nbsp;|&nbsp;
+<li><a href="https://groups.google.com/forum/?hl=en#!forum/pystatsmodels">Support</a></li> &nbsp;|&nbsp;
+<li><a href="https://github.com/statsmodels/statsmodels/issues">Bugs</a></li> &nbsp;|&nbsp;
+<li><a href="../../../dev/index.html">Develop</a></li> &nbsp;|&nbsp;
+<li><a href="../../../examples/index.html">Examples</a></li> &nbsp;|&nbsp;
+<li><a href="../../../faq.html">FAQ</a></li> &nbsp;|&nbsp;
+
+          <li class="nav-item nav-item-1"><a href="../../index.html" accesskey="U">Module code</a> |</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+
+
+
+
+  <h1>Source code for statsmodels.genmod.qif</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+<span class="kn">from</span> <span class="nn">collections</span> <span class="k">import</span> <span class="n">defaultdict</span>
+<span class="kn">import</span> <span class="nn">statsmodels.base.model</span> <span class="k">as</span> <span class="nn">base</span>
+<span class="kn">from</span> <span class="nn">statsmodels.genmod</span> <span class="k">import</span> <span class="n">families</span>
+<span class="kn">from</span> <span class="nn">statsmodels.genmod.families</span> <span class="k">import</span> <span class="n">links</span>
+<span class="kn">from</span> <span class="nn">statsmodels.genmod.families</span> <span class="k">import</span> <span class="n">varfuncs</span>
+<span class="kn">import</span> <span class="nn">statsmodels.regression.linear_model</span> <span class="k">as</span> <span class="nn">lm</span>
+<span class="kn">import</span> <span class="nn">statsmodels.base.wrapper</span> <span class="k">as</span> <span class="nn">wrap</span>
+<span class="kn">from</span> <span class="nn">statsmodels.tools.decorators</span> <span class="k">import</span> <span class="n">cache_readonly</span>
+
+
+<span class="k">class</span> <span class="nc">QIFCovariance</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A covariance model for quadratic inference function regression.</span>
+
+<span class="sd">    The mat method returns a basis matrix B such that the inverse</span>
+<span class="sd">    of the working covariance lies in the linear span of the</span>
+<span class="sd">    basis matrices.</span>
+
+<span class="sd">    Subclasses should set the number of basis matrices `num_terms`,</span>
+<span class="sd">    so that `mat(d, j)` for j=0, ..., num_terms-1 gives the basis</span>
+<span class="sd">    of dimension d.`</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">mat</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dim</span><span class="p">,</span> <span class="n">term</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Returns the term&#39;th basis matrix, which is a dim x dim</span>
+<span class="sd">        matrix.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span>
+
+
+<span class="k">class</span> <span class="nc">QIFIndependence</span><span class="p">(</span><span class="n">QIFCovariance</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Independent working covariance for QIF regression.  This covariance</span>
+<span class="sd">    model gives identical results to GEE with the independence working</span>
+<span class="sd">    covariance.  When using QIFIndependence as the working covariance,</span>
+<span class="sd">    the QIF value will be zero, and cannot be used for chi^2 testing, or</span>
+<span class="sd">    for model selection using AIC, BIC, etc.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">num_terms</span> <span class="o">=</span> <span class="mi">1</span>
+
+    <span class="k">def</span> <span class="nf">mat</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dim</span><span class="p">,</span> <span class="n">term</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">term</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="n">dim</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">None</span>
+
+
+<span class="k">class</span> <span class="nc">QIFExchangeable</span><span class="p">(</span><span class="n">QIFCovariance</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Exchangeable working covariance for QIF regression.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">num_terms</span> <span class="o">=</span> <span class="mi">2</span>
+
+    <span class="k">def</span> <span class="nf">mat</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dim</span><span class="p">,</span> <span class="n">term</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">term</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="n">dim</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">term</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">((</span><span class="n">dim</span><span class="p">,</span> <span class="n">dim</span><span class="p">))</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">None</span>
+
+
+<span class="k">class</span> <span class="nc">QIFAutoregressive</span><span class="p">(</span><span class="n">QIFCovariance</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Autoregressive working covariance for QIF regression.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">num_terms</span> <span class="o">=</span> <span class="mi">3</span>
+
+    <span class="k">def</span> <span class="nf">mat</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dim</span><span class="p">,</span> <span class="n">term</span><span class="p">):</span>
+
+        <span class="k">if</span> <span class="n">dim</span> <span class="o">&lt;</span> <span class="mi">3</span><span class="p">:</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="p">(</span><span class="s2">&quot;Groups must have size at least 3 for &quot;</span> <span class="o">+</span>
+                   <span class="s2">&quot;autoregressive covariance.&quot;</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">term</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="n">dim</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">term</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="n">mat</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">dim</span><span class="p">,</span> <span class="n">dim</span><span class="p">))</span>
+            <span class="n">mat</span><span class="o">.</span><span class="n">flat</span><span class="p">[</span><span class="mi">1</span><span class="p">::(</span><span class="n">dim</span><span class="o">+</span><span class="mi">1</span><span class="p">)]</span> <span class="o">=</span> <span class="mi">1</span>
+            <span class="n">mat</span> <span class="o">+=</span> <span class="n">mat</span><span class="o">.</span><span class="n">T</span>
+            <span class="k">return</span> <span class="n">mat</span>
+        <span class="k">elif</span> <span class="n">term</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
+            <span class="n">mat</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">dim</span><span class="p">,</span> <span class="n">dim</span><span class="p">))</span>
+            <span class="n">mat</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span>
+            <span class="n">mat</span><span class="p">[</span><span class="n">dim</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">dim</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span>
+            <span class="k">return</span> <span class="n">mat</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">None</span>
+
+
+<div class="viewcode-block" id="QIF"><a class="viewcode-back" href="../../../generated/statsmodels.genmod.qif.QIF.html#statsmodels.genmod.qif.QIF">[docs]</a><span class="k">class</span> <span class="nc">QIF</span><span class="p">(</span><span class="n">base</span><span class="o">.</span><span class="n">Model</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Fit a regression model using quadratic inference functions (QIF).</span>
+
+<span class="sd">    QIF is an alternative to GEE that can be more efficient, and that</span>
+<span class="sd">    offers different approaches for model selection and inference.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    endog : array-like</span>
+<span class="sd">        The dependent variables of the regression.</span>
+<span class="sd">    exog : array-like</span>
+<span class="sd">        The independent variables of the regression.</span>
+<span class="sd">    groups : array-like</span>
+<span class="sd">        Labels indicating which group each observation belongs to.</span>
+<span class="sd">        Observations in different groups should be independent.</span>
+<span class="sd">    family : genmod family</span>
+<span class="sd">        An instance of a GLM family.</span>
+<span class="sd">    cov_struct : QIFCovariance instance</span>
+<span class="sd">        An instance of a QIFCovariance.</span>
+
+<span class="sd">    References</span>
+<span class="sd">    ----------</span>
+<span class="sd">    A. Qu, B. Lindsay, B. Li (2000).  Improving Generalized Estimating</span>
+<span class="sd">    Equations using Quadratic Inference Functions, Biometrika 87:4.</span>
+<span class="sd">    www.jstor.org/stable/2673612</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">endog</span><span class="p">,</span> <span class="n">exog</span><span class="p">,</span> <span class="n">groups</span><span class="p">,</span> <span class="n">family</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                 <span class="n">cov_struct</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">missing</span><span class="o">=</span><span class="s1">&#39;none&#39;</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+
+        <span class="c1"># Handle the family argument</span>
+        <span class="k">if</span> <span class="n">family</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">family</span> <span class="o">=</span> <span class="n">families</span><span class="o">.</span><span class="n">Gaussian</span><span class="p">()</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="nb">issubclass</span><span class="p">(</span><span class="n">family</span><span class="o">.</span><span class="vm">__class__</span><span class="p">,</span> <span class="n">families</span><span class="o">.</span><span class="n">Family</span><span class="p">):</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;QIF: `family` must be a genmod &quot;</span>
+                                 <span class="s2">&quot;family instance&quot;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">family</span> <span class="o">=</span> <span class="n">family</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_fit_history</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="nb">list</span><span class="p">)</span>
+
+        <span class="c1"># Handle the cov_struct argument</span>
+        <span class="k">if</span> <span class="n">cov_struct</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">cov_struct</span> <span class="o">=</span> <span class="n">QIFIndependence</span><span class="p">()</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">cov_struct</span><span class="p">,</span> <span class="n">QIFCovariance</span><span class="p">):</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                    <span class="s2">&quot;QIF: `cov_struct` must be a QIFCovariance instance&quot;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">cov_struct</span> <span class="o">=</span> <span class="n">cov_struct</span>
+
+        <span class="n">groups</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">groups</span><span class="p">)</span>
+
+        <span class="nb">super</span><span class="p">(</span><span class="n">QIF</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">endog</span><span class="p">,</span> <span class="n">exog</span><span class="p">,</span> <span class="n">groups</span><span class="o">=</span><span class="n">groups</span><span class="p">,</span>
+                                  <span class="n">missing</span><span class="o">=</span><span class="n">missing</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">group_names</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="n">groups</span><span class="p">))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">endog</span><span class="p">)</span>
+
+        <span class="n">groups_ix</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="nb">list</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">g</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">groups</span><span class="p">):</span>
+            <span class="n">groups_ix</span><span class="p">[</span><span class="n">g</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">i</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">groups_ix</span> <span class="o">=</span> <span class="p">[</span><span class="n">groups_ix</span><span class="p">[</span><span class="n">na</span><span class="p">]</span> <span class="k">for</span> <span class="n">na</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">group_names</span><span class="p">]</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_check_args</span><span class="p">(</span><span class="n">groups</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_check_args</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">groups</span><span class="p">):</span>
+
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">groups</span><span class="p">)</span> <span class="o">!=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">endog</span><span class="p">):</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="s2">&quot;QIF: groups and endog should have the same length&quot;</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">endog</span><span class="p">)</span> <span class="o">!=</span> <span class="bp">self</span><span class="o">.</span><span class="n">exog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]:</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="p">(</span><span class="s2">&quot;QIF: the length of endog should be equal to the &quot;</span>
+                   <span class="s2">&quot;number of rows of exog.&quot;</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+
+<div class="viewcode-block" id="QIF.objective"><a class="viewcode-back" href="../../../generated/statsmodels.genmod.qif.QIF.objective.html#statsmodels.genmod.qif.QIF.objective">[docs]</a>    <span class="k">def</span> <span class="nf">objective</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Calculate the gradient of the QIF objective function.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        params : array-like</span>
+<span class="sd">            The model parameters at which the gradient is evaluated.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        grad : array-like</span>
+<span class="sd">            The gradient vector of the QIF objective function.</span>
+<span class="sd">        gn_deriv : array-like</span>
+<span class="sd">            The gradients of each estimating equation with</span>
+<span class="sd">            respect to the parameter.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="n">endog</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">endog</span>
+        <span class="n">exog</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">exog</span>
+        <span class="n">lpr</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">exog</span><span class="p">,</span> <span class="n">params</span><span class="p">)</span>
+        <span class="n">mean</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">family</span><span class="o">.</span><span class="n">link</span><span class="o">.</span><span class="n">inverse</span><span class="p">(</span><span class="n">lpr</span><span class="p">)</span>
+        <span class="n">va</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">family</span><span class="o">.</span><span class="n">variance</span><span class="p">(</span><span class="n">mean</span><span class="p">)</span>
+
+        <span class="c1"># Mean derivative</span>
+        <span class="n">idl</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">family</span><span class="o">.</span><span class="n">link</span><span class="o">.</span><span class="n">inverse_deriv</span><span class="p">(</span><span class="n">lpr</span><span class="p">)</span>
+        <span class="n">idl2</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">family</span><span class="o">.</span><span class="n">link</span><span class="o">.</span><span class="n">inverse_deriv2</span><span class="p">(</span><span class="n">lpr</span><span class="p">)</span>
+        <span class="n">vd</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">family</span><span class="o">.</span><span class="n">variance</span><span class="o">.</span><span class="n">deriv</span><span class="p">(</span><span class="n">mean</span><span class="p">)</span>
+
+        <span class="n">m</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">cov_struct</span><span class="o">.</span><span class="n">num_terms</span>
+        <span class="n">p</span> <span class="o">=</span> <span class="n">exog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+
+        <span class="n">d</span> <span class="o">=</span> <span class="n">p</span> <span class="o">*</span> <span class="n">m</span>
+        <span class="n">gn</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">d</span><span class="p">)</span>
+        <span class="n">gi</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">d</span><span class="p">)</span>
+        <span class="n">gi_deriv</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">d</span><span class="p">,</span> <span class="n">p</span><span class="p">))</span>
+        <span class="n">gn_deriv</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">d</span><span class="p">,</span> <span class="n">p</span><span class="p">))</span>
+        <span class="n">cn_deriv</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="n">p</span>
+        <span class="n">cmat</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">d</span><span class="p">,</span> <span class="n">d</span><span class="p">))</span>
+
+        <span class="n">fastvar</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">family</span><span class="o">.</span><span class="n">variance</span> <span class="ow">is</span> <span class="n">varfuncs</span><span class="o">.</span><span class="n">constant</span>
+        <span class="n">fastlink</span> <span class="o">=</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">family</span><span class="o">.</span><span class="n">link</span><span class="p">,</span> <span class="n">links</span><span class="o">.</span><span class="n">identity</span><span class="p">)</span>
+
+        <span class="k">for</span> <span class="n">ix</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">groups_ix</span><span class="p">:</span>
+            <span class="n">sd</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">va</span><span class="p">[</span><span class="n">ix</span><span class="p">])</span>
+            <span class="n">resid</span> <span class="o">=</span> <span class="n">endog</span><span class="p">[</span><span class="n">ix</span><span class="p">]</span> <span class="o">-</span> <span class="n">mean</span><span class="p">[</span><span class="n">ix</span><span class="p">]</span>
+            <span class="n">sresid</span> <span class="o">=</span> <span class="n">resid</span> <span class="o">/</span> <span class="n">sd</span>
+            <span class="n">deriv</span> <span class="o">=</span> <span class="n">exog</span><span class="p">[</span><span class="n">ix</span><span class="p">,</span> <span class="p">:]</span> <span class="o">*</span> <span class="n">idl</span><span class="p">[</span><span class="n">ix</span><span class="p">,</span> <span class="kc">None</span><span class="p">]</span>
+
+            <span class="n">jj</span> <span class="o">=</span> <span class="mi">0</span>
+            <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">m</span><span class="p">):</span>
+                <span class="c1"># The derivative of each term in (5) of Qu et al.</span>
+                <span class="c1"># There are four terms involving beta in a product.</span>
+                <span class="c1"># Iterated application of the product rule gives</span>
+                <span class="c1"># the gradient as a sum of four terms.</span>
+                <span class="n">c</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">cov_struct</span><span class="o">.</span><span class="n">mat</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">ix</span><span class="p">),</span> <span class="n">j</span><span class="p">)</span>
+                <span class="n">crs1</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">c</span><span class="p">,</span> <span class="n">sresid</span><span class="p">)</span> <span class="o">/</span> <span class="n">sd</span>
+                <span class="n">gi</span><span class="p">[</span><span class="n">jj</span><span class="p">:</span><span class="n">jj</span><span class="o">+</span><span class="n">p</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">deriv</span><span class="o">.</span><span class="n">T</span><span class="p">,</span> <span class="n">crs1</span><span class="p">)</span>
+                <span class="n">crs2</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">c</span><span class="p">,</span> <span class="o">-</span><span class="n">deriv</span> <span class="o">/</span> <span class="n">sd</span><span class="p">[:,</span> <span class="kc">None</span><span class="p">])</span> <span class="o">/</span> <span class="n">sd</span><span class="p">[:,</span> <span class="kc">None</span><span class="p">]</span>
+                <span class="n">gi_deriv</span><span class="p">[</span><span class="n">jj</span><span class="p">:</span><span class="n">jj</span><span class="o">+</span><span class="n">p</span><span class="p">,</span> <span class="p">:]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">deriv</span><span class="o">.</span><span class="n">T</span><span class="p">,</span> <span class="n">crs2</span><span class="p">)</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span><span class="n">fastlink</span> <span class="ow">and</span> <span class="n">fastvar</span><span class="p">):</span>
+                    <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">p</span><span class="p">):</span>
+                        <span class="n">m1</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">exog</span><span class="p">[</span><span class="n">ix</span><span class="p">,</span> <span class="p">:]</span><span class="o">.</span><span class="n">T</span><span class="p">,</span>
+                                    <span class="n">idl2</span><span class="p">[</span><span class="n">ix</span><span class="p">]</span> <span class="o">*</span> <span class="n">exog</span><span class="p">[</span><span class="n">ix</span><span class="p">,</span> <span class="n">k</span><span class="p">]</span> <span class="o">*</span> <span class="n">crs1</span><span class="p">)</span>
+                        <span class="k">if</span> <span class="ow">not</span> <span class="n">fastvar</span><span class="p">:</span>
+                            <span class="n">vx</span> <span class="o">=</span> <span class="o">-</span><span class="mf">0.5</span> <span class="o">*</span> <span class="n">vd</span><span class="p">[</span><span class="n">ix</span><span class="p">]</span> <span class="o">*</span> <span class="n">deriv</span><span class="p">[:,</span> <span class="n">k</span><span class="p">]</span> <span class="o">/</span> <span class="n">va</span><span class="p">[</span><span class="n">ix</span><span class="p">]</span><span class="o">**</span><span class="mf">1.5</span>
+                            <span class="n">m2</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">deriv</span><span class="o">.</span><span class="n">T</span><span class="p">,</span> <span class="n">vx</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">c</span><span class="p">,</span> <span class="n">sresid</span><span class="p">))</span>
+                            <span class="n">m3</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">deriv</span><span class="o">.</span><span class="n">T</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">c</span><span class="p">,</span> <span class="n">vx</span> <span class="o">*</span> <span class="n">resid</span><span class="p">)</span> <span class="o">/</span> <span class="n">sd</span><span class="p">)</span>
+                        <span class="k">else</span><span class="p">:</span>
+                            <span class="n">m2</span><span class="p">,</span> <span class="n">m3</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span>
+                        <span class="n">gi_deriv</span><span class="p">[</span><span class="n">jj</span><span class="p">:</span><span class="n">jj</span><span class="o">+</span><span class="n">p</span><span class="p">,</span> <span class="n">k</span><span class="p">]</span> <span class="o">+=</span> <span class="n">m1</span> <span class="o">+</span> <span class="n">m2</span> <span class="o">+</span> <span class="n">m3</span>
+                <span class="n">jj</span> <span class="o">+=</span> <span class="n">p</span>
+
+            <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">p</span><span class="p">):</span>
+                <span class="n">u</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">outer</span><span class="p">(</span><span class="n">gi</span><span class="p">,</span> <span class="n">gi_deriv</span><span class="p">[:,</span> <span class="n">j</span><span class="p">])</span>
+                <span class="n">cn_deriv</span><span class="p">[</span><span class="n">j</span><span class="p">]</span> <span class="o">+=</span> <span class="n">u</span> <span class="o">+</span> <span class="n">u</span><span class="o">.</span><span class="n">T</span>
+
+            <span class="n">gn</span> <span class="o">+=</span> <span class="n">gi</span>
+            <span class="n">gn_deriv</span> <span class="o">+=</span> <span class="n">gi_deriv</span>
+
+            <span class="n">cmat</span> <span class="o">+=</span> <span class="n">np</span><span class="o">.</span><span class="n">outer</span><span class="p">(</span><span class="n">gi</span><span class="p">,</span> <span class="n">gi</span><span class="p">)</span>
+
+        <span class="n">ngrp</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">groups_ix</span><span class="p">)</span>
+        <span class="n">gn</span> <span class="o">/=</span> <span class="n">ngrp</span>
+        <span class="n">gn_deriv</span> <span class="o">/=</span> <span class="n">ngrp</span>
+        <span class="n">cmat</span> <span class="o">/=</span> <span class="n">ngrp</span><span class="o">**</span><span class="mi">2</span>
+
+        <span class="n">qif</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">gn</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">solve</span><span class="p">(</span><span class="n">cmat</span><span class="p">,</span> <span class="n">gn</span><span class="p">))</span>
+
+        <span class="n">gcg</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">p</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">p</span><span class="p">):</span>
+            <span class="n">cn_deriv</span><span class="p">[</span><span class="n">j</span><span class="p">]</span> <span class="o">/=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">groups_ix</span><span class="p">)</span><span class="o">**</span><span class="mi">2</span>
+            <span class="n">u</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">solve</span><span class="p">(</span><span class="n">cmat</span><span class="p">,</span> <span class="n">cn_deriv</span><span class="p">[</span><span class="n">j</span><span class="p">])</span><span class="o">.</span><span class="n">T</span>
+            <span class="n">u</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">solve</span><span class="p">(</span><span class="n">cmat</span><span class="p">,</span> <span class="n">u</span><span class="p">)</span>
+            <span class="n">gcg</span><span class="p">[</span><span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">gn</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">u</span><span class="p">,</span> <span class="n">gn</span><span class="p">))</span>
+
+        <span class="n">grad</span> <span class="o">=</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">gn_deriv</span><span class="o">.</span><span class="n">T</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">solve</span><span class="p">(</span><span class="n">cmat</span><span class="p">,</span> <span class="n">gn</span><span class="p">))</span> <span class="o">-</span> <span class="n">gcg</span>
+
+        <span class="k">return</span> <span class="n">qif</span><span class="p">,</span> <span class="n">grad</span><span class="p">,</span> <span class="n">cmat</span><span class="p">,</span> <span class="n">gn</span><span class="p">,</span> <span class="n">gn_deriv</span></div>
+
+<div class="viewcode-block" id="QIF.estimate_scale"><a class="viewcode-back" href="../../../generated/statsmodels.genmod.qif.QIF.estimate_scale.html#statsmodels.genmod.qif.QIF.estimate_scale">[docs]</a>    <span class="k">def</span> <span class="nf">estimate_scale</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Estimate the dispersion/scale.</span>
+
+<span class="sd">        The scale parameter for binomial and Poisson families is</span>
+<span class="sd">        fixed at 1, otherwise it is estimated from the data.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">family</span><span class="p">,</span> <span class="p">(</span><span class="n">families</span><span class="o">.</span><span class="n">Binomial</span><span class="p">,</span> <span class="n">families</span><span class="o">.</span><span class="n">Poisson</span><span class="p">)):</span>
+            <span class="k">return</span> <span class="mf">1.</span>
+
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;ddof_scale&quot;</span><span class="p">):</span>
+            <span class="n">ddof_scale</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ddof_scale</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">ddof_scale</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">exog</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+
+        <span class="n">lpr</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">exog</span><span class="p">,</span> <span class="n">params</span><span class="p">)</span>
+        <span class="n">mean</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">family</span><span class="o">.</span><span class="n">link</span><span class="o">.</span><span class="n">inverse</span><span class="p">(</span><span class="n">lpr</span><span class="p">)</span>
+        <span class="n">resid</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">endog</span> <span class="o">-</span> <span class="n">mean</span>
+        <span class="n">scale</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">resid</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">nobs</span> <span class="o">-</span> <span class="n">ddof_scale</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">scale</span></div>
+
+<div class="viewcode-block" id="QIF.from_formula"><a class="viewcode-back" href="../../../generated/statsmodels.genmod.qif.QIF.from_formula.html#statsmodels.genmod.qif.QIF.from_formula">[docs]</a>    <span class="nd">@classmethod</span>
+    <span class="k">def</span> <span class="nf">from_formula</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">formula</span><span class="p">,</span> <span class="n">groups</span><span class="p">,</span> <span class="n">data</span><span class="p">,</span> <span class="n">subset</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                     <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Create a QIF model instance from a formula and dataframe.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        formula : str or generic Formula object</span>
+<span class="sd">            The formula specifying the model</span>
+<span class="sd">        groups : array-like or string</span>
+<span class="sd">            Array of grouping labels.  If a string, this is the name</span>
+<span class="sd">            of a variable in `data` that contains the grouping labels.</span>
+<span class="sd">        data : array-like</span>
+<span class="sd">            The data for the model.</span>
+<span class="sd">        subset : array-like</span>
+<span class="sd">            An array-like object of booleans, integers, or index</span>
+<span class="sd">            values that indicate the subset of the data to used when</span>
+<span class="sd">            fitting the model.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        model : QIF model instance</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">groups</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+            <span class="n">groups</span> <span class="o">=</span> <span class="n">data</span><span class="p">[</span><span class="n">groups</span><span class="p">]</span>
+
+        <span class="n">model</span> <span class="o">=</span> <span class="nb">super</span><span class="p">(</span><span class="n">QIF</span><span class="p">,</span> <span class="bp">cls</span><span class="p">)</span><span class="o">.</span><span class="n">from_formula</span><span class="p">(</span>
+                   <span class="n">formula</span><span class="p">,</span> <span class="n">data</span><span class="o">=</span><span class="n">data</span><span class="p">,</span> <span class="n">subset</span><span class="o">=</span><span class="n">subset</span><span class="p">,</span>
+                   <span class="n">groups</span><span class="o">=</span><span class="n">groups</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">model</span></div>
+
+<div class="viewcode-block" id="QIF.fit"><a class="viewcode-back" href="../../../generated/statsmodels.genmod.qif.QIF.fit.html#statsmodels.genmod.qif.QIF.fit">[docs]</a>    <span class="k">def</span> <span class="nf">fit</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">maxiter</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="n">start_params</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">tol</span><span class="o">=</span><span class="mf">1e-6</span><span class="p">,</span> <span class="n">gtol</span><span class="o">=</span><span class="mf">1e-4</span><span class="p">,</span>
+            <span class="n">ddof_scale</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Fit a GLM to correlated data using QIF.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        maxiter : integer</span>
+<span class="sd">            Maximum number of iterations.</span>
+<span class="sd">        start_params : array-like, optional</span>
+<span class="sd">            Starting values</span>
+<span class="sd">        tol : float</span>
+<span class="sd">            Convergence threshold for difference of successive</span>
+<span class="sd">            estimates.</span>
+<span class="sd">        gtol : float</span>
+<span class="sd">            Convergence threshold for gradient.</span>
+<span class="sd">        ddof_scale : int, optional</span>
+<span class="sd">            Degrees of freedom for the scale parameter</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        QIFResults object</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="k">if</span> <span class="n">ddof_scale</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">ddof_scale</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">exog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">ddof_scale</span> <span class="o">=</span> <span class="n">ddof_scale</span>
+
+        <span class="k">if</span> <span class="n">start_params</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">params</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">exog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">params</span> <span class="o">=</span> <span class="n">start_params</span>
+
+        <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">maxiter</span><span class="p">):</span>
+
+            <span class="n">qif</span><span class="p">,</span> <span class="n">grad</span><span class="p">,</span> <span class="n">cmat</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">gn_deriv</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">objective</span><span class="p">(</span><span class="n">params</span><span class="p">)</span>
+
+            <span class="n">gnorm</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">grad</span> <span class="o">*</span> <span class="n">grad</span><span class="p">))</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_fit_history</span><span class="p">[</span><span class="s2">&quot;qif&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">qif</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_fit_history</span><span class="p">[</span><span class="s2">&quot;gradnorm&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">gnorm</span><span class="p">)</span>
+
+            <span class="k">if</span> <span class="n">gnorm</span> <span class="o">&lt;</span> <span class="n">gtol</span><span class="p">:</span>
+                <span class="k">break</span>
+
+            <span class="n">cjac</span> <span class="o">=</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">gn_deriv</span><span class="o">.</span><span class="n">T</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">solve</span><span class="p">(</span><span class="n">cmat</span><span class="p">,</span> <span class="n">gn_deriv</span><span class="p">))</span>
+            <span class="n">step</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">solve</span><span class="p">(</span><span class="n">cjac</span><span class="p">,</span> <span class="n">grad</span><span class="p">)</span>
+
+            <span class="n">snorm</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">step</span> <span class="o">*</span> <span class="n">step</span><span class="p">))</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_fit_history</span><span class="p">[</span><span class="s2">&quot;stepnorm&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">snorm</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">snorm</span> <span class="o">&lt;</span> <span class="n">tol</span><span class="p">:</span>
+                <span class="k">break</span>
+            <span class="n">params</span> <span class="o">-=</span> <span class="n">step</span>
+
+        <span class="n">vcov</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">gn_deriv</span><span class="o">.</span><span class="n">T</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">solve</span><span class="p">(</span><span class="n">cmat</span><span class="p">,</span> <span class="n">gn_deriv</span><span class="p">))</span>
+        <span class="n">vcov</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">inv</span><span class="p">(</span><span class="n">vcov</span><span class="p">)</span>
+        <span class="n">scale</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">estimate_scale</span><span class="p">(</span><span class="n">params</span><span class="p">)</span>
+
+        <span class="n">rslt</span> <span class="o">=</span> <span class="n">QIFResults</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">vcov</span> <span class="o">/</span> <span class="n">scale</span><span class="p">,</span> <span class="n">scale</span><span class="p">)</span>
+        <span class="n">rslt</span><span class="o">.</span><span class="n">fit_history</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_fit_history</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_fit_history</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="nb">list</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">QIFResultsWrapper</span><span class="p">(</span><span class="n">rslt</span><span class="p">)</span></div></div>
+
+
+<div class="viewcode-block" id="QIFResults"><a class="viewcode-back" href="../../../generated/statsmodels.genmod.qif.QIFResults.html#statsmodels.genmod.qif.QIFResults">[docs]</a><span class="k">class</span> <span class="nc">QIFResults</span><span class="p">(</span><span class="n">base</span><span class="o">.</span><span class="n">LikelihoodModelResults</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Results class for QIF Regression&quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">cov_params</span><span class="p">,</span> <span class="n">scale</span><span class="p">,</span>
+                 <span class="n">use_t</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="o">**</span><span class="n">kwds</span><span class="p">):</span>
+
+        <span class="nb">super</span><span class="p">(</span><span class="n">QIFResults</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span>
+            <span class="n">model</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">normalized_cov_params</span><span class="o">=</span><span class="n">cov_params</span><span class="p">,</span>
+            <span class="n">scale</span><span class="o">=</span><span class="n">scale</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">qif</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">objective</span><span class="p">(</span><span class="n">params</span><span class="p">)</span>
+
+<div class="viewcode-block" id="QIFResults.aic"><a class="viewcode-back" href="../../../generated/statsmodels.genmod.qif.QIFResults.aic.html#statsmodels.genmod.qif.QIFResults.aic">[docs]</a>    <span class="nd">@cache_readonly</span>
+    <span class="k">def</span> <span class="nf">aic</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        An AIC-like statistic for models fit using QIF.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">cov_struct</span><span class="p">,</span> <span class="n">QIFIndependence</span><span class="p">):</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="s2">&quot;AIC not available with QIFIndependence covariance&quot;</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+        <span class="n">df</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">exog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">qif</span> <span class="o">+</span> <span class="mi">2</span><span class="o">*</span><span class="n">df</span></div>
+
+<div class="viewcode-block" id="QIFResults.bic"><a class="viewcode-back" href="../../../generated/statsmodels.genmod.qif.QIFResults.bic.html#statsmodels.genmod.qif.QIFResults.bic">[docs]</a>    <span class="nd">@cache_readonly</span>
+    <span class="k">def</span> <span class="nf">bic</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        A BIC-like statistic for models fit using QIF.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">cov_struct</span><span class="p">,</span> <span class="n">QIFIndependence</span><span class="p">):</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="s2">&quot;BIC not available with QIFIndependence covariance&quot;</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+        <span class="n">df</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">exog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">qif</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">nobs</span><span class="p">)</span><span class="o">*</span><span class="n">df</span></div>
+
+<div class="viewcode-block" id="QIFResults.fittedvalues"><a class="viewcode-back" href="../../../generated/statsmodels.genmod.qif.QIFResults.fittedvalues.html#statsmodels.genmod.qif.QIFResults.fittedvalues">[docs]</a>    <span class="nd">@cache_readonly</span>
+    <span class="k">def</span> <span class="nf">fittedvalues</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Returns the fitted values from the model.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">family</span><span class="o">.</span><span class="n">link</span><span class="o">.</span><span class="n">inverse</span><span class="p">(</span>
+                <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">exog</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">params</span><span class="p">))</span></div>
+
+<div class="viewcode-block" id="QIFResults.summary"><a class="viewcode-back" href="../../../generated/statsmodels.genmod.qif.QIFResults.summary.html#statsmodels.genmod.qif.QIFResults.summary">[docs]</a>    <span class="k">def</span> <span class="nf">summary</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">yname</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">xname</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">title</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=.</span><span class="mi">05</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Summarize the QIF regression results</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        yname : string, optional</span>
+<span class="sd">            Default is `y`</span>
+<span class="sd">        xname : list of strings, optional</span>
+<span class="sd">            Default is `var_##` for ## in p the number of regressors</span>
+<span class="sd">        title : string, optional</span>
+<span class="sd">            Title for the top table. If not None, then this replaces</span>
+<span class="sd">            the default title</span>
+<span class="sd">        alpha : float</span>
+<span class="sd">            significance level for the confidence intervals</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        smry : Summary instance</span>
+<span class="sd">            this holds the summary tables and text, which can be</span>
+<span class="sd">            printed or converted to various output formats.</span>
+
+<span class="sd">        See Also</span>
+<span class="sd">        --------</span>
+<span class="sd">        statsmodels.iolib.summary.Summary : class to hold summary results</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="n">top_left</span> <span class="o">=</span> <span class="p">[(</span><span class="s1">&#39;Dep. Variable:&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">),</span>
+                    <span class="p">(</span><span class="s1">&#39;Method:&#39;</span><span class="p">,</span> <span class="p">[</span><span class="s1">&#39;QIF&#39;</span><span class="p">]),</span>
+                    <span class="p">(</span><span class="s1">&#39;Family:&#39;</span><span class="p">,</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">family</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="p">]),</span>
+                    <span class="p">(</span><span class="s1">&#39;Covariance structure:&#39;</span><span class="p">,</span>
+                     <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">cov_struct</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="p">]),</span>
+                    <span class="p">(</span><span class="s1">&#39;Date:&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">),</span>
+                    <span class="p">(</span><span class="s1">&#39;Time:&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">),</span>
+                    <span class="p">]</span>
+
+        <span class="n">NY</span> <span class="o">=</span> <span class="p">[</span><span class="nb">len</span><span class="p">(</span><span class="n">y</span><span class="p">)</span> <span class="k">for</span> <span class="n">y</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">groups_ix</span><span class="p">]</span>
+
+        <span class="n">top_right</span> <span class="o">=</span> <span class="p">[(</span><span class="s1">&#39;No. Observations:&#39;</span><span class="p">,</span> <span class="p">[</span><span class="nb">sum</span><span class="p">(</span><span class="n">NY</span><span class="p">)]),</span>
+                     <span class="p">(</span><span class="s1">&#39;No. clusters:&#39;</span><span class="p">,</span> <span class="p">[</span><span class="nb">len</span><span class="p">(</span><span class="n">NY</span><span class="p">)]),</span>
+                     <span class="p">(</span><span class="s1">&#39;Min. cluster size:&#39;</span><span class="p">,</span> <span class="p">[</span><span class="nb">min</span><span class="p">(</span><span class="n">NY</span><span class="p">)]),</span>
+                     <span class="p">(</span><span class="s1">&#39;Max. cluster size:&#39;</span><span class="p">,</span> <span class="p">[</span><span class="nb">max</span><span class="p">(</span><span class="n">NY</span><span class="p">)]),</span>
+                     <span class="p">(</span><span class="s1">&#39;Mean cluster size:&#39;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;</span><span class="si">%.1f</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">NY</span><span class="p">)]),</span>
+                     <span class="p">(</span><span class="s1">&#39;Scale:&#39;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;</span><span class="si">%.3f</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">scale</span><span class="p">]),</span>
+                     <span class="p">]</span>
+
+        <span class="k">if</span> <span class="n">title</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">title</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span> <span class="o">+</span> <span class="s1">&#39; &#39;</span> <span class="o">+</span>\
+                <span class="s2">&quot;Regression Results&quot;</span>
+
+        <span class="c1"># Override the exog variable names if xname is provided as an</span>
+        <span class="c1"># argument.</span>
+        <span class="k">if</span> <span class="n">xname</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">xname</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">exog_names</span>
+
+        <span class="k">if</span> <span class="n">yname</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">yname</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">endog_names</span>
+
+        <span class="c1"># Create summary table instance</span>
+        <span class="kn">from</span> <span class="nn">statsmodels.iolib.summary</span> <span class="k">import</span> <span class="n">Summary</span>
+        <span class="n">smry</span> <span class="o">=</span> <span class="n">Summary</span><span class="p">()</span>
+        <span class="n">smry</span><span class="o">.</span><span class="n">add_table_2cols</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">gleft</span><span class="o">=</span><span class="n">top_left</span><span class="p">,</span> <span class="n">gright</span><span class="o">=</span><span class="n">top_right</span><span class="p">,</span>
+                             <span class="n">yname</span><span class="o">=</span><span class="n">yname</span><span class="p">,</span> <span class="n">xname</span><span class="o">=</span><span class="n">xname</span><span class="p">,</span>
+                             <span class="n">title</span><span class="o">=</span><span class="n">title</span><span class="p">)</span>
+        <span class="n">smry</span><span class="o">.</span><span class="n">add_table_params</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">yname</span><span class="o">=</span><span class="n">yname</span><span class="p">,</span> <span class="n">xname</span><span class="o">=</span><span class="n">xname</span><span class="p">,</span>
+                              <span class="n">alpha</span><span class="o">=</span><span class="n">alpha</span><span class="p">,</span> <span class="n">use_t</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">smry</span></div></div>
+
+
+<span class="k">class</span> <span class="nc">QIFResultsWrapper</span><span class="p">(</span><span class="n">lm</span><span class="o">.</span><span class="n">RegressionResultsWrapper</span><span class="p">):</span>
+    <span class="k">pass</span>
+
+
+<span class="n">wrap</span><span class="o">.</span><span class="n">populate_wrapper</span><span class="p">(</span><span class="n">QIFResultsWrapper</span><span class="p">,</span> <span class="n">QIFResults</span><span class="p">)</span>
+</pre></div>
+
+
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../../../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" />
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer" role="contentinfo">
+        &#169; Copyright 2009-2018, Josef Perktold, Skipper Seabold, Jonathan Taylor, statsmodels-developers.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 2.1.2.
+    </div>
+  </body>
+</html>
