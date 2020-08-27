@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.sandbox.distributions.extras.ACSkewT\_gen.interval
+==============================================================
+
+.. currentmodule:: statsmodels.sandbox.distributions.extras
+
+.. automethod:: ACSkewT_gen.interval

@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.base.model.GenericLikelihoodModelResults.wald\_test
+===============================================================
+
+.. currentmodule:: statsmodels.base.model
+
+.. automethod:: GenericLikelihoodModelResults.wald_test

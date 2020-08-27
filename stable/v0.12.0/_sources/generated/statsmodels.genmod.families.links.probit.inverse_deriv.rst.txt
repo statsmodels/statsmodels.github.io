@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.genmod.families.links.probit.inverse\_deriv
+=======================================================
+
+.. currentmodule:: statsmodels.genmod.families.links
+
+.. automethod:: probit.inverse_deriv

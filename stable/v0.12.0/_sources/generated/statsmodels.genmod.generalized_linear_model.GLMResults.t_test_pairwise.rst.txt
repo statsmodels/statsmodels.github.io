@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.genmod.generalized\_linear\_model.GLMResults.t\_test\_pairwise
+==========================================================================
+
+.. currentmodule:: statsmodels.genmod.generalized_linear_model
+
+.. automethod:: GLMResults.t_test_pairwise

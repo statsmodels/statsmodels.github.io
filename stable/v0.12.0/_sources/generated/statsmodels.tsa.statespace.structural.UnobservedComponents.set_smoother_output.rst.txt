@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.tsa.statespace.structural.UnobservedComponents.set\_smoother\_output
+================================================================================
+
+.. currentmodule:: statsmodels.tsa.statespace.structural
+
+.. automethod:: UnobservedComponents.set_smoother_output

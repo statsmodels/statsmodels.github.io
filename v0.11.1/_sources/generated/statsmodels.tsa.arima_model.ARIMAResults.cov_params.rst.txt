@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.tsa.arima\_model.ARIMAResults.cov\_params
+=====================================================
+
+.. currentmodule:: statsmodels.tsa.arima_model
+
+.. automethod:: ARIMAResults.cov_params

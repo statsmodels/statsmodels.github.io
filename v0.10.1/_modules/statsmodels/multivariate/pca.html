@@ -1,0 +1,986 @@
+
+
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta charset="utf-8" />
+    <title>statsmodels.multivariate.pca &#8212; statsmodels v0.10.1 documentation</title>
+    <link rel="stylesheet" href="../../../_static/nature.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css" />
+    <script type="text/javascript" id="documentation_options" data-url_root="../../../" src="../../../_static/documentation_options.js"></script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <script type="text/javascript" src="../../../_static/language_data.js"></script>
+    <script async="async" type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/latest.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="shortcut icon" href="../../../_static/statsmodels_hybi_favico.ico"/>
+    <link rel="author" title="About these documents" href="../../../about.html" />
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+<link rel="stylesheet" href="../../../_static/examples.css" type="text/css" />
+<link rel="stylesheet" href="../../../_static/facebox.css" type="text/css" />
+<script type="text/javascript" src="../../../_static/scripts.js">
+</script>
+<script type="text/javascript" src="../../../_static/facebox.js">
+</script>
+<script type="text/javascript">
+$.facebox.settings.closeImage = "../../../_static/closelabel.png"
+$.facebox.settings.loadingImage = "../../../_static/loading.gif"
+</script>
+
+<script>
+$(document).ready(function() {
+  $.getJSON("../../../../versions.json", function(versions) {
+    var dropdown = document.createElement("div");
+    dropdown.className = "dropdown";
+    var button = document.createElement("button");
+    button.className = "dropbtn";
+    button.innerHTML = "Other Versions";
+    var content = document.createElement("div");
+    content.className = "dropdown-content";
+    dropdown.appendChild(button);
+    dropdown.appendChild(content);
+    $(".header").prepend(dropdown);
+    for (var i = 0; i < versions.length; i++) {
+      if (versions[i].substring(0, 1) == "v") {
+        versions[i] = [versions[i], versions[i].substring(1)];
+      } else {
+        versions[i] = [versions[i], versions[i]];
+      };
+    };
+    for (var i = 0; i < versions.length; i++) {
+      var a = document.createElement("a");
+      a.innerHTML = versions[i][1];
+      a.href = "../../../../" + versions[i][0] + "/index.html";
+      a.title = versions[i][1];
+      $(".dropdown-content").append(a);
+    };
+  });
+});
+</script>
+
+
+  </head><body>
+<div class="headerwrap">
+    <div class = "header">
+        
+        <a href = "../../../index.html">
+<img src="../../../_static/statsmodels_hybi_banner.png" alt="Logo"
+    style="padding-left: 15px"/></a>
+        
+    </div>
+</div>
+
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+<li><a href ="../../../install.html">Install</a></li> &nbsp;|&nbsp;
+<li><a href="https://groups.google.com/forum/?hl=en#!forum/pystatsmodels">Support</a></li> &nbsp;|&nbsp;
+<li><a href="https://github.com/statsmodels/statsmodels/issues">Bugs</a></li> &nbsp;|&nbsp;
+<li><a href="../../../dev/index.html">Develop</a></li> &nbsp;|&nbsp;
+<li><a href="../../../examples/index.html">Examples</a></li> &nbsp;|&nbsp;
+<li><a href="../../../faq.html">FAQ</a></li> &nbsp;|&nbsp;
+
+          <li class="nav-item nav-item-1"><a href="../../index.html" accesskey="U">Module code</a> |</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+
+
+
+
+  <h1>Source code for statsmodels.multivariate.pca</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;Principal Component Analysis</span>
+
+<span class="sd">Author: josef-pktd</span>
+<span class="sd">Modified by Kevin Sheppard</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="kn">from</span> <span class="nn">__future__</span> <span class="k">import</span> <span class="n">print_function</span><span class="p">,</span> <span class="n">division</span>
+
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+<span class="kn">import</span> <span class="nn">pandas</span> <span class="k">as</span> <span class="nn">pd</span>
+
+<span class="kn">from</span> <span class="nn">statsmodels.compat.python</span> <span class="k">import</span> <span class="nb">range</span>
+<span class="kn">from</span> <span class="nn">statsmodels.tools.sm_exceptions</span> <span class="k">import</span> <span class="p">(</span><span class="n">ValueWarning</span><span class="p">,</span>
+                                             <span class="n">EstimationWarning</span><span class="p">)</span>
+
+
+<span class="k">def</span> <span class="nf">_norm</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">x</span> <span class="o">*</span> <span class="n">x</span><span class="p">))</span>
+
+
+<div class="viewcode-block" id="PCA"><a class="viewcode-back" href="../../../generated/statsmodels.multivariate.pca.PCA.html#statsmodels.multivariate.pca.PCA">[docs]</a><span class="k">class</span> <span class="nc">PCA</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Principal Component Analysis</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    data : array-like</span>
+<span class="sd">        Variables in columns, observations in rows</span>
+<span class="sd">    ncomp : int, optional</span>
+<span class="sd">        Number of components to return.  If None, returns the as many as the</span>
+<span class="sd">        smaller of the number of rows or columns in data</span>
+<span class="sd">    standardize: bool, optional</span>
+<span class="sd">        Flag indicating to use standardized data with mean 0 and unit</span>
+<span class="sd">        variance.  standardized being True implies demean.  Using standardized</span>
+<span class="sd">        data is equivalent to computing principal components from the</span>
+<span class="sd">        correlation matrix of data</span>
+<span class="sd">    demean : bool, optional</span>
+<span class="sd">        Flag indicating whether to demean data before computing principal</span>
+<span class="sd">        components.  demean is ignored if standardize is True. Demeaning data</span>
+<span class="sd">        but not standardizing is equivalent to computing principal components</span>
+<span class="sd">        from the covariance matrix of data</span>
+<span class="sd">    normalize : bool , optional</span>
+<span class="sd">        Indicates whether th normalize the factors to have unit inner product.</span>
+<span class="sd">        If False, the loadings will have unit inner product.</span>
+<span class="sd">    weights : array, optional</span>
+<span class="sd">        Series weights to use after transforming data according to standardize</span>
+<span class="sd">        or demean when computing the principal components.</span>
+<span class="sd">    gls : bool, optional</span>
+<span class="sd">        Flag indicating to implement a two-step GLS estimator where</span>
+<span class="sd">        in the first step principal components are used to estimate residuals,</span>
+<span class="sd">        and then the inverse residual variance is used as a set of weights to</span>
+<span class="sd">        estimate the final principal components.  Setting gls to True requires</span>
+<span class="sd">        ncomp to be less then the min of the number of rows or columns</span>
+<span class="sd">    method : str, optional</span>
+<span class="sd">        Sets the linear algebra routine used to compute eigenvectors</span>
+<span class="sd">        &#39;svd&#39; uses a singular value decomposition (default).</span>
+<span class="sd">        &#39;eig&#39; uses an eigenvalue decomposition of a quadratic form</span>
+<span class="sd">        &#39;nipals&#39; uses the NIPALS algorithm and can be faster than SVD when</span>
+<span class="sd">        ncomp is small and nvars is large. See notes about additional changes</span>
+<span class="sd">        when using NIPALS</span>
+<span class="sd">    tol : float, optional</span>
+<span class="sd">        Tolerance to use when checking for convergence when using NIPALS</span>
+<span class="sd">    max_iter : int, optional</span>
+<span class="sd">        Maximum iterations when using NIPALS</span>
+<span class="sd">    missing : string</span>
+<span class="sd">        Method for missing data.  Choices are</span>
+<span class="sd">        &#39;drop-row&#39; - drop rows with missing values</span>
+<span class="sd">        &#39;drop-col&#39; - drop columns with missing values</span>
+<span class="sd">        &#39;drop-min&#39; - drop either rows or columns, choosing by data retention</span>
+<span class="sd">        &#39;fill-em&#39; - use EM algorithm to fill missing value.  ncomp should be</span>
+<span class="sd">        set to the number of factors required</span>
+<span class="sd">    tol_em : float</span>
+<span class="sd">        Tolerance to use when checking for convergence of the EM algorithm</span>
+<span class="sd">    max_em_iter : int</span>
+<span class="sd">        Maximum iterations for the EM algorithm</span>
+
+<span class="sd">    Attributes</span>
+<span class="sd">    ----------</span>
+<span class="sd">    factors : array or DataFrame</span>
+<span class="sd">        nobs by ncomp array of of principal components (scores)</span>
+<span class="sd">    scores :  array or DataFrame</span>
+<span class="sd">        nobs by ncomp array of of principal components - identical to factors</span>
+<span class="sd">    loadings : array or DataFrame</span>
+<span class="sd">        ncomp by nvar array of  principal component loadings for constructing</span>
+<span class="sd">        the factors</span>
+<span class="sd">    coeff : array or DataFrame</span>
+<span class="sd">        nvar by ncomp array of  principal component loadings for constructing</span>
+<span class="sd">        the projections</span>
+<span class="sd">    projection : array or DataFrame</span>
+<span class="sd">        nobs by var array containing the projection of the data onto the ncomp</span>
+<span class="sd">        estimated factors</span>
+<span class="sd">    rsquare : array or Series</span>
+<span class="sd">        ncomp array where the element in the ith position is the R-square</span>
+<span class="sd">        of including the fist i principal components.  Note: values are</span>
+<span class="sd">        calculated on the transformed data, not the original data</span>
+<span class="sd">    ic : array or DataFrame</span>
+<span class="sd">        ncomp by 3 array containing the Bai and Ng (2003) Information</span>
+<span class="sd">        criteria.  Each column is a different criteria, and each row</span>
+<span class="sd">        represents the number of included factors.</span>
+<span class="sd">    eigenvals : array or Series</span>
+<span class="sd">        nvar array of eigenvalues</span>
+<span class="sd">    eigenvecs : array or DataFrame</span>
+<span class="sd">        nvar by nvar array of eigenvectors</span>
+<span class="sd">    weights : array</span>
+<span class="sd">        nvar array of weights used to compute the principal components,</span>
+<span class="sd">        normalized to unit length</span>
+<span class="sd">    transformed_data : array</span>
+<span class="sd">        Standardized, demeaned and weighted data used to compute</span>
+<span class="sd">        principal components and related quantities</span>
+<span class="sd">    cols : array</span>
+<span class="sd">        Array of indices indicating columns used in the PCA</span>
+<span class="sd">    rows : array</span>
+<span class="sd">        Array of indices indicating rows used in the PCA</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    Basic PCA using the correlation matrix of the data</span>
+
+<span class="sd">    &gt;&gt;&gt; import numpy as np</span>
+<span class="sd">    &gt;&gt;&gt; from statsmodels.multivariate.pca import PCA</span>
+<span class="sd">    &gt;&gt;&gt; x = np.random.randn(100)[:, None]</span>
+<span class="sd">    &gt;&gt;&gt; x = x + np.random.randn(100, 100)</span>
+<span class="sd">    &gt;&gt;&gt; pc = PCA(x)</span>
+
+<span class="sd">    Note that the principal components are computed using a SVD and so the</span>
+<span class="sd">    correlation matrix is never constructed, unless method=&#39;eig&#39;.</span>
+
+<span class="sd">    PCA using the covariance matrix of the data</span>
+
+<span class="sd">    &gt;&gt;&gt; pc = PCA(x, standardize=False)</span>
+
+<span class="sd">    Limiting the number of factors returned to 1 computed using NIPALS</span>
+
+<span class="sd">    &gt;&gt;&gt; pc = PCA(x, ncomp=1, method=&#39;nipals&#39;)</span>
+<span class="sd">    &gt;&gt;&gt; pc.factors.shape</span>
+<span class="sd">    (100, 1)</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    The default options perform principal component analysis on the</span>
+<span class="sd">    demeaned, unit variance version of data.  Setting standardize to False</span>
+<span class="sd">    will instead only demean, and setting both standardized and</span>
+<span class="sd">    demean to False will not alter the data.</span>
+
+<span class="sd">    Once the data have been transformed, the following relationships hold when</span>
+<span class="sd">    the number of components (ncomp) is the same as tne minimum of the number</span>
+<span class="sd">    of observation or the number of variables.</span>
+
+<span class="sd">    .. math:</span>
+
+<span class="sd">        X&#39; X = V \\Lambda V&#39;</span>
+
+<span class="sd">    .. math:</span>
+
+<span class="sd">        F = X V</span>
+
+<span class="sd">    .. math:</span>
+
+<span class="sd">        X = F V&#39;</span>
+
+<span class="sd">    where X is the `data`, F is the array of principal components (`factors`</span>
+<span class="sd">    or `scores`), and V is the array of eigenvectors (`loadings`) and V&#39; is</span>
+<span class="sd">    the array of factor coefficients (`coeff`).</span>
+
+<span class="sd">    When weights are provided, the principal components are computed from the</span>
+<span class="sd">    modified data</span>
+
+<span class="sd">    .. math:</span>
+
+<span class="sd">        \\Omega^{-\\frac{1}{2}} X</span>
+
+<span class="sd">    where :math:`\\Omega` is a diagonal matrix composed of the weights. For</span>
+<span class="sd">    example, when using the GLS version of PCA, the elements of :math:`\\Omega`</span>
+<span class="sd">    will be the inverse of the variances of the residuals from</span>
+
+<span class="sd">    .. math:</span>
+
+<span class="sd">        X - F V&#39;</span>
+
+<span class="sd">    where the number of factors is less than the rank of X</span>
+
+<span class="sd">    .. [*] J. Bai and S. Ng, &quot;Determining the number of factors in approximate</span>
+<span class="sd">       factor models,&quot; Econometrica, vol. 70, number 1, pp. 191-221, 2002</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">,</span> <span class="n">ncomp</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">standardize</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">demean</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+                 <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">gls</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">weights</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s1">&#39;svd&#39;</span><span class="p">,</span>
+                 <span class="n">missing</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">tol</span><span class="o">=</span><span class="mf">5e-8</span><span class="p">,</span> <span class="n">max_iter</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span> <span class="n">tol_em</span><span class="o">=</span><span class="mf">5e-8</span><span class="p">,</span>
+                 <span class="n">max_em_iter</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_index</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_columns</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_index</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">index</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_columns</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">columns</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">data</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+        <span class="c1"># Store inputs</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_gls</span> <span class="o">=</span> <span class="n">gls</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_normalize</span> <span class="o">=</span> <span class="n">normalize</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_tol</span> <span class="o">=</span> <span class="n">tol</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="mi">0</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">_tol</span> <span class="o">&lt;</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;tol must be strictly between 0 and 1&#39;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_max_iter</span> <span class="o">=</span> <span class="n">max_iter</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_max_em_iter</span> <span class="o">=</span> <span class="n">max_em_iter</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_tol_em</span> <span class="o">=</span> <span class="n">tol_em</span>
+
+        <span class="c1"># Prepare data</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_standardize</span> <span class="o">=</span> <span class="n">standardize</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_demean</span> <span class="o">=</span> <span class="n">demean</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_nobs</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_nvar</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">shape</span>
+        <span class="k">if</span> <span class="n">weights</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">weights</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_nvar</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">weights</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">weights</span><span class="p">)</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span>
+            <span class="k">if</span> <span class="n">weights</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">!=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_nvar</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;weights should have nvar elements&#39;</span><span class="p">)</span>
+            <span class="n">weights</span> <span class="o">=</span> <span class="n">weights</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">((</span><span class="n">weights</span> <span class="o">**</span> <span class="mf">2.0</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">())</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">weights</span> <span class="o">=</span> <span class="n">weights</span>
+
+        <span class="c1"># Check ncomp against maximum</span>
+        <span class="n">min_dim</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_nobs</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_nvar</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_ncomp</span> <span class="o">=</span> <span class="n">min_dim</span> <span class="k">if</span> <span class="n">ncomp</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">ncomp</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ncomp</span> <span class="o">&gt;</span> <span class="n">min_dim</span><span class="p">:</span>
+            <span class="kn">import</span> <span class="nn">warnings</span>
+
+            <span class="n">warn</span> <span class="o">=</span> <span class="s1">&#39;The requested number of components is more than can be &#39;</span> \
+                   <span class="s1">&#39;computed from data. The maximum number of components is &#39;</span> \
+                   <span class="s1">&#39;the minimum of the number of observations or variables&#39;</span>
+            <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="n">warn</span><span class="p">,</span> <span class="n">ValueWarning</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_ncomp</span> <span class="o">=</span> <span class="n">min_dim</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_method</span> <span class="o">=</span> <span class="n">method</span>
+        <span class="c1"># Workaround to avoid instance methods in __dict__</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_method</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">(</span><span class="s1">&#39;eig&#39;</span><span class="p">,</span> <span class="s1">&#39;svd&#39;</span><span class="p">,</span> <span class="s1">&#39;nipals&#39;</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;method </span><span class="si">{0}</span><span class="s1"> is not known.&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">method</span><span class="p">))</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">rows</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_nobs</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">cols</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_nvar</span><span class="p">)</span>
+        <span class="c1"># Handle missing</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_missing</span> <span class="o">=</span> <span class="n">missing</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_adjusted_data</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span>
+        <span class="k">if</span> <span class="n">missing</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_adjust_missing</span><span class="p">()</span>
+            <span class="c1"># Update size</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_nobs</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_nvar</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_adjusted_data</span><span class="o">.</span><span class="n">shape</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ncomp</span> <span class="o">==</span> <span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">shape</span><span class="p">):</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_ncomp</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_adjusted_data</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
+            <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ncomp</span> <span class="o">&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_adjusted_data</span><span class="o">.</span><span class="n">shape</span><span class="p">):</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;When adjusting for missing values, user &#39;</span>
+                                 <span class="s1">&#39;provided ncomp must be no larger than the &#39;</span>
+                                 <span class="s1">&#39;smallest dimension of the &#39;</span>
+                                 <span class="s1">&#39;missing-value-adjusted data size.&#39;</span><span class="p">)</span>
+
+        <span class="c1"># Attributes and internal values</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_tss</span> <span class="o">=</span> <span class="mf">0.0</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_ess</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">transformed_data</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_mu</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_sigma</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_ess_indiv</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_tss_indiv</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">scores</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">factors</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">loadings</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">coeff</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">eigenvals</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">eigenvecs</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">projection</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">rsquare</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">ic</span> <span class="o">=</span> <span class="kc">None</span>
+
+        <span class="c1"># Prepare data</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">transformed_data</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_prepare_data</span><span class="p">()</span>
+        <span class="c1"># Perform the PCA</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_pca</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">gls</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_compute_gls_weights</span><span class="p">()</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">transformed_data</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_prepare_data</span><span class="p">()</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_pca</span><span class="p">()</span>
+
+        <span class="c1"># Final calculations</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_compute_rsquare_and_ic</span><span class="p">()</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_index</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_to_pandas</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">_adjust_missing</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Implements alternatives for handling missing values</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="k">def</span> <span class="nf">keep_col</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+            <span class="n">index</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">logical_not</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">x</span><span class="p">),</span> <span class="mi">0</span><span class="p">))</span>
+            <span class="k">return</span> <span class="n">x</span><span class="p">[:,</span> <span class="n">index</span><span class="p">],</span> <span class="n">index</span>
+
+        <span class="k">def</span> <span class="nf">keep_row</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+            <span class="n">index</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">logical_not</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">x</span><span class="p">),</span> <span class="mi">1</span><span class="p">))</span>
+            <span class="k">return</span> <span class="n">x</span><span class="p">[</span><span class="n">index</span><span class="p">,</span> <span class="p">:],</span> <span class="n">index</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_missing</span> <span class="o">==</span> <span class="s1">&#39;drop-col&#39;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_adjusted_data</span><span class="p">,</span> <span class="n">index</span> <span class="o">=</span> <span class="n">keep_col</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">cols</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">index</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">weights</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">weights</span><span class="p">[</span><span class="n">index</span><span class="p">]</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">_missing</span> <span class="o">==</span> <span class="s1">&#39;drop-row&#39;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_adjusted_data</span><span class="p">,</span> <span class="n">index</span> <span class="o">=</span> <span class="n">keep_row</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">rows</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">index</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">_missing</span> <span class="o">==</span> <span class="s1">&#39;drop-min&#39;</span><span class="p">:</span>
+            <span class="n">drop_col</span><span class="p">,</span> <span class="n">drop_col_index</span> <span class="o">=</span> <span class="n">keep_col</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">)</span>
+            <span class="n">drop_col_size</span> <span class="o">=</span> <span class="n">drop_col</span><span class="o">.</span><span class="n">size</span>
+
+            <span class="n">drop_row</span><span class="p">,</span> <span class="n">drop_row_index</span> <span class="o">=</span> <span class="n">keep_row</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">)</span>
+            <span class="n">drop_row_size</span> <span class="o">=</span> <span class="n">drop_row</span><span class="o">.</span><span class="n">size</span>
+
+            <span class="k">if</span> <span class="n">drop_row_size</span> <span class="o">&gt;</span> <span class="n">drop_col_size</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_adjusted_data</span> <span class="o">=</span> <span class="n">drop_row</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">rows</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">drop_row_index</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_adjusted_data</span> <span class="o">=</span> <span class="n">drop_col</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">weights</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">weights</span><span class="p">[</span><span class="n">drop_col_index</span><span class="p">]</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">cols</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">drop_col_index</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">_missing</span> <span class="o">==</span> <span class="s1">&#39;fill-em&#39;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_adjusted_data</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_fill_missing_em</span><span class="p">()</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;missing method is not known.&#39;</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_index</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_columns</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_columns</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">cols</span><span class="p">]</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_index</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_index</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">rows</span><span class="p">]</span>
+
+        <span class="c1"># Check adjusted data size</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_adjusted_data</span><span class="o">.</span><span class="n">size</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;Removal of missing values has eliminated &#39;</span>
+                             <span class="s1">&#39;all data.&#39;</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_compute_gls_weights</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Computes GLS weights based on percentage of data fit</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">errors</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">transformed_data</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">projection</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ncomp</span> <span class="o">==</span> <span class="bp">self</span><span class="o">.</span><span class="n">_nvar</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;gls can only be used when ncomp &lt; nvar &#39;</span>
+                             <span class="s1">&#39;so that residuals have non-zero variance&#39;</span><span class="p">)</span>
+        <span class="n">var</span> <span class="o">=</span> <span class="p">(</span><span class="n">errors</span> <span class="o">**</span> <span class="mf">2.0</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+        <span class="n">weights</span> <span class="o">=</span> <span class="mf">1.0</span> <span class="o">/</span> <span class="n">var</span>
+        <span class="n">weights</span> <span class="o">=</span> <span class="n">weights</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">((</span><span class="n">weights</span> <span class="o">**</span> <span class="mf">2.0</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">())</span>
+        <span class="n">nvar</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_nvar</span>
+        <span class="n">eff_series_perc</span> <span class="o">=</span> <span class="p">(</span><span class="mf">1.0</span> <span class="o">/</span> <span class="nb">sum</span><span class="p">((</span><span class="n">weights</span> <span class="o">/</span> <span class="n">weights</span><span class="o">.</span><span class="n">sum</span><span class="p">())</span> <span class="o">**</span> <span class="mf">2.0</span><span class="p">))</span> <span class="o">/</span> <span class="n">nvar</span>
+        <span class="k">if</span> <span class="n">eff_series_perc</span> <span class="o">&lt;</span> <span class="mf">0.1</span><span class="p">:</span>
+            <span class="n">eff_series</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="n">eff_series_perc</span> <span class="o">*</span> <span class="n">nvar</span><span class="p">))</span>
+            <span class="kn">import</span> <span class="nn">warnings</span>
+
+            <span class="n">warn</span> <span class="o">=</span> <span class="s1">&#39;Many series are being down weighted by GLS. Of the &#39;</span> \
+                   <span class="s1">&#39;</span><span class="si">{original}</span><span class="s1"> series, the GLS estimates are based on only &#39;</span> \
+                   <span class="s1">&#39;</span><span class="si">{effective}</span><span class="s1"> (effective) &#39;</span> \
+                   <span class="s1">&#39;series.&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">original</span><span class="o">=</span><span class="n">nvar</span><span class="p">,</span> <span class="n">effective</span><span class="o">=</span><span class="n">eff_series</span><span class="p">)</span>
+            <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="n">warn</span><span class="p">,</span> <span class="n">EstimationWarning</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">weights</span> <span class="o">=</span> <span class="n">weights</span>
+
+    <span class="k">def</span> <span class="nf">_pca</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Main PCA routine</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_compute_eig</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_compute_pca_from_eig</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">projection</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">project</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">string</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="fm">__str__</span><span class="p">()</span>
+        <span class="n">string</span> <span class="o">=</span> <span class="n">string</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+        <span class="n">string</span> <span class="o">+=</span> <span class="s1">&#39;, id: &#39;</span> <span class="o">+</span> <span class="nb">hex</span><span class="p">(</span><span class="nb">id</span><span class="p">(</span><span class="bp">self</span><span class="p">))</span> <span class="o">+</span> <span class="s1">&#39;)&#39;</span>
+        <span class="k">return</span> <span class="n">string</span>
+
+    <span class="k">def</span> <span class="nf">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">string</span> <span class="o">=</span> <span class="s1">&#39;Principal Component Analysis(&#39;</span>
+        <span class="n">string</span> <span class="o">+=</span> <span class="s1">&#39;nobs: &#39;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_nobs</span><span class="p">)</span> <span class="o">+</span> <span class="s1">&#39;, &#39;</span>
+        <span class="n">string</span> <span class="o">+=</span> <span class="s1">&#39;nvar: &#39;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_nvar</span><span class="p">)</span> <span class="o">+</span> <span class="s1">&#39;, &#39;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_standardize</span><span class="p">:</span>
+            <span class="n">kind</span> <span class="o">=</span> <span class="s1">&#39;Standardize (Correlation)&#39;</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">_demean</span><span class="p">:</span>
+            <span class="n">kind</span> <span class="o">=</span> <span class="s1">&#39;Demean (Covariance)&#39;</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">kind</span> <span class="o">=</span> <span class="s1">&#39;None&#39;</span>
+        <span class="n">string</span> <span class="o">+=</span> <span class="s1">&#39;transformation: &#39;</span> <span class="o">+</span> <span class="n">kind</span> <span class="o">+</span> <span class="s1">&#39;, &#39;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_gls</span><span class="p">:</span>
+            <span class="n">string</span> <span class="o">+=</span> <span class="s1">&#39;GLS, &#39;</span>
+        <span class="n">string</span> <span class="o">+=</span> <span class="s1">&#39;normalization: &#39;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_normalize</span><span class="p">)</span> <span class="o">+</span> <span class="s1">&#39;, &#39;</span>
+        <span class="n">string</span> <span class="o">+=</span> <span class="s1">&#39;number of components: &#39;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_ncomp</span><span class="p">)</span> <span class="o">+</span> <span class="s1">&#39;, &#39;</span>
+        <span class="n">string</span> <span class="o">+=</span> <span class="s1">&#39;method: &#39;</span> <span class="o">+</span> <span class="s1">&#39;Eigenvalue&#39;</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_method</span> <span class="o">==</span> <span class="s1">&#39;eig&#39;</span> <span class="k">else</span> <span class="s1">&#39;SVD&#39;</span>
+        <span class="n">string</span> <span class="o">+=</span> <span class="s1">&#39;)&#39;</span>
+        <span class="k">return</span> <span class="n">string</span>
+
+    <span class="k">def</span> <span class="nf">_prepare_data</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Standardize or demean data.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">adj_data</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_adjusted_data</span>
+        <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">adj_data</span><span class="p">)):</span>
+            <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">(</span><span class="n">adj_data</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span><span class="o">.</span><span class="n">fill</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">nan</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_mu</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nanmean</span><span class="p">(</span><span class="n">adj_data</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_sigma</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">nanmean</span><span class="p">((</span><span class="n">adj_data</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">_mu</span><span class="p">)</span> <span class="o">**</span> <span class="mf">2.0</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">))</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_standardize</span><span class="p">:</span>
+            <span class="n">data</span> <span class="o">=</span> <span class="p">(</span><span class="n">adj_data</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">_mu</span><span class="p">)</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sigma</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">_demean</span><span class="p">:</span>
+            <span class="n">data</span> <span class="o">=</span> <span class="p">(</span><span class="n">adj_data</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">_mu</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">data</span> <span class="o">=</span> <span class="n">adj_data</span>
+        <span class="k">return</span> <span class="n">data</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">weights</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_compute_eig</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Wrapper for actual eigenvalue method</span>
+
+<span class="sd">        This is a workaround to avoid instance methods in __dict__</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_method</span> <span class="o">==</span> <span class="s1">&#39;eig&#39;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_compute_using_eig</span><span class="p">()</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">_method</span> <span class="o">==</span> <span class="s1">&#39;svd&#39;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_compute_using_svd</span><span class="p">()</span>
+        <span class="k">else</span><span class="p">:</span>  <span class="c1"># self._method == &#39;nipals&#39;</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_compute_using_nipals</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">_compute_using_svd</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;SVD method to compute eigenvalues and eigenvecs&quot;&quot;&quot;</span>
+        <span class="n">x</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">transformed_data</span>
+        <span class="n">u</span><span class="p">,</span> <span class="n">s</span><span class="p">,</span> <span class="n">v</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">svd</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">eigenvals</span> <span class="o">=</span> <span class="n">s</span> <span class="o">**</span> <span class="mf">2.0</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">eigenvecs</span> <span class="o">=</span> <span class="n">v</span><span class="o">.</span><span class="n">T</span>
+
+    <span class="k">def</span> <span class="nf">_compute_using_eig</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Eigenvalue decomposition method to compute eigenvalues and eigenvectors</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">x</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">transformed_data</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">eigenvals</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">eigenvecs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">eigh</span><span class="p">(</span><span class="n">x</span><span class="o">.</span><span class="n">T</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">x</span><span class="p">))</span>
+
+    <span class="k">def</span> <span class="nf">_compute_using_nipals</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        NIPALS implementation to compute small number of eigenvalues</span>
+<span class="sd">        and eigenvectors</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">x</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">transformed_data</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ncomp</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="n">x</span> <span class="o">=</span> <span class="n">x</span> <span class="o">+</span> <span class="mf">0.0</span>  <span class="c1"># Copy</span>
+
+        <span class="n">tol</span><span class="p">,</span> <span class="n">max_iter</span><span class="p">,</span> <span class="n">ncomp</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_tol</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_max_iter</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ncomp</span>
+        <span class="n">vals</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_ncomp</span><span class="p">)</span>
+        <span class="n">vecs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="bp">self</span><span class="o">.</span><span class="n">_nvar</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ncomp</span><span class="p">))</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">ncomp</span><span class="p">):</span>
+            <span class="n">max_var_ind</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argmax</span><span class="p">(</span><span class="n">x</span><span class="o">.</span><span class="n">var</span><span class="p">(</span><span class="mi">0</span><span class="p">))</span>
+            <span class="n">factor</span> <span class="o">=</span> <span class="n">x</span><span class="p">[:,</span> <span class="p">[</span><span class="n">max_var_ind</span><span class="p">]]</span>
+            <span class="n">_iter</span> <span class="o">=</span> <span class="mi">0</span>
+            <span class="n">diff</span> <span class="o">=</span> <span class="mf">1.0</span>
+            <span class="k">while</span> <span class="n">diff</span> <span class="o">&gt;</span> <span class="n">tol</span> <span class="ow">and</span> <span class="n">_iter</span> <span class="o">&lt;</span> <span class="n">max_iter</span><span class="p">:</span>
+                <span class="n">vec</span> <span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">T</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">factor</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="n">factor</span><span class="o">.</span><span class="n">T</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">factor</span><span class="p">))</span>
+                <span class="n">vec</span> <span class="o">=</span> <span class="n">vec</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">vec</span><span class="o">.</span><span class="n">T</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">vec</span><span class="p">))</span>
+                <span class="n">factor_last</span> <span class="o">=</span> <span class="n">factor</span>
+                <span class="n">factor</span> <span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">vec</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="n">vec</span><span class="o">.</span><span class="n">T</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">vec</span><span class="p">))</span>
+                <span class="n">diff</span> <span class="o">=</span> <span class="n">_norm</span><span class="p">(</span><span class="n">factor</span> <span class="o">-</span> <span class="n">factor_last</span><span class="p">)</span> <span class="o">/</span> <span class="n">_norm</span><span class="p">(</span><span class="n">factor</span><span class="p">)</span>
+                <span class="n">_iter</span> <span class="o">+=</span> <span class="mi">1</span>
+            <span class="n">vals</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">factor</span> <span class="o">**</span> <span class="mi">2</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
+            <span class="n">vecs</span><span class="p">[:,</span> <span class="p">[</span><span class="n">i</span><span class="p">]]</span> <span class="o">=</span> <span class="n">vec</span>
+            <span class="k">if</span> <span class="n">ncomp</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="n">x</span> <span class="o">-=</span> <span class="n">factor</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">vec</span><span class="o">.</span><span class="n">T</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">eigenvals</span> <span class="o">=</span> <span class="n">vals</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">eigenvecs</span> <span class="o">=</span> <span class="n">vecs</span>
+
+    <span class="k">def</span> <span class="nf">_fill_missing_em</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        EM algorithm to fill missing values</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">non_missing</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">logical_not</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">))</span>
+
+        <span class="c1"># If nothing missing, return without altering the data</span>
+        <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">non_missing</span><span class="p">):</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span>
+
+        <span class="c1"># 1. Standardized data as needed</span>
+        <span class="n">data</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">transformed_data</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_prepare_data</span><span class="p">())</span>
+
+        <span class="n">ncomp</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ncomp</span>
+
+        <span class="c1"># 2. Check for all nans</span>
+        <span class="n">col_non_missing</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">non_missing</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="n">row_non_missing</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">non_missing</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">col_non_missing</span> <span class="o">&lt;</span> <span class="n">ncomp</span><span class="p">)</span> <span class="ow">or</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">row_non_missing</span> <span class="o">&lt;</span> <span class="n">ncomp</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;Implementation requires that all columns and &#39;</span>
+                             <span class="s1">&#39;all rows have at least ncomp non-missing values&#39;</span><span class="p">)</span>
+        <span class="c1"># 3. Get mask</span>
+        <span class="n">mask</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+
+        <span class="c1"># 4. Compute mean</span>
+        <span class="n">mu</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nanmean</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+
+        <span class="c1"># 5. Replace missing with mean</span>
+        <span class="n">projection</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">((</span><span class="bp">self</span><span class="o">.</span><span class="n">_nobs</span><span class="p">,</span> <span class="mi">1</span><span class="p">))</span> <span class="o">*</span> <span class="n">mu</span>
+        <span class="n">projection_masked</span> <span class="o">=</span> <span class="n">projection</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span>
+        <span class="n">data</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span> <span class="o">=</span> <span class="n">projection_masked</span>
+
+        <span class="c1"># 6. Compute eigenvalues and fit</span>
+        <span class="n">diff</span> <span class="o">=</span> <span class="mf">1.0</span>
+        <span class="n">_iter</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">while</span> <span class="n">diff</span> <span class="o">&gt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">_tol_em</span> <span class="ow">and</span> <span class="n">_iter</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">_max_em_iter</span><span class="p">:</span>
+            <span class="n">last_projection_masked</span> <span class="o">=</span> <span class="n">projection_masked</span>
+            <span class="c1"># Set transformed data to compute eigenvalues</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">transformed_data</span> <span class="o">=</span> <span class="n">data</span>
+            <span class="c1"># Call correct eig function here</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_compute_eig</span><span class="p">()</span>
+            <span class="c1"># Call function to compute factors and projection</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_compute_pca_from_eig</span><span class="p">()</span>
+            <span class="n">projection</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">project</span><span class="p">(</span><span class="n">transform</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+                                                 <span class="n">unweight</span><span class="o">=</span><span class="kc">False</span><span class="p">))</span>
+            <span class="n">projection_masked</span> <span class="o">=</span> <span class="n">projection</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span>
+            <span class="n">data</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span> <span class="o">=</span> <span class="n">projection_masked</span>
+            <span class="n">delta</span> <span class="o">=</span> <span class="n">last_projection_masked</span> <span class="o">-</span> <span class="n">projection_masked</span>
+            <span class="n">diff</span> <span class="o">=</span> <span class="n">_norm</span><span class="p">(</span><span class="n">delta</span><span class="p">)</span> <span class="o">/</span> <span class="n">_norm</span><span class="p">(</span><span class="n">projection_masked</span><span class="p">)</span>
+            <span class="n">_iter</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="c1"># Must copy to avoid overwriting original data since replacing values</span>
+        <span class="n">data</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_adjusted_data</span> <span class="o">+</span> <span class="mf">0.0</span>
+        <span class="n">projection</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">project</span><span class="p">())</span>
+        <span class="n">data</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span> <span class="o">=</span> <span class="n">projection</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span>
+
+        <span class="k">return</span> <span class="n">data</span>
+
+    <span class="k">def</span> <span class="nf">_compute_pca_from_eig</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Compute relevant statistics after eigenvalues have been computed</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Ensure sorted largest to smallest</span>
+        <span class="n">vals</span><span class="p">,</span> <span class="n">vecs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">eigenvals</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">eigenvecs</span>
+        <span class="n">indices</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">vals</span><span class="p">)</span>
+        <span class="n">indices</span> <span class="o">=</span> <span class="n">indices</span><span class="p">[::</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+        <span class="n">vals</span> <span class="o">=</span> <span class="n">vals</span><span class="p">[</span><span class="n">indices</span><span class="p">]</span>
+        <span class="n">vecs</span> <span class="o">=</span> <span class="n">vecs</span><span class="p">[:,</span> <span class="n">indices</span><span class="p">]</span>
+        <span class="k">if</span> <span class="p">(</span><span class="n">vals</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">any</span><span class="p">():</span>
+            <span class="c1"># Discard and warn</span>
+            <span class="n">num_good</span> <span class="o">=</span> <span class="n">vals</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">-</span> <span class="p">(</span><span class="n">vals</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
+            <span class="k">if</span> <span class="n">num_good</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ncomp</span><span class="p">:</span>
+                <span class="kn">import</span> <span class="nn">warnings</span>
+
+                <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="s1">&#39;Only </span><span class="si">{num:d}</span><span class="s1"> eigenvalues are positive.  &#39;</span>
+                              <span class="s1">&#39;This is the maximum number of components &#39;</span>
+                              <span class="s1">&#39;that can be extracted.&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">num</span><span class="o">=</span><span class="n">num_good</span><span class="p">),</span>
+                              <span class="n">EstimationWarning</span><span class="p">)</span>
+
+                <span class="bp">self</span><span class="o">.</span><span class="n">_ncomp</span> <span class="o">=</span> <span class="n">num_good</span>
+                <span class="n">vals</span><span class="p">[</span><span class="n">num_good</span><span class="p">:]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">finfo</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span><span class="o">.</span><span class="n">tiny</span>
+        <span class="c1"># Use ncomp for the remaining calculations</span>
+        <span class="n">vals</span> <span class="o">=</span> <span class="n">vals</span><span class="p">[:</span><span class="bp">self</span><span class="o">.</span><span class="n">_ncomp</span><span class="p">]</span>
+        <span class="n">vecs</span> <span class="o">=</span> <span class="n">vecs</span><span class="p">[:,</span> <span class="p">:</span><span class="bp">self</span><span class="o">.</span><span class="n">_ncomp</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">eigenvals</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">eigenvecs</span> <span class="o">=</span> <span class="n">vals</span><span class="p">,</span> <span class="n">vecs</span>
+        <span class="c1"># Select correct number of components to return</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">scores</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">factors</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">transformed_data</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">vecs</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">loadings</span> <span class="o">=</span> <span class="n">vecs</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">coeff</span> <span class="o">=</span> <span class="n">vecs</span><span class="o">.</span><span class="n">T</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_normalize</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">coeff</span> <span class="o">=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">coeff</span><span class="o">.</span><span class="n">T</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">vals</span><span class="p">))</span><span class="o">.</span><span class="n">T</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">factors</span> <span class="o">/=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">vals</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">scores</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">factors</span>
+
+    <span class="k">def</span> <span class="nf">_compute_rsquare_and_ic</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Final statistics to compute</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># TSS and related calculations</span>
+        <span class="c1"># TODO: This needs careful testing, with and without weights,</span>
+        <span class="c1">#   gls, standardized and demean</span>
+        <span class="n">weights</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">weights</span>
+        <span class="n">ss_data</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">transformed_data</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">weights</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_tss_indiv</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">ss_data</span> <span class="o">**</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_tss</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_tss_indiv</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_ess</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_ncomp</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_ess_indiv</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="bp">self</span><span class="o">.</span><span class="n">_ncomp</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_nvar</span><span class="p">))</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_ncomp</span> <span class="o">+</span> <span class="mi">1</span><span class="p">):</span>
+            <span class="c1"># Projection in the same space as transformed_data</span>
+            <span class="n">projection</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">project</span><span class="p">(</span><span class="n">ncomp</span><span class="o">=</span><span class="n">i</span><span class="p">,</span> <span class="n">transform</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">unweight</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+            <span class="n">indiv_rss</span> <span class="o">=</span> <span class="p">(</span><span class="n">projection</span> <span class="o">**</span> <span class="mi">2</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+            <span class="n">rss</span> <span class="o">=</span> <span class="n">indiv_rss</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_ess</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_tss</span> <span class="o">-</span> <span class="n">rss</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_ess_indiv</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="p">:]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_tss_indiv</span> <span class="o">-</span> <span class="n">indiv_rss</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">rsquare</span> <span class="o">=</span> <span class="mf">1.0</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ess</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">_tss</span>
+        <span class="c1"># Information Criteria</span>
+        <span class="n">ess</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ess</span>
+        <span class="n">invalid</span> <span class="o">=</span> <span class="n">ess</span> <span class="o">&lt;=</span> <span class="mi">0</span>  <span class="c1"># Prevent log issues of 0</span>
+        <span class="k">if</span> <span class="n">invalid</span><span class="o">.</span><span class="n">any</span><span class="p">():</span>
+            <span class="n">last_obs</span> <span class="o">=</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">invalid</span><span class="p">)[</span><span class="mi">0</span><span class="p">])</span><span class="o">.</span><span class="n">min</span><span class="p">()</span>
+            <span class="n">ess</span> <span class="o">=</span> <span class="n">ess</span><span class="p">[:</span><span class="n">last_obs</span><span class="p">]</span>
+
+        <span class="n">log_ess</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">ess</span><span class="p">)</span>
+        <span class="n">r</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">ess</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+
+        <span class="n">nobs</span><span class="p">,</span> <span class="n">nvar</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_nobs</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_nvar</span>
+        <span class="n">sum_to_prod</span> <span class="o">=</span> <span class="p">(</span><span class="n">nobs</span> <span class="o">+</span> <span class="n">nvar</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="n">nobs</span> <span class="o">*</span> <span class="n">nvar</span><span class="p">)</span>
+        <span class="n">min_dim</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">nobs</span><span class="p">,</span> <span class="n">nvar</span><span class="p">)</span>
+        <span class="n">penalties</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">sum_to_prod</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="mf">1.0</span> <span class="o">/</span> <span class="n">sum_to_prod</span><span class="p">),</span>
+                              <span class="n">sum_to_prod</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">min_dim</span><span class="p">),</span>
+                              <span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">min_dim</span><span class="p">)</span> <span class="o">/</span> <span class="n">min_dim</span><span class="p">])</span>
+        <span class="n">penalties</span> <span class="o">=</span> <span class="n">penalties</span><span class="p">[:,</span> <span class="kc">None</span><span class="p">]</span>
+        <span class="n">ic</span> <span class="o">=</span> <span class="n">log_ess</span> <span class="o">+</span> <span class="n">r</span> <span class="o">*</span> <span class="n">penalties</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">ic</span> <span class="o">=</span> <span class="n">ic</span><span class="o">.</span><span class="n">T</span>
+
+<div class="viewcode-block" id="PCA.project"><a class="viewcode-back" href="../../../generated/statsmodels.multivariate.pca.PCA.project.html#statsmodels.multivariate.pca.PCA.project">[docs]</a>    <span class="k">def</span> <span class="nf">project</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ncomp</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">transform</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">unweight</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Project series onto a specific number of factors</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        ncomp : int, optional</span>
+<span class="sd">            Number of components to use.  If omitted, all components</span>
+<span class="sd">            initially computed are used.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        projection : array</span>
+<span class="sd">            nobs by nvar array of the projection onto ncomp factors</span>
+<span class="sd">        transform : bool</span>
+<span class="sd">            Flag indicating whether to return the projection in the original</span>
+<span class="sd">            space of the data (True, default) or in the space of the</span>
+<span class="sd">            standardized/demeaned data</span>
+<span class="sd">        unweight : bool</span>
+<span class="sd">            Flag indicating whether to undo the effects of the estimation</span>
+<span class="sd">            weights</span>
+
+<span class="sd">        Notes</span>
+<span class="sd">        -----</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Projection needs to be scaled/shifted based on inputs</span>
+        <span class="n">ncomp</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ncomp</span> <span class="k">if</span> <span class="n">ncomp</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">ncomp</span>
+        <span class="k">if</span> <span class="n">ncomp</span> <span class="o">&gt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ncomp</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;ncomp must be smaller than the number of &#39;</span>
+                             <span class="s1">&#39;components computed.&#39;</span><span class="p">)</span>
+        <span class="n">factors</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">factors</span><span class="p">)</span>
+        <span class="n">coeff</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">coeff</span><span class="p">)</span>
+
+        <span class="n">projection</span> <span class="o">=</span> <span class="n">factors</span><span class="p">[:,</span> <span class="p">:</span><span class="n">ncomp</span><span class="p">]</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">coeff</span><span class="p">[:</span><span class="n">ncomp</span><span class="p">,</span> <span class="p">:])</span>
+        <span class="k">if</span> <span class="n">transform</span> <span class="ow">or</span> <span class="n">unweight</span><span class="p">:</span>
+            <span class="n">projection</span> <span class="o">*=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">weights</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">transform</span><span class="p">:</span>
+            <span class="c1"># Remove the weights, which do not depend on transformation</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_standardize</span><span class="p">:</span>
+                <span class="n">projection</span> <span class="o">*=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sigma</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_standardize</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">_demean</span><span class="p">:</span>
+                <span class="n">projection</span> <span class="o">+=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_mu</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_index</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">projection</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">projection</span><span class="p">,</span>
+                                      <span class="n">columns</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_columns</span><span class="p">,</span>
+                                      <span class="n">index</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_index</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">projection</span></div>
+
+    <span class="k">def</span> <span class="nf">_to_pandas</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Returns pandas DataFrames for all values</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">index</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_index</span>
+        <span class="c1"># Principal Components</span>
+        <span class="n">num_zeros</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ceil</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">log10</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_ncomp</span><span class="p">))</span>
+        <span class="n">comp_str</span> <span class="o">=</span> <span class="s1">&#39;comp_{0:0&#39;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">num_zeros</span><span class="p">))</span> <span class="o">+</span> <span class="s1">&#39;d}&#39;</span>
+        <span class="n">cols</span> <span class="o">=</span> <span class="p">[</span><span class="n">comp_str</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">i</span><span class="p">)</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_ncomp</span><span class="p">)]</span>
+        <span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">factors</span><span class="p">,</span> <span class="n">columns</span><span class="o">=</span><span class="n">cols</span><span class="p">,</span> <span class="n">index</span><span class="o">=</span><span class="n">index</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">scores</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">factors</span> <span class="o">=</span> <span class="n">df</span>
+        <span class="c1"># Projections</span>
+        <span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">projection</span><span class="p">,</span>
+                          <span class="n">columns</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_columns</span><span class="p">,</span>
+                          <span class="n">index</span><span class="o">=</span><span class="n">index</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">projection</span> <span class="o">=</span> <span class="n">df</span>
+        <span class="c1"># Weights</span>
+        <span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">coeff</span><span class="p">,</span> <span class="n">index</span><span class="o">=</span><span class="n">cols</span><span class="p">,</span>
+                          <span class="n">columns</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_columns</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">coeff</span> <span class="o">=</span> <span class="n">df</span>
+        <span class="c1"># Loadings</span>
+        <span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">loadings</span><span class="p">,</span>
+                          <span class="n">index</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_columns</span><span class="p">,</span> <span class="n">columns</span><span class="o">=</span><span class="n">cols</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">loadings</span> <span class="o">=</span> <span class="n">df</span>
+        <span class="c1"># eigenvals</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">eigenvals</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">eigenvals</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">eigenvals</span><span class="o">.</span><span class="n">name</span> <span class="o">=</span> <span class="s1">&#39;eigenvals&#39;</span>
+        <span class="c1"># eigenvecs</span>
+        <span class="n">vec_str</span> <span class="o">=</span> <span class="n">comp_str</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s1">&#39;comp&#39;</span><span class="p">,</span> <span class="s1">&#39;eigenvec&#39;</span><span class="p">)</span>
+        <span class="n">cols</span> <span class="o">=</span> <span class="p">[</span><span class="n">vec_str</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">i</span><span class="p">)</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">eigenvecs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">])]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">eigenvecs</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">eigenvecs</span><span class="p">,</span> <span class="n">columns</span><span class="o">=</span><span class="n">cols</span><span class="p">)</span>
+        <span class="c1"># R2</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">rsquare</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">rsquare</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">rsquare</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">name</span> <span class="o">=</span> <span class="s1">&#39;ncomp&#39;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">rsquare</span><span class="o">.</span><span class="n">name</span> <span class="o">=</span> <span class="s1">&#39;rsquare&#39;</span>
+        <span class="c1"># IC</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">ic</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ic</span><span class="p">,</span> <span class="n">columns</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;IC_p1&#39;</span><span class="p">,</span> <span class="s1">&#39;IC_p2&#39;</span><span class="p">,</span> <span class="s1">&#39;IC_p3&#39;</span><span class="p">])</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">ic</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">name</span> <span class="o">=</span> <span class="s1">&#39;ncomp&#39;</span>
+
+<div class="viewcode-block" id="PCA.plot_scree"><a class="viewcode-back" href="../../../generated/statsmodels.multivariate.pca.PCA.plot_scree.html#statsmodels.multivariate.pca.PCA.plot_scree">[docs]</a>    <span class="k">def</span> <span class="nf">plot_scree</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ncomp</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">log_scale</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+                   <span class="n">cumulative</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">ax</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Plot of the ordered eigenvalues</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        ncomp : int, optional</span>
+<span class="sd">            Number of components ot include in the plot.  If None, will</span>
+<span class="sd">            included the same as the number of components computed</span>
+<span class="sd">        log_scale : boot, optional</span>
+<span class="sd">            Flag indicating whether ot use a log scale for the y-axis</span>
+<span class="sd">        cumulative : bool, optional</span>
+<span class="sd">            Flag indicating whether to plot the eigenvalues or cumulative</span>
+<span class="sd">            eigenvalues</span>
+<span class="sd">        ax : Matplotlib axes instance, optional</span>
+<span class="sd">            An axes on which to draw the graph.  If omitted, new a figure</span>
+<span class="sd">            is created</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        fig : figure</span>
+<span class="sd">            Handle to the figure</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="kn">import</span> <span class="nn">statsmodels.graphics.utils</span> <span class="k">as</span> <span class="nn">gutils</span>
+
+        <span class="n">fig</span><span class="p">,</span> <span class="n">ax</span> <span class="o">=</span> <span class="n">gutils</span><span class="o">.</span><span class="n">create_mpl_ax</span><span class="p">(</span><span class="n">ax</span><span class="p">)</span>
+
+        <span class="n">ncomp</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ncomp</span> <span class="k">if</span> <span class="n">ncomp</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">ncomp</span>
+        <span class="n">vals</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">eigenvals</span><span class="p">)</span>
+        <span class="n">vals</span> <span class="o">=</span> <span class="n">vals</span><span class="p">[:</span><span class="bp">self</span><span class="o">.</span><span class="n">_ncomp</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">cumulative</span><span class="p">:</span>
+            <span class="n">vals</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">cumsum</span><span class="p">(</span><span class="n">vals</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">log_scale</span><span class="p">:</span>
+            <span class="n">ax</span><span class="o">.</span><span class="n">set_yscale</span><span class="p">(</span><span class="s1">&#39;log&#39;</span><span class="p">)</span>
+        <span class="n">ax</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">ncomp</span><span class="p">),</span> <span class="n">vals</span><span class="p">[:</span> <span class="n">ncomp</span><span class="p">],</span> <span class="s1">&#39;bo&#39;</span><span class="p">)</span>
+        <span class="n">ax</span><span class="o">.</span><span class="n">autoscale</span><span class="p">(</span><span class="n">tight</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="n">xlim</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">ax</span><span class="o">.</span><span class="n">get_xlim</span><span class="p">())</span>
+        <span class="n">sp</span> <span class="o">=</span> <span class="n">xlim</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">-</span> <span class="n">xlim</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">xlim</span> <span class="o">+=</span> <span class="mf">0.02</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="o">-</span><span class="n">sp</span><span class="p">,</span> <span class="n">sp</span><span class="p">])</span>
+        <span class="n">ax</span><span class="o">.</span><span class="n">set_xlim</span><span class="p">(</span><span class="n">xlim</span><span class="p">)</span>
+
+        <span class="n">ylim</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">ax</span><span class="o">.</span><span class="n">get_ylim</span><span class="p">())</span>
+        <span class="n">scale</span> <span class="o">=</span> <span class="mf">0.02</span>
+        <span class="k">if</span> <span class="n">log_scale</span><span class="p">:</span>
+            <span class="n">sp</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">ylim</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">/</span> <span class="n">ylim</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+            <span class="n">ylim</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">ylim</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="o">-</span> <span class="n">scale</span> <span class="o">*</span> <span class="n">sp</span><span class="p">,</span>
+                                    <span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">ylim</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span> <span class="o">+</span> <span class="n">scale</span> <span class="o">*</span> <span class="n">sp</span><span class="p">]))</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">sp</span> <span class="o">=</span> <span class="n">ylim</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">-</span> <span class="n">ylim</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="n">ylim</span> <span class="o">+=</span> <span class="n">scale</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="o">-</span><span class="n">sp</span><span class="p">,</span> <span class="n">sp</span><span class="p">])</span>
+        <span class="n">ax</span><span class="o">.</span><span class="n">set_ylim</span><span class="p">(</span><span class="n">ylim</span><span class="p">)</span>
+        <span class="n">ax</span><span class="o">.</span><span class="n">set_title</span><span class="p">(</span><span class="s1">&#39;Scree Plot&#39;</span><span class="p">)</span>
+        <span class="n">ax</span><span class="o">.</span><span class="n">set_ylabel</span><span class="p">(</span><span class="s1">&#39;Eigenvalue&#39;</span><span class="p">)</span>
+        <span class="n">ax</span><span class="o">.</span><span class="n">set_xlabel</span><span class="p">(</span><span class="s1">&#39;Component Number&#39;</span><span class="p">)</span>
+        <span class="n">fig</span><span class="o">.</span><span class="n">tight_layout</span><span class="p">()</span>
+
+        <span class="k">return</span> <span class="n">fig</span></div>
+
+<div class="viewcode-block" id="PCA.plot_rsquare"><a class="viewcode-back" href="../../../generated/statsmodels.multivariate.pca.PCA.plot_rsquare.html#statsmodels.multivariate.pca.PCA.plot_rsquare">[docs]</a>    <span class="k">def</span> <span class="nf">plot_rsquare</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ncomp</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">ax</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Box plots of the individual series R-square against the number of PCs</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        ncomp : int, optional</span>
+<span class="sd">            Number of components ot include in the plot.  If None, will</span>
+<span class="sd">            plot the minimum of 10 or the number of computed components</span>
+<span class="sd">        ax : Matplotlib axes instance, optional</span>
+<span class="sd">            An axes on which to draw the graph.  If omitted, new a figure</span>
+<span class="sd">            is created</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        fig : figure</span>
+<span class="sd">            Handle to the figure</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="kn">import</span> <span class="nn">statsmodels.graphics.utils</span> <span class="k">as</span> <span class="nn">gutils</span>
+
+        <span class="n">fig</span><span class="p">,</span> <span class="n">ax</span> <span class="o">=</span> <span class="n">gutils</span><span class="o">.</span><span class="n">create_mpl_ax</span><span class="p">(</span><span class="n">ax</span><span class="p">)</span>
+
+        <span class="n">ncomp</span> <span class="o">=</span> <span class="mi">10</span> <span class="k">if</span> <span class="n">ncomp</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">ncomp</span>
+        <span class="n">ncomp</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">ncomp</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ncomp</span><span class="p">)</span>
+        <span class="c1"># R2s in rows, series in columns</span>
+        <span class="n">r2s</span> <span class="o">=</span> <span class="mf">1.0</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ess_indiv</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">_tss_indiv</span>
+        <span class="n">r2s</span> <span class="o">=</span> <span class="n">r2s</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span>
+        <span class="n">r2s</span> <span class="o">=</span> <span class="n">r2s</span><span class="p">[:</span><span class="n">ncomp</span><span class="p">]</span>
+        <span class="n">ax</span><span class="o">.</span><span class="n">boxplot</span><span class="p">(</span><span class="n">r2s</span><span class="o">.</span><span class="n">T</span><span class="p">)</span>
+        <span class="n">ax</span><span class="o">.</span><span class="n">set_title</span><span class="p">(</span><span class="s1">&#39;Individual Input $R^2$&#39;</span><span class="p">)</span>
+        <span class="n">ax</span><span class="o">.</span><span class="n">set_ylabel</span><span class="p">(</span><span class="s1">&#39;$R^2$&#39;</span><span class="p">)</span>
+        <span class="n">ax</span><span class="o">.</span><span class="n">set_xlabel</span><span class="p">(</span><span class="s1">&#39;Number of Included Principal Components&#39;</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">fig</span></div></div>
+
+
+<div class="viewcode-block" id="pca"><a class="viewcode-back" href="../../../generated/statsmodels.multivariate.pca.pca.html#statsmodels.multivariate.pca.pca">[docs]</a><span class="k">def</span> <span class="nf">pca</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">ncomp</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">standardize</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">demean</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="n">gls</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">weights</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s1">&#39;svd&#39;</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Principal Component Analysis</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    data : array</span>
+<span class="sd">        Variables in columns, observations in rows.</span>
+<span class="sd">    ncomp : int, optional</span>
+<span class="sd">        Number of components to return.  If None, returns the as many as the</span>
+<span class="sd">        smaller to the number of rows or columns of data.</span>
+<span class="sd">    standardize: bool, optional</span>
+<span class="sd">        Flag indicating to use standardized data with mean 0 and unit</span>
+<span class="sd">        variance.  standardized being True implies demean.</span>
+<span class="sd">    demean : bool, optional</span>
+<span class="sd">        Flag indicating whether to demean data before computing principal</span>
+<span class="sd">        components.  demean is ignored if standardize is True.</span>
+<span class="sd">    normalize : bool , optional</span>
+<span class="sd">        Indicates whether th normalize the factors to have unit inner</span>
+<span class="sd">        product.  If False, the loadings will have unit inner product.</span>
+<span class="sd">    weights : array, optional</span>
+<span class="sd">        Series weights to use after transforming data according to standardize</span>
+<span class="sd">        or demean when computing the principal components.</span>
+<span class="sd">    gls : bool, optional</span>
+<span class="sd">        Flag indicating to implement a two-step GLS estimator where</span>
+<span class="sd">        in the first step principal components are used to estimate residuals,</span>
+<span class="sd">        and then the inverse residual variance is used as a set of weights to</span>
+<span class="sd">        estimate the final principal components</span>
+<span class="sd">    method : str, optional</span>
+<span class="sd">        Determines the linear algebra routine uses.  &#39;eig&#39;, the default,</span>
+<span class="sd">        uses an eigenvalue decomposition. &#39;svd&#39; uses a singular value</span>
+<span class="sd">        decomposition.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    factors : array or DataFrame</span>
+<span class="sd">        nobs by ncomp array of of principal components (also known as scores)</span>
+<span class="sd">    loadings : array or DataFrame</span>
+<span class="sd">        ncomp by nvar array of  principal component loadings for constructing</span>
+<span class="sd">        the factors</span>
+<span class="sd">    projection : array or DataFrame</span>
+<span class="sd">        nobs by var array containing the projection of the data onto the ncomp</span>
+<span class="sd">        estimated factors</span>
+<span class="sd">    rsquare : array or Series</span>
+<span class="sd">        ncomp array where the element in the ith position is the R-square</span>
+<span class="sd">        of including the fist i principal components.  The values are</span>
+<span class="sd">        calculated on the transformed data, not the original data.</span>
+<span class="sd">    ic : array or DataFrame</span>
+<span class="sd">        ncomp by 3 array containing the Bai and Ng (2003) Information</span>
+<span class="sd">        criteria.  Each column is a different criteria, and each row</span>
+<span class="sd">        represents the number of included factors.</span>
+<span class="sd">    eigenvals : array or Series</span>
+<span class="sd">        nvar array of eigenvalues</span>
+<span class="sd">    eigenvecs : array or DataFrame</span>
+<span class="sd">        nvar by nvar array of eigenvectors</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    This is a simple function wrapper around the PCA class. See PCA for</span>
+<span class="sd">    more information and additional methods.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">pc</span> <span class="o">=</span> <span class="n">PCA</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">ncomp</span><span class="o">=</span><span class="n">ncomp</span><span class="p">,</span> <span class="n">standardize</span><span class="o">=</span><span class="n">standardize</span><span class="p">,</span> <span class="n">demean</span><span class="o">=</span><span class="n">demean</span><span class="p">,</span>
+             <span class="n">normalize</span><span class="o">=</span><span class="n">normalize</span><span class="p">,</span> <span class="n">gls</span><span class="o">=</span><span class="n">gls</span><span class="p">,</span> <span class="n">weights</span><span class="o">=</span><span class="n">weights</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="n">method</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="p">(</span><span class="n">pc</span><span class="o">.</span><span class="n">factors</span><span class="p">,</span> <span class="n">pc</span><span class="o">.</span><span class="n">loadings</span><span class="p">,</span> <span class="n">pc</span><span class="o">.</span><span class="n">projection</span><span class="p">,</span> <span class="n">pc</span><span class="o">.</span><span class="n">rsquare</span><span class="p">,</span> <span class="n">pc</span><span class="o">.</span><span class="n">ic</span><span class="p">,</span>
+            <span class="n">pc</span><span class="o">.</span><span class="n">eigenvals</span><span class="p">,</span> <span class="n">pc</span><span class="o">.</span><span class="n">eigenvecs</span><span class="p">)</span></div>
+</pre></div>
+
+
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../../../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" />
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer" role="contentinfo">
+        &#169; Copyright 2009-2018, Josef Perktold, Skipper Seabold, Jonathan Taylor, statsmodels-developers.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 2.1.2.
+    </div>
+  </body>
+</html>

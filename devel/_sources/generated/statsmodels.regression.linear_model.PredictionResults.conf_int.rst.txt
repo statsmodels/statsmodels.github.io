@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.regression.linear\_model.PredictionResults.conf\_int
+================================================================
+
+.. currentmodule:: statsmodels.regression.linear_model
+
+.. automethod:: PredictionResults.conf_int

@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.discrete.discrete\_model.BinaryModel.pdf
+====================================================
+
+.. currentmodule:: statsmodels.discrete.discrete_model
+
+.. automethod:: BinaryModel.pdf

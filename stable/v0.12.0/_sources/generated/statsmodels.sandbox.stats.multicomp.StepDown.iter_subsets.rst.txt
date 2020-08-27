@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.sandbox.stats.multicomp.StepDown.iter\_subsets
+==========================================================
+
+.. currentmodule:: statsmodels.sandbox.stats.multicomp
+
+.. automethod:: StepDown.iter_subsets

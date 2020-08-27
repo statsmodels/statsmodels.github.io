@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.discrete.count\_model.ZeroInflatedNegativeBinomialResults.t\_test\_pairwise
+=======================================================================================
+
+.. currentmodule:: statsmodels.discrete.count_model
+
+.. automethod:: ZeroInflatedNegativeBinomialResults.t_test_pairwise

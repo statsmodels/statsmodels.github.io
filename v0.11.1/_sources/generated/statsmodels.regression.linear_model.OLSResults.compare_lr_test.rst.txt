@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.regression.linear\_model.OLSResults.compare\_lr\_test
+=================================================================
+
+.. currentmodule:: statsmodels.regression.linear_model
+
+.. automethod:: OLSResults.compare_lr_test

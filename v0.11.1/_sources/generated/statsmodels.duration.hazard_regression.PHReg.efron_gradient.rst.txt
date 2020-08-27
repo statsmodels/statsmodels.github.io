@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.duration.hazard\_regression.PHReg.efron\_gradient
+=============================================================
+
+.. currentmodule:: statsmodels.duration.hazard_regression
+
+.. automethod:: PHReg.efron_gradient

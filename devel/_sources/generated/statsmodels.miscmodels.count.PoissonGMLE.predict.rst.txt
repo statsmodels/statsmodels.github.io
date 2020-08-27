@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.miscmodels.count.PoissonGMLE.predict
+================================================
+
+.. currentmodule:: statsmodels.miscmodels.count
+
+.. automethod:: PoissonGMLE.predict

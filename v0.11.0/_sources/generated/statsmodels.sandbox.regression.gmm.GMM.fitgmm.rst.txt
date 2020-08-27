@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.sandbox.regression.gmm.GMM.fitgmm
+=============================================
+
+.. currentmodule:: statsmodels.sandbox.regression.gmm
+
+.. automethod:: GMM.fitgmm

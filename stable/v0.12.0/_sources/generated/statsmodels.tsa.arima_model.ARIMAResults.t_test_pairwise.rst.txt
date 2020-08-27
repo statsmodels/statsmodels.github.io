@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.tsa.arima\_model.ARIMAResults.t\_test\_pairwise
+===========================================================
+
+.. currentmodule:: statsmodels.tsa.arima_model
+
+.. automethod:: ARIMAResults.t_test_pairwise

@@ -1,0 +1,991 @@
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>statsmodels.stats.sandwich_covariance &mdash; statsmodels 0.6.1 documentation</title>
+    
+    <link rel="stylesheet" href="../../../_static/nature.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../../',
+        VERSION:     '0.6.1',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <link rel="shortcut icon" href="../../../_static/statsmodels_hybi_favico.ico"/>
+    <link rel="author" title="About these documents" href="../../../about.html" />
+    <link rel="top" title="statsmodels 0.6.1 documentation" href="../../../index.html" />
+    <link rel="up" title="Module code" href="../../index.html" />
+<link rel="stylesheet" href="../../_static/facebox.css" type="text/css" />
+<link rel="stylesheet" href="../_static/examples.css" type="text/css" />
+<script type="text/javascript" src="../../../_static/scripts.js">
+</script>
+<script type="text/javascript" src="../../../_static/facebox.js">
+</script>
+
+  </head>
+  <body role="document">
+<div class="headerwrap">
+    <div class = "header">
+        
+        <a href = "../../../index.html">
+<img src="../../../_static/statsmodels_hybi_banner.png" alt="Logo"
+    style="padding-left: 15px"/></a>
+        
+    </div>
+</div>
+
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+<li><a href ="../../../install.html">Install</a></li> &nbsp;|&nbsp;
+<li><a href="https://groups.google.com/group/pystatsmodels?hl=en">Support</a></li> &nbsp;|&nbsp;
+<li><a href="https://github.com/statsmodels/statsmodels/issues">Bugs</a></li> &nbsp;|&nbsp;
+<li><a href="../../../dev/index.html">Develop</a></li> &nbsp;|&nbsp;
+<li><a href="../../../examples/index.html">Examples</a></li> &nbsp;|&nbsp;
+<li><a href="../../../faq.html">FAQ</a></li> &nbsp;|&nbsp;
+
+          <li class="nav-item nav-item-1"><a href="../../index.html" accesskey="U">Module code</a> |</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+
+
+
+
+  <h1>Source code for statsmodels.stats.sandwich_covariance</h1><div class="highlight"><pre>
+<span class="c"># -*- coding: utf-8 -*-</span>
+<span class="sd">&quot;&quot;&quot;Sandwich covariance estimators</span>
+
+
+<span class="sd">Created on Sun Nov 27 14:10:57 2011</span>
+
+<span class="sd">Author: Josef Perktold</span>
+<span class="sd">Author: Skipper Seabold for HCxxx in linear_model.RegressionResults</span>
+<span class="sd">License: BSD-3</span>
+
+<span class="sd">Notes</span>
+<span class="sd">-----</span>
+
+<span class="sd">for calculating it, we have two versions</span>
+
+<span class="sd">version 1: use pinv</span>
+<span class="sd">pinv(x) scale pinv(x)   used currently in linear_model, with scale is</span>
+<span class="sd">1d (or diagonal matrix)</span>
+<span class="sd">(x&#39;x)^(-1) x&#39; scale x (x&#39;x)^(-1),  scale in general is (nobs, nobs) so</span>
+<span class="sd">pretty large</span>
+<span class="sd">general formulas for scale in cluster case are in</span>
+<span class="sd">http://pubs.amstat.org/doi/abstract/10.1198/jbes.2010.07136 which also</span>
+<span class="sd">has the second version</span>
+
+<span class="sd">version 2:</span>
+<span class="sd">(x&#39;x)^(-1) S (x&#39;x)^(-1)    with S = x&#39; scale x,    S is (kvar,kvars),</span>
+<span class="sd">(x&#39;x)^(-1) is available as normalized_covparams.</span>
+
+
+
+<span class="sd">S = sum (x*u) dot (x*u)&#39; = sum x*u*u&#39;*x&#39;  where sum here can aggregate</span>
+<span class="sd">over observations or groups. u is regression residual.</span>
+
+<span class="sd">x is (nobs, k_var)</span>
+<span class="sd">u is (nobs, 1)</span>
+<span class="sd">x*u is (nobs, k_var)</span>
+
+
+<span class="sd">For cluster robust standard errors, we first sum (x*w) over other groups</span>
+<span class="sd">(including time) and then take the dot product (sum of outer products)</span>
+
+<span class="sd">S = sum_g(x*u)&#39; dot sum_g(x*u)</span>
+<span class="sd">For HAC by clusters, we first sum over groups for each time period, and then</span>
+<span class="sd">use HAC on the group sums of (x*w).</span>
+<span class="sd">If we have several groups, we have to sum first over all relevant groups, and</span>
+<span class="sd">then take the outer product sum. This can be done by summing using indicator</span>
+<span class="sd">functions or matrices or with explicit loops. Alternatively we calculate</span>
+<span class="sd">separate covariance matrices for each group, sum them and subtract the</span>
+<span class="sd">duplicate counted intersection.</span>
+
+<span class="sd">Not checked in details yet: degrees of freedom or small sample correction</span>
+<span class="sd">factors, see (two) references (?)</span>
+
+
+<span class="sd">This is the general case for MLE and GMM also</span>
+
+<span class="sd">in MLE     hessian H, outerproduct of jacobian S,   cov_hjjh = HJJH,</span>
+<span class="sd">which reduces to the above in the linear case, but can be used</span>
+<span class="sd">generally, e.g. in discrete, and is misnomed in GenericLikelihoodModel</span>
+
+<span class="sd">in GMM it&#39;s similar but I would have to look up the details, (it comes</span>
+<span class="sd">out in sandwich form by default, it&#39;s in the sandbox), standard Newey</span>
+<span class="sd">West or similar are on the covariance matrix of the moment conditions</span>
+
+<span class="sd">quasi-MLE: MLE with mis-specified model where parameter estimates are</span>
+<span class="sd">fine (consistent ?) but cov_params needs to be adjusted similar or</span>
+<span class="sd">same as in sandwiches. (I didn&#39;t go through any details yet.)</span>
+
+<span class="sd">TODO</span>
+<span class="sd">----</span>
+<span class="sd">* small sample correction factors, Done for cluster, not yet for HAC</span>
+<span class="sd">* automatic lag-length selection for Newey-West HAC,</span>
+<span class="sd">  -&gt; added: nlag = floor[4(T/100)^(2/9)]  Reference: xtscc paper, Newey-West</span>
+<span class="sd">     note this will not be optimal in the panel context, see Peterson</span>
+<span class="sd">* HAC should maybe return the chosen nlags</span>
+<span class="sd">* get consistent notation, varies by paper, S, scale, sigma?</span>
+<span class="sd">* replace diag(hat_matrix) calculations in cov_hc2, cov_hc3</span>
+
+
+<span class="sd">References</span>
+<span class="sd">----------</span>
+<span class="sd">John C. Driscoll and Aart C. Kraay, “Consistent Covariance Matrix Estimation</span>
+<span class="sd">with Spatially Dependent Panel Data,” Review of Economics and Statistics 80,</span>
+<span class="sd">no. 4 (1998): 549-560.</span>
+
+<span class="sd">Daniel Hoechle, &quot;Robust Standard Errors for Panel Regressions with</span>
+<span class="sd">Cross-Sectional Dependence&quot;, The Stata Journal</span>
+
+<span class="sd">Mitchell A. Petersen, “Estimating Standard Errors in Finance Panel Data</span>
+<span class="sd">Sets: Comparing Approaches,” Review of Financial Studies 22, no. 1</span>
+<span class="sd">(January 1, 2009): 435 -480.</span>
+
+<span class="sd">A. Colin Cameron, Jonah B. Gelbach, and Douglas L. Miller, “Robust Inference</span>
+<span class="sd">With Multiway Clustering,” Journal of Business and Economic Statistics 29</span>
+<span class="sd">(April 2011): 238-249.</span>
+
+
+<span class="sd">not used yet:</span>
+<span class="sd">A.C. Cameron, J.B. Gelbach, and D.L. Miller, “Bootstrap-based improvements</span>
+<span class="sd">for inference with clustered errors,” The Review of Economics and</span>
+<span class="sd">Statistics 90, no. 3 (2008): 414–427.</span>
+
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="kn">from</span> <span class="nn">statsmodels.compat.python</span> <span class="kn">import</span> <span class="nb">range</span>
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="kn">as</span> <span class="nn">np</span>
+
+<span class="kn">from</span> <span class="nn">statsmodels.tools.grouputils</span> <span class="kn">import</span> <span class="n">Group</span>
+<span class="kn">from</span> <span class="nn">statsmodels.stats.moment_helpers</span> <span class="kn">import</span> <span class="n">se_cov</span>
+
+<span class="n">__all__</span> <span class="o">=</span> <span class="p">[</span><span class="s">&#39;cov_cluster&#39;</span><span class="p">,</span> <span class="s">&#39;cov_cluster_2groups&#39;</span><span class="p">,</span> <span class="s">&#39;cov_hac&#39;</span><span class="p">,</span> <span class="s">&#39;cov_nw_panel&#39;</span><span class="p">,</span>
+           <span class="s">&#39;cov_white_simple&#39;</span><span class="p">,</span>
+           <span class="s">&#39;cov_hc0&#39;</span><span class="p">,</span> <span class="s">&#39;cov_hc1&#39;</span><span class="p">,</span> <span class="s">&#39;cov_hc2&#39;</span><span class="p">,</span> <span class="s">&#39;cov_hc3&#39;</span><span class="p">,</span>
+           <span class="s">&#39;se_cov&#39;</span><span class="p">,</span> <span class="s">&#39;weights_bartlett&#39;</span><span class="p">,</span> <span class="s">&#39;weights_uniform&#39;</span><span class="p">]</span>
+
+
+
+
+<span class="c">#----------- from linear_model.RegressionResults</span>
+<span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">    HC0_se</span>
+<span class="sd">        White&#39;s (1980) heteroskedasticity robust standard errors.</span>
+<span class="sd">        Defined as sqrt(diag(X.T X)^(-1)X.T diag(e_i^(2)) X(X.T X)^(-1)</span>
+<span class="sd">        where e_i = resid[i]</span>
+<span class="sd">        HC0_se is a property.  It is not evaluated until it is called.</span>
+<span class="sd">        When it is called the RegressionResults instance will then have</span>
+<span class="sd">        another attribute cov_HC0, which is the full heteroskedasticity</span>
+<span class="sd">        consistent covariance matrix and also `het_scale`, which is in</span>
+<span class="sd">        this case just resid**2.  HCCM matrices are only appropriate for OLS.</span>
+<span class="sd">    HC1_se</span>
+<span class="sd">        MacKinnon and White&#39;s (1985) alternative heteroskedasticity robust</span>
+<span class="sd">        standard errors.</span>
+<span class="sd">        Defined as sqrt(diag(n/(n-p)*HC_0)</span>
+<span class="sd">        HC1_se is a property.  It is not evaluated until it is called.</span>
+<span class="sd">        When it is called the RegressionResults instance will then have</span>
+<span class="sd">        another attribute cov_HC1, which is the full HCCM and also `het_scale`,</span>
+<span class="sd">        which is in this case n/(n-p)*resid**2.  HCCM matrices are only</span>
+<span class="sd">        appropriate for OLS.</span>
+<span class="sd">    HC2_se</span>
+<span class="sd">        MacKinnon and White&#39;s (1985) alternative heteroskedasticity robust</span>
+<span class="sd">        standard errors.</span>
+<span class="sd">        Defined as (X.T X)^(-1)X.T diag(e_i^(2)/(1-h_ii)) X(X.T X)^(-1)</span>
+<span class="sd">        where h_ii = x_i(X.T X)^(-1)x_i.T</span>
+<span class="sd">        HC2_se is a property.  It is not evaluated until it is called.</span>
+<span class="sd">        When it is called the RegressionResults instance will then have</span>
+<span class="sd">        another attribute cov_HC2, which is the full HCCM and also `het_scale`,</span>
+<span class="sd">        which is in this case is resid^(2)/(1-h_ii).  HCCM matrices are only</span>
+<span class="sd">        appropriate for OLS.</span>
+<span class="sd">    HC3_se</span>
+<span class="sd">        MacKinnon and White&#39;s (1985) alternative heteroskedasticity robust</span>
+<span class="sd">        standard errors.</span>
+<span class="sd">        Defined as (X.T X)^(-1)X.T diag(e_i^(2)/(1-h_ii)^(2)) X(X.T X)^(-1)</span>
+<span class="sd">        where h_ii = x_i(X.T X)^(-1)x_i.T</span>
+<span class="sd">        HC3_se is a property.  It is not evaluated until it is called.</span>
+<span class="sd">        When it is called the RegressionResults instance will then have</span>
+<span class="sd">        another attribute cov_HC3, which is the full HCCM and also `het_scale`,</span>
+<span class="sd">        which is in this case is resid^(2)/(1-h_ii)^(2).  HCCM matrices are</span>
+<span class="sd">        only appropriate for OLS.</span>
+
+<span class="sd">&#39;&#39;&#39;</span>
+
+<span class="k">def</span> <span class="nf">_HCCM</span><span class="p">(</span><span class="n">results</span><span class="p">,</span> <span class="n">scale</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">    sandwich with pinv(x) * diag(scale) * pinv(x).T</span>
+
+<span class="sd">    where pinv(x) = (X&#39;X)^(-1) X</span>
+<span class="sd">    and scale is (nobs,)</span>
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="n">H</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">results</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">pinv_wexog</span><span class="p">,</span>
+        <span class="n">scale</span><span class="p">[:,</span><span class="bp">None</span><span class="p">]</span><span class="o">*</span><span class="n">results</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">pinv_wexog</span><span class="o">.</span><span class="n">T</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">H</span>
+
+<div class="viewcode-block" id="cov_hc0"><a class="viewcode-back" href="../../../generated/statsmodels.stats.sandwich_covariance.cov_hc0.html#statsmodels.stats.sandwich_covariance.cov_hc0">[docs]</a><span class="k">def</span> <span class="nf">cov_hc0</span><span class="p">(</span><span class="n">results</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    See statsmodels.RegressionResults</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">het_scale</span> <span class="o">=</span> <span class="n">results</span><span class="o">.</span><span class="n">resid</span><span class="o">**</span><span class="mi">2</span> <span class="c"># or whitened residuals? only OLS?</span>
+    <span class="n">cov_hc0</span> <span class="o">=</span> <span class="n">_HCCM</span><span class="p">(</span><span class="n">results</span><span class="p">,</span> <span class="n">het_scale</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">cov_hc0</span>
+</div>
+<div class="viewcode-block" id="cov_hc1"><a class="viewcode-back" href="../../../generated/statsmodels.stats.sandwich_covariance.cov_hc1.html#statsmodels.stats.sandwich_covariance.cov_hc1">[docs]</a><span class="k">def</span> <span class="nf">cov_hc1</span><span class="p">(</span><span class="n">results</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    See statsmodels.RegressionResults</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">het_scale</span> <span class="o">=</span> <span class="n">results</span><span class="o">.</span><span class="n">nobs</span><span class="o">/</span><span class="p">(</span><span class="n">results</span><span class="o">.</span><span class="n">df_resid</span><span class="p">)</span><span class="o">*</span><span class="p">(</span><span class="n">results</span><span class="o">.</span><span class="n">resid</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span>
+    <span class="n">cov_hc1</span> <span class="o">=</span> <span class="n">_HCCM</span><span class="p">(</span><span class="n">results</span><span class="p">,</span> <span class="n">het_scale</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">cov_hc1</span>
+</div>
+<div class="viewcode-block" id="cov_hc2"><a class="viewcode-back" href="../../../generated/statsmodels.stats.sandwich_covariance.cov_hc2.html#statsmodels.stats.sandwich_covariance.cov_hc2">[docs]</a><span class="k">def</span> <span class="nf">cov_hc2</span><span class="p">(</span><span class="n">results</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    See statsmodels.RegressionResults</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="c"># probably could be optimized</span>
+    <span class="n">h</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">diag</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">results</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">exog</span><span class="p">,</span>
+                          <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">results</span><span class="o">.</span><span class="n">normalized_cov_params</span><span class="p">,</span>
+                          <span class="n">results</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">exog</span><span class="o">.</span><span class="n">T</span><span class="p">)))</span>
+    <span class="n">het_scale</span> <span class="o">=</span> <span class="n">results</span><span class="o">.</span><span class="n">resid</span><span class="o">**</span><span class="mi">2</span><span class="o">/</span><span class="p">(</span><span class="mi">1</span><span class="o">-</span><span class="n">h</span><span class="p">)</span>
+    <span class="n">cov_hc2_</span> <span class="o">=</span> <span class="n">_HCCM</span><span class="p">(</span><span class="n">results</span><span class="p">,</span> <span class="n">het_scale</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">cov_hc2_</span>
+</div>
+<div class="viewcode-block" id="cov_hc3"><a class="viewcode-back" href="../../../generated/statsmodels.stats.sandwich_covariance.cov_hc3.html#statsmodels.stats.sandwich_covariance.cov_hc3">[docs]</a><span class="k">def</span> <span class="nf">cov_hc3</span><span class="p">(</span><span class="n">results</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    See statsmodels.RegressionResults</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="c"># above probably could be optimized to only calc the diag</span>
+    <span class="n">h</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">diag</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">results</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">exog</span><span class="p">,</span>
+                          <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">results</span><span class="o">.</span><span class="n">normalized_cov_params</span><span class="p">,</span>
+                          <span class="n">results</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">exog</span><span class="o">.</span><span class="n">T</span><span class="p">)))</span>
+    <span class="n">het_scale</span><span class="o">=</span><span class="p">(</span><span class="n">results</span><span class="o">.</span><span class="n">resid</span><span class="o">/</span><span class="p">(</span><span class="mi">1</span><span class="o">-</span><span class="n">h</span><span class="p">))</span><span class="o">**</span><span class="mi">2</span>
+    <span class="n">cov_hc3_</span> <span class="o">=</span> <span class="n">_HCCM</span><span class="p">(</span><span class="n">results</span><span class="p">,</span> <span class="n">het_scale</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">cov_hc3_</span>
+
+<span class="c">#---------------------------------------</span>
+</div>
+<span class="k">def</span> <span class="nf">_get_sandwich_arrays</span><span class="p">(</span><span class="n">results</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Helper function to get scores from results</span>
+
+<span class="sd">    Parameters</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">results</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">):</span>
+        <span class="c"># assume we have jac and hessian_inv</span>
+        <span class="n">jac</span><span class="p">,</span> <span class="n">hessian_inv</span> <span class="o">=</span> <span class="n">results</span>
+        <span class="n">jac</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">jac</span><span class="p">)</span>
+        <span class="n">hessian_inv</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">hessian_inv</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">results</span><span class="p">,</span> <span class="s">&#39;model&#39;</span><span class="p">):</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">results</span><span class="p">,</span> <span class="s">&#39;_results&#39;</span><span class="p">):</span>
+            <span class="c"># remove wrapper</span>
+            <span class="n">results</span> <span class="o">=</span> <span class="n">results</span><span class="o">.</span><span class="n">_results</span>
+        <span class="c"># assume we have a results instance</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">results</span><span class="o">.</span><span class="n">model</span><span class="p">,</span> <span class="s">&#39;jac&#39;</span><span class="p">):</span>
+            <span class="n">xu</span> <span class="o">=</span> <span class="n">results</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">jac</span><span class="p">(</span><span class="n">results</span><span class="o">.</span><span class="n">params</span><span class="p">)</span>
+            <span class="n">hessian_inv</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">inv</span><span class="p">(</span><span class="n">results</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">hessian</span><span class="p">(</span><span class="n">results</span><span class="o">.</span><span class="n">params</span><span class="p">))</span>
+        <span class="k">elif</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">results</span><span class="o">.</span><span class="n">model</span><span class="p">,</span> <span class="s">&#39;score_obs&#39;</span><span class="p">):</span>
+            <span class="n">xu</span> <span class="o">=</span> <span class="n">results</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">score_obs</span><span class="p">(</span><span class="n">results</span><span class="o">.</span><span class="n">params</span><span class="p">)</span>
+            <span class="n">hessian_inv</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">inv</span><span class="p">(</span><span class="n">results</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">hessian</span><span class="p">(</span><span class="n">results</span><span class="o">.</span><span class="n">params</span><span class="p">))</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">xu</span> <span class="o">=</span> <span class="n">results</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">wexog</span> <span class="o">*</span> <span class="n">results</span><span class="o">.</span><span class="n">wresid</span><span class="p">[:,</span> <span class="bp">None</span><span class="p">]</span>
+
+            <span class="n">hessian_inv</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">results</span><span class="o">.</span><span class="n">normalized_cov_params</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&#39;need either tuple of (jac, hessian_inv) or results&#39;</span> <span class="o">+</span>
+                         <span class="s">&#39;instance&#39;</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">xu</span><span class="p">,</span> <span class="n">hessian_inv</span>
+
+
+<span class="k">def</span> <span class="nf">_HCCM1</span><span class="p">(</span><span class="n">results</span><span class="p">,</span> <span class="n">scale</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">    sandwich with pinv(x) * scale * pinv(x).T</span>
+
+<span class="sd">    where pinv(x) = (X&#39;X)^(-1) X</span>
+<span class="sd">    and scale is (nobs, nobs), or (nobs,) with diagonal matrix diag(scale)</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    results : result instance</span>
+<span class="sd">       need to contain regression results, uses results.model.pinv_wexog</span>
+<span class="sd">    scale : ndarray (nobs,) or (nobs, nobs)</span>
+<span class="sd">       scale matrix, treated as diagonal matrix if scale is one-dimensional</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    H : ndarray (k_vars, k_vars)</span>
+<span class="sd">        robust covariance matrix for the parameter estimates</span>
+
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="k">if</span> <span class="n">scale</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="n">H</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">results</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">pinv_wexog</span><span class="p">,</span>
+                   <span class="n">scale</span><span class="p">[:,</span><span class="bp">None</span><span class="p">]</span><span class="o">*</span><span class="n">results</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">pinv_wexog</span><span class="o">.</span><span class="n">T</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">H</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">results</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">pinv_wexog</span><span class="p">,</span>
+                   <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">scale</span><span class="p">,</span> <span class="n">results</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">pinv_wexog</span><span class="o">.</span><span class="n">T</span><span class="p">))</span>
+    <span class="k">return</span> <span class="n">H</span>
+
+<span class="k">def</span> <span class="nf">_HCCM2</span><span class="p">(</span><span class="n">hessian_inv</span><span class="p">,</span> <span class="n">scale</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">    sandwich with (X&#39;X)^(-1) * scale * (X&#39;X)^(-1)</span>
+
+<span class="sd">    scale is (kvars, kvars)</span>
+<span class="sd">    this uses results.normalized_cov_params for (X&#39;X)^(-1)</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    results : result instance</span>
+<span class="sd">       need to contain regression results, uses results.normalized_cov_params</span>
+<span class="sd">    scale : ndarray (k_vars, k_vars)</span>
+<span class="sd">       scale matrix</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    H : ndarray (k_vars, k_vars)</span>
+<span class="sd">        robust covariance matrix for the parameter estimates</span>
+
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="k">if</span> <span class="n">scale</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="n">scale</span> <span class="o">=</span> <span class="n">scale</span><span class="p">[:,</span><span class="bp">None</span><span class="p">]</span>
+
+    <span class="n">xxi</span> <span class="o">=</span> <span class="n">hessian_inv</span>
+    <span class="n">H</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">xxi</span><span class="p">,</span> <span class="n">scale</span><span class="p">),</span> <span class="n">xxi</span><span class="o">.</span><span class="n">T</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">H</span>
+
+<span class="c">#TODO: other kernels, move ?</span>
+<span class="k">def</span> <span class="nf">weights_bartlett</span><span class="p">(</span><span class="n">nlags</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;Bartlett weights for HAC</span>
+
+<span class="sd">    this will be moved to another module</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    nlags : int</span>
+<span class="sd">       highest lag in the kernel window, this does not include the zero lag</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    kernel : ndarray, (nlags+1,)</span>
+<span class="sd">        weights for Bartlett kernel</span>
+
+<span class="sd">    &#39;&#39;&#39;</span>
+
+    <span class="c">#with lag zero</span>
+    <span class="k">return</span> <span class="mi">1</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">nlags</span><span class="o">+</span><span class="mi">1</span><span class="p">)</span><span class="o">/</span><span class="p">(</span><span class="n">nlags</span><span class="o">+</span><span class="mf">1.</span><span class="p">)</span>
+
+<span class="k">def</span> <span class="nf">weights_uniform</span><span class="p">(</span><span class="n">nlags</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;uniform weights for HAC</span>
+
+<span class="sd">    this will be moved to another module</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    nlags : int</span>
+<span class="sd">       highest lag in the kernel window, this does not include the zero lag</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    kernel : ndarray, (nlags+1,)</span>
+<span class="sd">        weights for uniform kernel</span>
+
+<span class="sd">    &#39;&#39;&#39;</span>
+
+    <span class="c">#with lag zero</span>
+    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">nlags</span><span class="o">+</span><span class="mf">1.</span><span class="p">)</span>
+
+<span class="k">def</span> <span class="nf">S_hac_simple</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">nlags</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">weights_func</span><span class="o">=</span><span class="n">weights_bartlett</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;inner covariance matrix for HAC (Newey, West) sandwich</span>
+
+<span class="sd">    assumes we have a single time series with zero axis consecutive, equal</span>
+<span class="sd">    spaced time periods</span>
+
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    x : ndarray (nobs,) or (nobs, k_var)</span>
+<span class="sd">        data, for HAC this is array of x_i * u_i</span>
+<span class="sd">    nlags : int or None</span>
+<span class="sd">        highest lag to include in kernel window. If None, then</span>
+<span class="sd">        nlags = floor(4(T/100)^(2/9)) is used.</span>
+<span class="sd">    weights_func : callable</span>
+<span class="sd">        weights_func is called with nlags as argument to get the kernel</span>
+<span class="sd">        weights. default are Bartlett weights</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    S : ndarray, (k_vars, k_vars)</span>
+<span class="sd">        inner covariance matrix for sandwich</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    used by cov_hac_simple</span>
+
+<span class="sd">    options might change when other kernels besides Bartlett are available.</span>
+
+<span class="sd">    &#39;&#39;&#39;</span>
+
+    <span class="k">if</span> <span class="n">x</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="n">x</span> <span class="o">=</span> <span class="n">x</span><span class="p">[:,</span><span class="bp">None</span><span class="p">]</span>
+    <span class="n">n_periods</span> <span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">nlags</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+        <span class="n">nlags</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">floor</span><span class="p">(</span><span class="mi">4</span> <span class="o">*</span> <span class="p">(</span><span class="n">n_periods</span> <span class="o">/</span> <span class="mf">100.</span><span class="p">)</span><span class="o">**</span><span class="p">(</span><span class="mf">2.</span><span class="o">/</span><span class="mf">9.</span><span class="p">)))</span>
+
+    <span class="n">weights</span> <span class="o">=</span> <span class="n">weights_func</span><span class="p">(</span><span class="n">nlags</span><span class="p">)</span>
+
+    <span class="n">S</span> <span class="o">=</span> <span class="n">weights</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">x</span><span class="o">.</span><span class="n">T</span><span class="p">,</span> <span class="n">x</span><span class="p">)</span>  <span class="c">#weights[0] just for completeness, is 1</span>
+
+    <span class="k">for</span> <span class="n">lag</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">nlags</span><span class="o">+</span><span class="mi">1</span><span class="p">):</span>
+        <span class="n">s</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">x</span><span class="p">[</span><span class="n">lag</span><span class="p">:]</span><span class="o">.</span><span class="n">T</span><span class="p">,</span> <span class="n">x</span><span class="p">[:</span><span class="o">-</span><span class="n">lag</span><span class="p">])</span>
+        <span class="n">S</span> <span class="o">+=</span> <span class="n">weights</span><span class="p">[</span><span class="n">lag</span><span class="p">]</span> <span class="o">*</span> <span class="p">(</span><span class="n">s</span> <span class="o">+</span> <span class="n">s</span><span class="o">.</span><span class="n">T</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">S</span>
+
+<span class="k">def</span> <span class="nf">S_white_simple</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;inner covariance matrix for White heteroscedastistity sandwich</span>
+
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    x : ndarray (nobs,) or (nobs, k_var)</span>
+<span class="sd">        data, for HAC this is array of x_i * u_i</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    S : ndarray, (k_vars, k_vars)</span>
+<span class="sd">        inner covariance matrix for sandwich</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    this is just dot(X.T, X)</span>
+
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="k">if</span> <span class="n">x</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="n">x</span> <span class="o">=</span> <span class="n">x</span><span class="p">[:,</span><span class="bp">None</span><span class="p">]</span>
+
+    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">x</span><span class="o">.</span><span class="n">T</span><span class="p">,</span> <span class="n">x</span><span class="p">)</span>
+
+
+
+<span class="k">def</span> <span class="nf">group_sums</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">group</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;sum x for each group, simple bincount version, again</span>
+
+<span class="sd">    group : array, integer</span>
+<span class="sd">        assumed to be consecutive integers</span>
+
+<span class="sd">    no dtype checking because I want to raise in that case</span>
+
+<span class="sd">    uses loop over columns of x</span>
+
+<span class="sd">    #TODO: remove this, already copied to tools/grouputils</span>
+<span class="sd">    &#39;&#39;&#39;</span>
+
+    <span class="c">#TODO: transpose return in group_sum, need test coverage first</span>
+    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">np</span><span class="o">.</span><span class="n">bincount</span><span class="p">(</span><span class="n">group</span><span class="p">,</span> <span class="n">weights</span><span class="o">=</span><span class="n">x</span><span class="p">[:,</span> <span class="n">col</span><span class="p">])</span>
+                            <span class="k">for</span> <span class="n">col</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">])])</span>
+
+
+<span class="k">def</span> <span class="nf">S_hac_groupsum</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">time</span><span class="p">,</span> <span class="n">nlags</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">weights_func</span><span class="o">=</span><span class="n">weights_bartlett</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;inner covariance matrix for HAC over group sums sandwich</span>
+
+<span class="sd">    This assumes we have complete equal spaced time periods.</span>
+<span class="sd">    The number of time periods per group need not be the same, but we need</span>
+<span class="sd">    at least one observation for each time period</span>
+
+<span class="sd">    For a single categorical group only, or a everything else but time</span>
+<span class="sd">    dimension. This first aggregates x over groups for each time period, then</span>
+<span class="sd">    applies HAC on the sum per period.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    x : ndarray (nobs,) or (nobs, k_var)</span>
+<span class="sd">        data, for HAC this is array of x_i * u_i</span>
+<span class="sd">    time : ndarray, (nobs,)</span>
+<span class="sd">        timeindes, assumed to be integers range(n_periods)</span>
+<span class="sd">    nlags : int or None</span>
+<span class="sd">        highest lag to include in kernel window. If None, then</span>
+<span class="sd">        nlags = floor[4(T/100)^(2/9)] is used.</span>
+<span class="sd">    weights_func : callable</span>
+<span class="sd">        weights_func is called with nlags as argument to get the kernel</span>
+<span class="sd">        weights. default are Bartlett weights</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    S : ndarray, (k_vars, k_vars)</span>
+<span class="sd">        inner covariance matrix for sandwich</span>
+
+<span class="sd">    References</span>
+<span class="sd">    ----------</span>
+<span class="sd">    Daniel Hoechle, xtscc paper</span>
+<span class="sd">    Driscoll and Kraay</span>
+
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="c">#needs groupsums</span>
+
+    <span class="n">x_group_sums</span> <span class="o">=</span> <span class="n">group_sums</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">time</span><span class="p">)</span><span class="o">.</span><span class="n">T</span> <span class="c">#TODO: transpose return in grou_sum</span>
+
+    <span class="k">return</span> <span class="n">S_hac_simple</span><span class="p">(</span><span class="n">x_group_sums</span><span class="p">,</span> <span class="n">nlags</span><span class="o">=</span><span class="n">nlags</span><span class="p">,</span> <span class="n">weights_func</span><span class="o">=</span><span class="n">weights_func</span><span class="p">)</span>
+
+
+<span class="k">def</span> <span class="nf">S_crosssection</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">group</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;inner covariance matrix for White on group sums sandwich</span>
+
+<span class="sd">    I guess for a single categorical group only,</span>
+<span class="sd">    categorical group, can also be the product/intersection of groups</span>
+
+<span class="sd">    This is used by cov_cluster and indirectly verified</span>
+
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="n">x_group_sums</span> <span class="o">=</span> <span class="n">group_sums</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">group</span><span class="p">)</span><span class="o">.</span><span class="n">T</span>  <span class="c">#TODO: why transposed</span>
+
+    <span class="k">return</span> <span class="n">S_white_simple</span><span class="p">(</span><span class="n">x_group_sums</span><span class="p">)</span>
+
+
+<span class="k">def</span> <span class="nf">cov_crosssection_0</span><span class="p">(</span><span class="n">results</span><span class="p">,</span> <span class="n">group</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;this one is still wrong, use cov_cluster instead&#39;&#39;&#39;</span>
+
+    <span class="c">#TODO: currently used version of groupsums requires 2d resid</span>
+    <span class="n">scale</span> <span class="o">=</span> <span class="n">S_crosssection</span><span class="p">(</span><span class="n">results</span><span class="o">.</span><span class="n">resid</span><span class="p">[:,</span><span class="bp">None</span><span class="p">],</span> <span class="n">group</span><span class="p">)</span>
+    <span class="n">scale</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">squeeze</span><span class="p">(</span><span class="n">scale</span><span class="p">)</span>
+    <span class="n">cov</span> <span class="o">=</span> <span class="n">_HCCM1</span><span class="p">(</span><span class="n">results</span><span class="p">,</span> <span class="n">scale</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">cov</span>
+
+<div class="viewcode-block" id="cov_cluster"><a class="viewcode-back" href="../../../generated/statsmodels.stats.sandwich_covariance.cov_cluster.html#statsmodels.stats.sandwich_covariance.cov_cluster">[docs]</a><span class="k">def</span> <span class="nf">cov_cluster</span><span class="p">(</span><span class="n">results</span><span class="p">,</span> <span class="n">group</span><span class="p">,</span> <span class="n">use_correction</span><span class="o">=</span><span class="bp">True</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;cluster robust covariance matrix</span>
+
+<span class="sd">    Calculates sandwich covariance matrix for a single cluster, i.e. grouped</span>
+<span class="sd">    variables.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    results : result instance</span>
+<span class="sd">       result of a regression, uses results.model.exog and results.resid</span>
+<span class="sd">       TODO: this should use wexog instead</span>
+<span class="sd">    use_correction : bool</span>
+<span class="sd">       If true (default), then the small sample correction factor is used.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    cov : ndarray, (k_vars, k_vars)</span>
+<span class="sd">        cluster robust covariance matrix for parameter estimates</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    same result as Stata in UCLA example and same as Peterson</span>
+
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="c">#TODO: currently used version of groupsums requires 2d resid</span>
+    <span class="n">xu</span><span class="p">,</span> <span class="n">hessian_inv</span> <span class="o">=</span> <span class="n">_get_sandwich_arrays</span><span class="p">(</span><span class="n">results</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">group</span><span class="p">,</span> <span class="s">&#39;dtype&#39;</span><span class="p">)</span> <span class="ow">or</span> <span class="n">group</span><span class="o">.</span><span class="n">dtype</span> <span class="o">!=</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">(</span><span class="s">&#39;int&#39;</span><span class="p">):</span>
+        <span class="n">clusters</span><span class="p">,</span> <span class="n">group</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">unique</span><span class="p">(</span><span class="n">group</span><span class="p">,</span> <span class="n">return_inverse</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">clusters</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">unique</span><span class="p">(</span><span class="n">group</span><span class="p">)</span>
+
+    <span class="n">scale</span> <span class="o">=</span> <span class="n">S_crosssection</span><span class="p">(</span><span class="n">xu</span><span class="p">,</span> <span class="n">group</span><span class="p">)</span>
+
+    <span class="n">nobs</span><span class="p">,</span> <span class="n">k_params</span> <span class="o">=</span> <span class="n">xu</span><span class="o">.</span><span class="n">shape</span>
+    <span class="n">n_groups</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">clusters</span><span class="p">)</span> <span class="c">#replace with stored group attributes if available</span>
+
+    <span class="n">cov_c</span> <span class="o">=</span> <span class="n">_HCCM2</span><span class="p">(</span><span class="n">hessian_inv</span><span class="p">,</span> <span class="n">scale</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">use_correction</span><span class="p">:</span>
+        <span class="n">cov_c</span> <span class="o">*=</span> <span class="p">(</span><span class="n">n_groups</span> <span class="o">/</span> <span class="p">(</span><span class="n">n_groups</span> <span class="o">-</span> <span class="mf">1.</span><span class="p">)</span> <span class="o">*</span>
+                  <span class="p">((</span><span class="n">nobs</span><span class="o">-</span><span class="mf">1.</span><span class="p">)</span> <span class="o">/</span> <span class="nb">float</span><span class="p">(</span><span class="n">nobs</span> <span class="o">-</span> <span class="n">k_params</span><span class="p">)))</span>
+
+    <span class="k">return</span> <span class="n">cov_c</span>
+</div>
+<div class="viewcode-block" id="cov_cluster_2groups"><a class="viewcode-back" href="../../../generated/statsmodels.stats.sandwich_covariance.cov_cluster_2groups.html#statsmodels.stats.sandwich_covariance.cov_cluster_2groups">[docs]</a><span class="k">def</span> <span class="nf">cov_cluster_2groups</span><span class="p">(</span><span class="n">results</span><span class="p">,</span> <span class="n">group</span><span class="p">,</span> <span class="n">group2</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">use_correction</span><span class="o">=</span><span class="bp">True</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;cluster robust covariance matrix for two groups/clusters</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    results : result instance</span>
+<span class="sd">       result of a regression, uses results.model.exog and results.resid</span>
+<span class="sd">       TODO: this should use wexog instead</span>
+<span class="sd">    use_correction : bool</span>
+<span class="sd">       If true (default), then the small sample correction factor is used.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    cov_both : ndarray, (k_vars, k_vars)</span>
+<span class="sd">        cluster robust covariance matrix for parameter estimates, for both</span>
+<span class="sd">        clusters</span>
+<span class="sd">    cov_0 : ndarray, (k_vars, k_vars)</span>
+<span class="sd">        cluster robust covariance matrix for parameter estimates for first</span>
+<span class="sd">        cluster</span>
+<span class="sd">    cov_1 : ndarray, (k_vars, k_vars)</span>
+<span class="sd">        cluster robust covariance matrix for parameter estimates for second</span>
+<span class="sd">        cluster</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+
+<span class="sd">    verified against Peterson&#39;s table, (4 decimal print precision)</span>
+<span class="sd">    &#39;&#39;&#39;</span>
+
+    <span class="k">if</span> <span class="n">group2</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">group</span><span class="o">.</span><span class="n">ndim</span> <span class="o">!=</span><span class="mi">2</span> <span class="ow">or</span> <span class="n">group</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">!=</span> <span class="mi">2</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&#39;if group2 is not given, then groups needs to be &#39;</span> <span class="o">+</span>
+                             <span class="s">&#39;an array with two columns&#39;</span><span class="p">)</span>
+        <span class="n">group0</span> <span class="o">=</span> <span class="n">group</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span>
+        <span class="n">group1</span> <span class="o">=</span> <span class="n">group</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">]</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">group0</span> <span class="o">=</span> <span class="n">group</span>
+        <span class="n">group1</span> <span class="o">=</span> <span class="n">group2</span>
+        <span class="n">group</span> <span class="o">=</span> <span class="p">(</span><span class="n">group0</span><span class="p">,</span> <span class="n">group1</span><span class="p">)</span>
+
+
+    <span class="n">cov0</span> <span class="o">=</span> <span class="n">cov_cluster</span><span class="p">(</span><span class="n">results</span><span class="p">,</span> <span class="n">group0</span><span class="p">,</span> <span class="n">use_correction</span><span class="o">=</span><span class="n">use_correction</span><span class="p">)</span>
+    <span class="c">#[0] because we get still also returns bse</span>
+    <span class="n">cov1</span> <span class="o">=</span> <span class="n">cov_cluster</span><span class="p">(</span><span class="n">results</span><span class="p">,</span> <span class="n">group1</span><span class="p">,</span> <span class="n">use_correction</span><span class="o">=</span><span class="n">use_correction</span><span class="p">)</span>
+
+    <span class="n">group_intersection</span> <span class="o">=</span> <span class="n">Group</span><span class="p">(</span><span class="n">group</span><span class="p">)</span>
+    <span class="c">#cov of cluster formed by intersection of two groups</span>
+    <span class="n">cov01</span> <span class="o">=</span> <span class="n">cov_cluster</span><span class="p">(</span><span class="n">results</span><span class="p">,</span>
+                        <span class="n">group_intersection</span><span class="o">.</span><span class="n">group_int</span><span class="p">,</span>
+                        <span class="n">use_correction</span><span class="o">=</span><span class="n">use_correction</span><span class="p">)</span>
+
+    <span class="c">#robust cov matrix for union of groups</span>
+    <span class="n">cov_both</span> <span class="o">=</span> <span class="n">cov0</span> <span class="o">+</span> <span class="n">cov1</span> <span class="o">-</span> <span class="n">cov01</span>
+
+    <span class="c">#return all three (for now?)</span>
+    <span class="k">return</span> <span class="n">cov_both</span><span class="p">,</span> <span class="n">cov0</span><span class="p">,</span> <span class="n">cov1</span>
+
+</div>
+<div class="viewcode-block" id="cov_white_simple"><a class="viewcode-back" href="../../../generated/statsmodels.stats.sandwich_covariance.cov_white_simple.html#statsmodels.stats.sandwich_covariance.cov_white_simple">[docs]</a><span class="k">def</span> <span class="nf">cov_white_simple</span><span class="p">(</span><span class="n">results</span><span class="p">,</span> <span class="n">use_correction</span><span class="o">=</span><span class="bp">True</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">    heteroscedasticity robust covariance matrix (White)</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    results : result instance</span>
+<span class="sd">       result of a regression, uses results.model.exog and results.resid</span>
+<span class="sd">       TODO: this should use wexog instead</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    cov : ndarray, (k_vars, k_vars)</span>
+<span class="sd">        heteroscedasticity robust covariance matrix for parameter estimates</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    This produces the same result as cov_hc0, and does not include any small</span>
+<span class="sd">    sample correction.</span>
+
+<span class="sd">    verified (against LinearRegressionResults and Peterson)</span>
+
+<span class="sd">    See Also</span>
+<span class="sd">    --------</span>
+<span class="sd">    cov_hc1, cov_hc2, cov_hc3 : heteroscedasticity robust covariance matrices</span>
+<span class="sd">        with small sample corrections</span>
+
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="n">xu</span><span class="p">,</span> <span class="n">hessian_inv</span> <span class="o">=</span> <span class="n">_get_sandwich_arrays</span><span class="p">(</span><span class="n">results</span><span class="p">)</span>
+    <span class="n">sigma</span> <span class="o">=</span> <span class="n">S_white_simple</span><span class="p">(</span><span class="n">xu</span><span class="p">)</span>
+
+    <span class="n">cov_w</span> <span class="o">=</span> <span class="n">_HCCM2</span><span class="p">(</span><span class="n">hessian_inv</span><span class="p">,</span> <span class="n">sigma</span><span class="p">)</span>  <span class="c">#add bread to sandwich</span>
+
+    <span class="k">if</span> <span class="n">use_correction</span><span class="p">:</span>
+        <span class="n">nobs</span><span class="p">,</span> <span class="n">k_params</span> <span class="o">=</span> <span class="n">xu</span><span class="o">.</span><span class="n">shape</span>
+        <span class="n">cov_w</span> <span class="o">*=</span> <span class="n">nobs</span> <span class="o">/</span> <span class="nb">float</span><span class="p">(</span><span class="n">nobs</span> <span class="o">-</span> <span class="n">k_params</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">cov_w</span>
+
+</div>
+<span class="k">def</span> <span class="nf">cov_hac_simple</span><span class="p">(</span><span class="n">results</span><span class="p">,</span> <span class="n">nlags</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">weights_func</span><span class="o">=</span><span class="n">weights_bartlett</span><span class="p">,</span>
+                   <span class="n">use_correction</span><span class="o">=</span><span class="bp">True</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">    heteroscedasticity and autocorrelation robust covariance matrix (Newey-West)</span>
+
+<span class="sd">    Assumes we have a single time series with zero axis consecutive, equal</span>
+<span class="sd">    spaced time periods</span>
+
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    results : result instance</span>
+<span class="sd">       result of a regression, uses results.model.exog and results.resid</span>
+<span class="sd">       TODO: this should use wexog instead</span>
+<span class="sd">    nlags : int or None</span>
+<span class="sd">        highest lag to include in kernel window. If None, then</span>
+<span class="sd">        nlags = floor[4(T/100)^(2/9)] is used.</span>
+<span class="sd">    weights_func : callable</span>
+<span class="sd">        weights_func is called with nlags as argument to get the kernel</span>
+<span class="sd">        weights. default are Bartlett weights</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    cov : ndarray, (k_vars, k_vars)</span>
+<span class="sd">        HAC robust covariance matrix for parameter estimates</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    verified only for nlags=0, which is just White</span>
+<span class="sd">    just guessing on correction factor, need reference</span>
+
+<span class="sd">    options might change when other kernels besides Bartlett are available.</span>
+
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="n">xu</span><span class="p">,</span> <span class="n">hessian_inv</span> <span class="o">=</span> <span class="n">_get_sandwich_arrays</span><span class="p">(</span><span class="n">results</span><span class="p">)</span>
+    <span class="n">sigma</span> <span class="o">=</span> <span class="n">S_hac_simple</span><span class="p">(</span><span class="n">xu</span><span class="p">,</span> <span class="n">nlags</span><span class="o">=</span><span class="n">nlags</span><span class="p">,</span> <span class="n">weights_func</span><span class="o">=</span><span class="n">weights_func</span><span class="p">)</span>
+
+    <span class="n">cov_hac</span> <span class="o">=</span> <span class="n">_HCCM2</span><span class="p">(</span><span class="n">hessian_inv</span><span class="p">,</span> <span class="n">sigma</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">use_correction</span><span class="p">:</span>
+        <span class="n">nobs</span><span class="p">,</span> <span class="n">k_params</span> <span class="o">=</span> <span class="n">xu</span><span class="o">.</span><span class="n">shape</span>
+        <span class="n">cov_hac</span> <span class="o">*=</span> <span class="n">nobs</span> <span class="o">/</span> <span class="nb">float</span><span class="p">(</span><span class="n">nobs</span> <span class="o">-</span> <span class="n">k_params</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">cov_hac</span>
+
+<span class="n">cov_hac</span> <span class="o">=</span> <span class="n">cov_hac_simple</span>   <span class="c">#alias for users</span>
+
+<span class="c">#---------------------- use time lags corrected for groups</span>
+<span class="c">#the following were copied from a different experimental script,</span>
+<span class="c">#groupidx is tuple, observations assumed to be stacked by group member and</span>
+<span class="c">#sorted by time, equal number of periods is not required, but equal spacing is.</span>
+<span class="c">#I think this is pure within group HAC: apply HAC to each group member</span>
+<span class="c">#separately</span>
+
+<span class="k">def</span> <span class="nf">lagged_groups</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">lag</span><span class="p">,</span> <span class="n">groupidx</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">    assumes sorted by time, groupidx is tuple of start and end values</span>
+<span class="sd">    not optimized, just to get a working version, loop over groups</span>
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="n">out0</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">out_lagged</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">l</span><span class="p">,</span><span class="n">u</span> <span class="ow">in</span> <span class="n">groupidx</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">l</span><span class="o">+</span><span class="n">lag</span> <span class="o">&lt;</span> <span class="n">u</span><span class="p">:</span> <span class="c">#group is longer than lag</span>
+            <span class="n">out0</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">x</span><span class="p">[</span><span class="n">l</span><span class="o">+</span><span class="n">lag</span><span class="p">:</span><span class="n">u</span><span class="p">])</span>
+            <span class="n">out_lagged</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">x</span><span class="p">[</span><span class="n">l</span><span class="p">:</span><span class="n">u</span><span class="o">-</span><span class="n">lag</span><span class="p">])</span>
+
+    <span class="k">if</span> <span class="n">out0</span> <span class="o">==</span> <span class="p">[]:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&#39;all groups are empty taking lags&#39;</span><span class="p">)</span>
+    <span class="c">#return out0, out_lagged</span>
+    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">(</span><span class="n">out0</span><span class="p">),</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">(</span><span class="n">out_lagged</span><span class="p">)</span>
+
+
+
+<span class="k">def</span> <span class="nf">S_nw_panel</span><span class="p">(</span><span class="n">xw</span><span class="p">,</span> <span class="n">weights</span><span class="p">,</span> <span class="n">groupidx</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;inner covariance matrix for HAC for panel data</span>
+
+<span class="sd">    no denominator nobs used</span>
+
+<span class="sd">    no reference for this, just accounting for time indices</span>
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="n">nlags</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">weights</span><span class="p">)</span><span class="o">-</span><span class="mi">1</span>
+
+    <span class="n">S</span> <span class="o">=</span> <span class="n">weights</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">xw</span><span class="o">.</span><span class="n">T</span><span class="p">,</span> <span class="n">xw</span><span class="p">)</span>  <span class="c">#weights just for completeness</span>
+    <span class="k">for</span> <span class="n">lag</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">nlags</span><span class="o">+</span><span class="mi">1</span><span class="p">):</span>
+        <span class="n">xw0</span><span class="p">,</span> <span class="n">xwlag</span> <span class="o">=</span> <span class="n">lagged_groups</span><span class="p">(</span><span class="n">xw</span><span class="p">,</span> <span class="n">lag</span><span class="p">,</span> <span class="n">groupidx</span><span class="p">)</span>
+        <span class="n">s</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">xw0</span><span class="o">.</span><span class="n">T</span><span class="p">,</span> <span class="n">xwlag</span><span class="p">)</span>
+        <span class="n">S</span> <span class="o">+=</span> <span class="n">weights</span><span class="p">[</span><span class="n">lag</span><span class="p">]</span> <span class="o">*</span> <span class="p">(</span><span class="n">s</span> <span class="o">+</span> <span class="n">s</span><span class="o">.</span><span class="n">T</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">S</span>
+
+
+<div class="viewcode-block" id="cov_nw_panel"><a class="viewcode-back" href="../../../generated/statsmodels.stats.sandwich_covariance.cov_nw_panel.html#statsmodels.stats.sandwich_covariance.cov_nw_panel">[docs]</a><span class="k">def</span> <span class="nf">cov_nw_panel</span><span class="p">(</span><span class="n">results</span><span class="p">,</span> <span class="n">nlags</span><span class="p">,</span> <span class="n">groupidx</span><span class="p">,</span> <span class="n">weights_func</span><span class="o">=</span><span class="n">weights_bartlett</span><span class="p">,</span>
+                 <span class="n">use_correction</span><span class="o">=</span><span class="s">&#39;hac&#39;</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;Panel HAC robust covariance matrix</span>
+
+<span class="sd">    Assumes we have a panel of time series with consecutive, equal spaced time</span>
+<span class="sd">    periods. Data is assumed to be in long format with time series of each</span>
+<span class="sd">    individual stacked into one array. Panel can be unbalanced.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    results : result instance</span>
+<span class="sd">       result of a regression, uses results.model.exog and results.resid</span>
+<span class="sd">       TODO: this should use wexog instead</span>
+<span class="sd">    nlags : int or None</span>
+<span class="sd">        Highest lag to include in kernel window. Currently, no default</span>
+<span class="sd">        because the optimal length will depend on the number of observations</span>
+<span class="sd">        per cross-sectional unit.</span>
+<span class="sd">    groupidx : list of tuple</span>
+<span class="sd">        each tuple should contain the start and end index for an individual.</span>
+<span class="sd">        (groupidx might change in future).</span>
+<span class="sd">    weights_func : callable</span>
+<span class="sd">        weights_func is called with nlags as argument to get the kernel</span>
+<span class="sd">        weights. default are Bartlett weights</span>
+<span class="sd">    use_correction : &#39;cluster&#39; or &#39;hac&#39; or False</span>
+<span class="sd">        If False, then no small sample correction is used.</span>
+<span class="sd">        If &#39;cluster&#39; (default), then the same correction as in cov_cluster is</span>
+<span class="sd">        used.</span>
+<span class="sd">        If &#39;hac&#39;, then the same correction as in single time series, cov_hac</span>
+<span class="sd">        is used.</span>
+
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    cov : ndarray, (k_vars, k_vars)</span>
+<span class="sd">        HAC robust covariance matrix for parameter estimates</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    For nlags=0, this is just White covariance, cov_white.</span>
+<span class="sd">    If kernel is uniform, `weights_uniform`, with nlags equal to the number</span>
+<span class="sd">    of observations per unit in a balance panel, then cov_cluster and</span>
+<span class="sd">    cov_hac_panel are identical.</span>
+
+<span class="sd">    Tested against STATA `newey` command with same defaults.</span>
+
+<span class="sd">    Options might change when other kernels besides Bartlett and uniform are</span>
+<span class="sd">    available.</span>
+
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="k">if</span> <span class="n">nlags</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span> <span class="c">#so we can reproduce HC0 White</span>
+        <span class="n">weights</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span>  <span class="c">#to avoid the scalar check in hac_nw</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">weights</span> <span class="o">=</span> <span class="n">weights_func</span><span class="p">(</span><span class="n">nlags</span><span class="p">)</span>
+
+    <span class="n">xu</span><span class="p">,</span> <span class="n">hessian_inv</span> <span class="o">=</span> <span class="n">_get_sandwich_arrays</span><span class="p">(</span><span class="n">results</span><span class="p">)</span>
+
+    <span class="n">S_hac</span> <span class="o">=</span> <span class="n">S_nw_panel</span><span class="p">(</span><span class="n">xu</span><span class="p">,</span> <span class="n">weights</span><span class="p">,</span> <span class="n">groupidx</span><span class="p">)</span>
+    <span class="n">cov_hac</span> <span class="o">=</span> <span class="n">_HCCM2</span><span class="p">(</span><span class="n">hessian_inv</span><span class="p">,</span> <span class="n">S_hac</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">use_correction</span><span class="p">:</span>
+        <span class="n">nobs</span><span class="p">,</span> <span class="n">k_params</span> <span class="o">=</span> <span class="n">xu</span><span class="o">.</span><span class="n">shape</span>
+        <span class="k">if</span> <span class="n">use_correction</span> <span class="o">==</span> <span class="s">&#39;hac&#39;</span><span class="p">:</span>
+            <span class="n">cov_hac</span> <span class="o">*=</span> <span class="n">nobs</span> <span class="o">/</span> <span class="nb">float</span><span class="p">(</span><span class="n">nobs</span> <span class="o">-</span> <span class="n">k_params</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">use_correction</span> <span class="ow">in</span> <span class="p">[</span><span class="s">&#39;c&#39;</span><span class="p">,</span> <span class="s">&#39;clu&#39;</span><span class="p">,</span> <span class="s">&#39;cluster&#39;</span><span class="p">]:</span>
+            <span class="n">n_groups</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">groupidx</span><span class="p">)</span>
+            <span class="n">cov_hac</span> <span class="o">*=</span> <span class="n">n_groups</span> <span class="o">/</span> <span class="p">(</span><span class="n">n_groups</span> <span class="o">-</span> <span class="mf">1.</span><span class="p">)</span>
+            <span class="n">cov_hac</span> <span class="o">*=</span> <span class="p">((</span><span class="n">nobs</span><span class="o">-</span><span class="mf">1.</span><span class="p">)</span> <span class="o">/</span> <span class="nb">float</span><span class="p">(</span><span class="n">nobs</span> <span class="o">-</span> <span class="n">k_params</span><span class="p">))</span>
+
+    <span class="k">return</span> <span class="n">cov_hac</span>
+
+</div>
+<div class="viewcode-block" id="cov_nw_groupsum"><a class="viewcode-back" href="../../../generated/statsmodels.stats.sandwich_covariance.cov_nw_groupsum.html#statsmodels.stats.sandwich_covariance.cov_nw_groupsum">[docs]</a><span class="k">def</span> <span class="nf">cov_nw_groupsum</span><span class="p">(</span><span class="n">results</span><span class="p">,</span> <span class="n">nlags</span><span class="p">,</span> <span class="n">time</span><span class="p">,</span> <span class="n">weights_func</span><span class="o">=</span><span class="n">weights_bartlett</span><span class="p">,</span>
+                 <span class="n">use_correction</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;Driscoll and Kraay Panel robust covariance matrix</span>
+
+<span class="sd">    Robust covariance matrix for panel data of Driscoll and Kraay.</span>
+
+<span class="sd">    Assumes we have a panel of time series where the time index is available.</span>
+<span class="sd">    The time index is assumed to represent equal spaced periods. At least one</span>
+<span class="sd">    observation per period is required.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    results : result instance</span>
+<span class="sd">       result of a regression, uses results.model.exog and results.resid</span>
+<span class="sd">       TODO: this should use wexog instead</span>
+<span class="sd">    nlags : int or None</span>
+<span class="sd">        Highest lag to include in kernel window. Currently, no default</span>
+<span class="sd">        because the optimal length will depend on the number of observations</span>
+<span class="sd">        per cross-sectional unit.</span>
+<span class="sd">    time : ndarray of int</span>
+<span class="sd">        this should contain the coding for the time period of each observation.</span>
+<span class="sd">        time periods should be integers in range(maxT) where maxT is obs of i</span>
+<span class="sd">    weights_func : callable</span>
+<span class="sd">        weights_func is called with nlags as argument to get the kernel</span>
+<span class="sd">        weights. default are Bartlett weights</span>
+<span class="sd">    use_correction : &#39;cluster&#39; or &#39;hac&#39; or False</span>
+<span class="sd">        If False, then no small sample correction is used.</span>
+<span class="sd">        If &#39;hac&#39; (default), then the same correction as in single time series, cov_hac</span>
+<span class="sd">        is used.</span>
+<span class="sd">        If &#39;cluster&#39;, then the same correction as in cov_cluster is</span>
+<span class="sd">        used.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    cov : ndarray, (k_vars, k_vars)</span>
+<span class="sd">        HAC robust covariance matrix for parameter estimates</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    Tested against STATA xtscc package, which uses no small sample correction</span>
+
+<span class="sd">    This first averages relevant variables for each time period over all</span>
+<span class="sd">    individuals/groups, and then applies the same kernel weighted averaging</span>
+<span class="sd">    over time as in HAC.</span>
+
+<span class="sd">    Warning:</span>
+<span class="sd">    In the example with a short panel (few time periods and many individuals)</span>
+<span class="sd">    with mainly across individual variation this estimator did not produce</span>
+<span class="sd">    reasonable results.</span>
+
+<span class="sd">    Options might change when other kernels besides Bartlett and uniform are</span>
+<span class="sd">    available.</span>
+
+<span class="sd">    References</span>
+<span class="sd">    ----------</span>
+<span class="sd">    Daniel Hoechle, xtscc paper</span>
+<span class="sd">    Driscoll and Kraay</span>
+
+<span class="sd">    &#39;&#39;&#39;</span>
+
+    <span class="n">xu</span><span class="p">,</span> <span class="n">hessian_inv</span> <span class="o">=</span> <span class="n">_get_sandwich_arrays</span><span class="p">(</span><span class="n">results</span><span class="p">)</span>
+
+    <span class="c">#S_hac = S_nw_panel(xw, weights, groupidx)</span>
+    <span class="n">S_hac</span> <span class="o">=</span> <span class="n">S_hac_groupsum</span><span class="p">(</span><span class="n">xu</span><span class="p">,</span> <span class="n">time</span><span class="p">,</span> <span class="n">nlags</span><span class="o">=</span><span class="n">nlags</span><span class="p">,</span> <span class="n">weights_func</span><span class="o">=</span><span class="n">weights_func</span><span class="p">)</span>
+    <span class="n">cov_hac</span> <span class="o">=</span> <span class="n">_HCCM2</span><span class="p">(</span><span class="n">hessian_inv</span><span class="p">,</span> <span class="n">S_hac</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">use_correction</span><span class="p">:</span>
+        <span class="n">nobs</span><span class="p">,</span> <span class="n">k_params</span> <span class="o">=</span> <span class="n">xu</span><span class="o">.</span><span class="n">shape</span>
+        <span class="k">if</span> <span class="n">use_correction</span> <span class="o">==</span> <span class="s">&#39;hac&#39;</span><span class="p">:</span>
+            <span class="n">cov_hac</span> <span class="o">*=</span> <span class="n">nobs</span> <span class="o">/</span> <span class="nb">float</span><span class="p">(</span><span class="n">nobs</span> <span class="o">-</span> <span class="n">k_params</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">use_correction</span> <span class="ow">in</span> <span class="p">[</span><span class="s">&#39;c&#39;</span><span class="p">,</span> <span class="s">&#39;cluster&#39;</span><span class="p">]:</span>
+            <span class="n">n_groups</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">unique</span><span class="p">(</span><span class="n">time</span><span class="p">))</span>
+            <span class="n">cov_hac</span> <span class="o">*=</span> <span class="n">n_groups</span> <span class="o">/</span> <span class="p">(</span><span class="n">n_groups</span> <span class="o">-</span> <span class="mf">1.</span><span class="p">)</span>
+            <span class="n">cov_hac</span> <span class="o">*=</span> <span class="p">((</span><span class="n">nobs</span><span class="o">-</span><span class="mf">1.</span><span class="p">)</span> <span class="o">/</span> <span class="nb">float</span><span class="p">(</span><span class="n">nobs</span> <span class="o">-</span> <span class="n">k_params</span><span class="p">))</span>
+
+    <span class="k">return</span> <span class="n">cov_hac</span>
+</pre></div></div>
+
+
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <form class="search" action="../../../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer" role="contentinfo">
+        &copy; Copyright 2009-2013, Josef Perktold, Skipper Seabold, Jonathan Taylor, statsmodels-developers.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.3.1.
+    </div>
+  </body>
+</html>

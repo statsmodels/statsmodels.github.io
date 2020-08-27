@@ -1,0 +1,509 @@
+
+
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta charset="utf-8" />
+    <title>statsmodels.tsa.filters.filtertools &#8212; statsmodels v0.10.0 documentation</title>
+    <link rel="stylesheet" href="../../../../_static/nature.css" type="text/css" />
+    <link rel="stylesheet" href="../../../../_static/pygments.css" type="text/css" />
+    <link rel="stylesheet" type="text/css" href="../../../../_static/graphviz.css" />
+    <script type="text/javascript" id="documentation_options" data-url_root="../../../../" src="../../../../_static/documentation_options.js"></script>
+    <script type="text/javascript" src="../../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../../_static/doctools.js"></script>
+    <script type="text/javascript" src="../../../../_static/language_data.js"></script>
+    <script async="async" type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/latest.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="shortcut icon" href="../../../../_static/statsmodels_hybi_favico.ico"/>
+    <link rel="author" title="About these documents" href="../../../../about.html" />
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" />
+<link rel="stylesheet" href="../../../../_static/examples.css" type="text/css" />
+<link rel="stylesheet" href="../../../../_static/facebox.css" type="text/css" />
+<script type="text/javascript" src="../../../../_static/scripts.js">
+</script>
+<script type="text/javascript" src="../../../../_static/facebox.js">
+</script>
+<script type="text/javascript">
+$.facebox.settings.closeImage = "../../../../_static/closelabel.png"
+$.facebox.settings.loadingImage = "../../../../_static/loading.gif"
+</script>
+
+<script>
+$(document).ready(function() {
+  $.getJSON("../../../../../versions.json", function(versions) {
+    var dropdown = document.createElement("div");
+    dropdown.className = "dropdown";
+    var button = document.createElement("button");
+    button.className = "dropbtn";
+    button.innerHTML = "Other Versions";
+    var content = document.createElement("div");
+    content.className = "dropdown-content";
+    dropdown.appendChild(button);
+    dropdown.appendChild(content);
+    $(".header").prepend(dropdown);
+    for (var i = 0; i < versions.length; i++) {
+      if (versions[i].substring(0, 1) == "v") {
+        versions[i] = [versions[i], versions[i].substring(1)];
+      } else {
+        versions[i] = [versions[i], versions[i]];
+      };
+    };
+    for (var i = 0; i < versions.length; i++) {
+      var a = document.createElement("a");
+      a.innerHTML = versions[i][1];
+      a.href = "../../../../../" + versions[i][0] + "/index.html";
+      a.title = versions[i][1];
+      $(".dropdown-content").append(a);
+    };
+  });
+});
+</script>
+
+
+  </head><body>
+<div class="headerwrap">
+    <div class = "header">
+        
+        <a href = "../../../../index.html">
+<img src="../../../../_static/statsmodels_hybi_banner.png" alt="Logo"
+    style="padding-left: 15px"/></a>
+        
+    </div>
+</div>
+
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+<li><a href ="../../../../install.html">Install</a></li> &nbsp;|&nbsp;
+<li><a href="https://groups.google.com/forum/?hl=en#!forum/pystatsmodels">Support</a></li> &nbsp;|&nbsp;
+<li><a href="https://github.com/statsmodels/statsmodels/issues">Bugs</a></li> &nbsp;|&nbsp;
+<li><a href="../../../../dev/index.html">Develop</a></li> &nbsp;|&nbsp;
+<li><a href="../../../../examples/index.html">Examples</a></li> &nbsp;|&nbsp;
+<li><a href="../../../../faq.html">FAQ</a></li> &nbsp;|&nbsp;
+
+          <li class="nav-item nav-item-1"><a href="../../../index.html" accesskey="U">Module code</a> |</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+
+
+
+
+  <h1>Source code for statsmodels.tsa.filters.filtertools</h1><div class="highlight"><pre>
+<span></span><span class="c1"># -*- coding: utf-8 -*-</span>
+<span class="sd">&quot;&quot;&quot;Linear Filters for time series analysis and testing</span>
+
+
+<span class="sd">TODO:</span>
+<span class="sd">* check common sequence in signature of filter functions (ar,ma,x) or (x,ar,ma)</span>
+
+<span class="sd">Created on Sat Oct 23 17:18:03 2010</span>
+
+<span class="sd">Author: Josef-pktd</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="c1">#not original copied from various experimental scripts</span>
+<span class="c1">#version control history is there</span>
+
+<span class="kn">from</span> <span class="nn">statsmodels.compat.python</span> <span class="k">import</span> <span class="nb">range</span>
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+<span class="kn">import</span> <span class="nn">scipy.fftpack</span> <span class="k">as</span> <span class="nn">fft</span>
+<span class="kn">from</span> <span class="nn">scipy</span> <span class="k">import</span> <span class="n">signal</span>
+<span class="kn">from</span> <span class="nn">scipy.signal.signaltools</span> <span class="k">import</span> <span class="n">_centered</span> <span class="k">as</span> <span class="n">trim_centered</span>
+<span class="kn">from</span> <span class="nn">._utils</span> <span class="k">import</span> <span class="n">_maybe_get_pandas_wrapper</span>
+
+
+<span class="k">def</span> <span class="nf">_pad_nans</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">head</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">tail</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">ndim</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">head</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">tail</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">x</span>
+        <span class="k">elif</span> <span class="n">head</span> <span class="ow">and</span> <span class="n">tail</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">r_</span><span class="p">[[</span><span class="n">np</span><span class="o">.</span><span class="n">nan</span><span class="p">]</span> <span class="o">*</span> <span class="n">head</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">nan</span><span class="p">]</span> <span class="o">*</span> <span class="n">tail</span><span class="p">]</span>
+        <span class="k">elif</span> <span class="n">tail</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">r_</span><span class="p">[[</span><span class="n">np</span><span class="o">.</span><span class="n">nan</span><span class="p">]</span> <span class="o">*</span> <span class="n">head</span><span class="p">,</span> <span class="n">x</span><span class="p">]</span>
+        <span class="k">elif</span> <span class="n">head</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">r_</span><span class="p">[</span><span class="n">x</span><span class="p">,</span> <span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">nan</span><span class="p">]</span> <span class="o">*</span> <span class="n">tail</span><span class="p">]</span>
+    <span class="k">elif</span> <span class="n">np</span><span class="o">.</span><span class="n">ndim</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">head</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">tail</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">x</span>
+        <span class="k">elif</span> <span class="n">head</span> <span class="ow">and</span> <span class="n">tail</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">r_</span><span class="p">[[[</span><span class="n">np</span><span class="o">.</span><span class="n">nan</span><span class="p">]</span> <span class="o">*</span> <span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]]</span> <span class="o">*</span> <span class="n">head</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span>
+                         <span class="p">[[</span><span class="n">np</span><span class="o">.</span><span class="n">nan</span><span class="p">]</span> <span class="o">*</span> <span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]]</span> <span class="o">*</span> <span class="n">tail</span><span class="p">]</span>
+        <span class="k">elif</span> <span class="n">tail</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">r_</span><span class="p">[[[</span><span class="n">np</span><span class="o">.</span><span class="n">nan</span><span class="p">]</span> <span class="o">*</span> <span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]]</span> <span class="o">*</span> <span class="n">head</span><span class="p">,</span> <span class="n">x</span><span class="p">]</span>
+        <span class="k">elif</span> <span class="n">head</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">r_</span><span class="p">[</span><span class="n">x</span><span class="p">,</span> <span class="p">[[</span><span class="n">np</span><span class="o">.</span><span class="n">nan</span><span class="p">]</span> <span class="o">*</span> <span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]]</span> <span class="o">*</span> <span class="n">tail</span><span class="p">]</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Nan-padding for ndim &gt; 2 not implemented&quot;</span><span class="p">)</span>
+
+<span class="c1">#original changes and examples in sandbox.tsa.try_var_convolve</span>
+
+<span class="c1"># don&#39;t do these imports, here just for copied fftconvolve</span>
+<span class="c1">#get rid of these imports</span>
+<span class="c1">#from scipy.fftpack import fft, ifft, ifftshift, fft2, ifft2, fftn, \</span>
+<span class="c1">#     ifftn, fftfreq</span>
+<span class="c1">#from numpy import product,array</span>
+
+
+<span class="c1"># previous location in sandbox.tsa.try_var_convolve</span>
+<div class="viewcode-block" id="fftconvolveinv"><a class="viewcode-back" href="../../../../generated/statsmodels.tsa.filters.filtertools.fftconvolveinv.html#statsmodels.tsa.filters.filtertools.fftconvolveinv">[docs]</a><span class="k">def</span> <span class="nf">fftconvolveinv</span><span class="p">(</span><span class="n">in1</span><span class="p">,</span> <span class="n">in2</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s2">&quot;full&quot;</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Convolve two N-dimensional arrays using FFT. See convolve.</span>
+
+<span class="sd">    copied from scipy.signal.signaltools, but here used to try out inverse filter</span>
+<span class="sd">    doesn&#39;t work or I can&#39;t get it to work</span>
+
+<span class="sd">    2010-10-23:</span>
+<span class="sd">    looks ok to me for 1d,</span>
+<span class="sd">    from results below with padded data array (fftp)</span>
+<span class="sd">    but it doesn&#39;t work for multidimensional inverse filter (fftn)</span>
+<span class="sd">    original signal.fftconvolve also uses fftn</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">s1</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">in1</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
+    <span class="n">s2</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">in2</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
+    <span class="n">complex_result</span> <span class="o">=</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">issubdtype</span><span class="p">(</span><span class="n">in1</span><span class="o">.</span><span class="n">dtype</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">complex</span><span class="p">)</span> <span class="ow">or</span>
+                      <span class="n">np</span><span class="o">.</span><span class="n">issubdtype</span><span class="p">(</span><span class="n">in2</span><span class="o">.</span><span class="n">dtype</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">complex</span><span class="p">))</span>
+    <span class="n">size</span> <span class="o">=</span> <span class="n">s1</span><span class="o">+</span><span class="n">s2</span><span class="o">-</span><span class="mi">1</span>
+
+    <span class="c1"># Always use 2**n-sized FFT</span>
+    <span class="n">fsize</span> <span class="o">=</span> <span class="mi">2</span><span class="o">**</span><span class="n">np</span><span class="o">.</span><span class="n">ceil</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">log2</span><span class="p">(</span><span class="n">size</span><span class="p">))</span>
+    <span class="n">IN1</span> <span class="o">=</span> <span class="n">fft</span><span class="o">.</span><span class="n">fftn</span><span class="p">(</span><span class="n">in1</span><span class="p">,</span><span class="n">fsize</span><span class="p">)</span>
+    <span class="c1">#IN1 *= fftn(in2,fsize) #JP: this looks like the only change I made</span>
+    <span class="n">IN1</span> <span class="o">/=</span> <span class="n">fft</span><span class="o">.</span><span class="n">fftn</span><span class="p">(</span><span class="n">in2</span><span class="p">,</span><span class="n">fsize</span><span class="p">)</span>  <span class="c1"># use inverse filter</span>
+    <span class="c1"># note the inverse is elementwise not matrix inverse</span>
+    <span class="c1"># is this correct, NO  doesn&#39;t seem to work for VARMA</span>
+    <span class="n">fslice</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">([</span><span class="nb">slice</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="nb">int</span><span class="p">(</span><span class="n">sz</span><span class="p">))</span> <span class="k">for</span> <span class="n">sz</span> <span class="ow">in</span> <span class="n">size</span><span class="p">])</span>
+    <span class="n">ret</span> <span class="o">=</span> <span class="n">fft</span><span class="o">.</span><span class="n">ifftn</span><span class="p">(</span><span class="n">IN1</span><span class="p">)[</span><span class="n">fslice</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+    <span class="k">del</span> <span class="n">IN1</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">complex_result</span><span class="p">:</span>
+        <span class="n">ret</span> <span class="o">=</span> <span class="n">ret</span><span class="o">.</span><span class="n">real</span>
+    <span class="k">if</span> <span class="n">mode</span> <span class="o">==</span> <span class="s2">&quot;full&quot;</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">ret</span>
+    <span class="k">elif</span> <span class="n">mode</span> <span class="o">==</span> <span class="s2">&quot;same&quot;</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">product</span><span class="p">(</span><span class="n">s1</span><span class="p">,</span><span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span> <span class="o">&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">product</span><span class="p">(</span><span class="n">s2</span><span class="p">,</span><span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+            <span class="n">osize</span> <span class="o">=</span> <span class="n">s1</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">osize</span> <span class="o">=</span> <span class="n">s2</span>
+        <span class="k">return</span> <span class="n">trim_centered</span><span class="p">(</span><span class="n">ret</span><span class="p">,</span><span class="n">osize</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">mode</span> <span class="o">==</span> <span class="s2">&quot;valid&quot;</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">trim_centered</span><span class="p">(</span><span class="n">ret</span><span class="p">,</span><span class="nb">abs</span><span class="p">(</span><span class="n">s2</span><span class="o">-</span><span class="n">s1</span><span class="p">)</span><span class="o">+</span><span class="mi">1</span><span class="p">)</span></div>
+
+
+<span class="c1">#code duplication with fftconvolveinv</span>
+<div class="viewcode-block" id="fftconvolve3"><a class="viewcode-back" href="../../../../generated/statsmodels.tsa.filters.filtertools.fftconvolve3.html#statsmodels.tsa.filters.filtertools.fftconvolve3">[docs]</a><span class="k">def</span> <span class="nf">fftconvolve3</span><span class="p">(</span><span class="n">in1</span><span class="p">,</span> <span class="n">in2</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">in3</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s2">&quot;full&quot;</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Convolve two N-dimensional arrays using FFT. See convolve.</span>
+
+<span class="sd">    for use with arma  (old version: in1=num in2=den in3=data</span>
+
+<span class="sd">    * better for consistency with other functions in1=data in2=num in3=den</span>
+<span class="sd">    * note in2 and in3 need to have consistent dimension/shape</span>
+<span class="sd">      since I&#39;m using max of in2, in3 shapes and not the sum</span>
+
+<span class="sd">    copied from scipy.signal.signaltools, but here used to try out inverse</span>
+<span class="sd">    filter doesn&#39;t work or I can&#39;t get it to work</span>
+
+<span class="sd">    2010-10-23</span>
+<span class="sd">    looks ok to me for 1d,</span>
+<span class="sd">    from results below with padded data array (fftp)</span>
+<span class="sd">    but it doesn&#39;t work for multidimensional inverse filter (fftn)</span>
+<span class="sd">    original signal.fftconvolve also uses fftn</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">in2</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">)</span> <span class="ow">and</span> <span class="p">(</span><span class="n">in3</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;at least one of in2 and in3 needs to be given&#39;</span><span class="p">)</span>
+    <span class="n">s1</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">in1</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">in2</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">s2</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">in2</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">s2</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="k">if</span> <span class="n">in3</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">s3</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">in3</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
+        <span class="n">s2</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">s2</span><span class="p">,</span> <span class="n">s3</span><span class="p">)</span> <span class="c1"># try this looks reasonable for ARMA</span>
+        <span class="c1">#s2 = s3</span>
+
+    <span class="n">complex_result</span> <span class="o">=</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">issubdtype</span><span class="p">(</span><span class="n">in1</span><span class="o">.</span><span class="n">dtype</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">complex</span><span class="p">)</span> <span class="ow">or</span>
+                      <span class="n">np</span><span class="o">.</span><span class="n">issubdtype</span><span class="p">(</span><span class="n">in2</span><span class="o">.</span><span class="n">dtype</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">complex</span><span class="p">))</span>
+    <span class="n">size</span> <span class="o">=</span> <span class="n">s1</span><span class="o">+</span><span class="n">s2</span><span class="o">-</span><span class="mi">1</span>
+
+    <span class="c1"># Always use 2**n-sized FFT</span>
+    <span class="n">fsize</span> <span class="o">=</span> <span class="mi">2</span><span class="o">**</span><span class="n">np</span><span class="o">.</span><span class="n">ceil</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">log2</span><span class="p">(</span><span class="n">size</span><span class="p">))</span>
+    <span class="c1">#convolve shorter ones first, not sure if it matters</span>
+    <span class="k">if</span> <span class="n">in2</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">IN1</span> <span class="o">=</span> <span class="n">fft</span><span class="o">.</span><span class="n">fftn</span><span class="p">(</span><span class="n">in2</span><span class="p">,</span> <span class="n">fsize</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">in3</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">IN1</span> <span class="o">/=</span> <span class="n">fft</span><span class="o">.</span><span class="n">fftn</span><span class="p">(</span><span class="n">in3</span><span class="p">,</span> <span class="n">fsize</span><span class="p">)</span>  <span class="c1"># use inverse filter</span>
+    <span class="c1"># note the inverse is elementwise not matrix inverse</span>
+    <span class="c1"># is this correct, NO  doesn&#39;t seem to work for VARMA</span>
+    <span class="n">IN1</span> <span class="o">*=</span> <span class="n">fft</span><span class="o">.</span><span class="n">fftn</span><span class="p">(</span><span class="n">in1</span><span class="p">,</span> <span class="n">fsize</span><span class="p">)</span>
+    <span class="n">fslice</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">([</span><span class="nb">slice</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="nb">int</span><span class="p">(</span><span class="n">sz</span><span class="p">))</span> <span class="k">for</span> <span class="n">sz</span> <span class="ow">in</span> <span class="n">size</span><span class="p">])</span>
+    <span class="n">ret</span> <span class="o">=</span> <span class="n">fft</span><span class="o">.</span><span class="n">ifftn</span><span class="p">(</span><span class="n">IN1</span><span class="p">)[</span><span class="n">fslice</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+    <span class="k">del</span> <span class="n">IN1</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">complex_result</span><span class="p">:</span>
+        <span class="n">ret</span> <span class="o">=</span> <span class="n">ret</span><span class="o">.</span><span class="n">real</span>
+    <span class="k">if</span> <span class="n">mode</span> <span class="o">==</span> <span class="s2">&quot;full&quot;</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">ret</span>
+    <span class="k">elif</span> <span class="n">mode</span> <span class="o">==</span> <span class="s2">&quot;same&quot;</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">product</span><span class="p">(</span><span class="n">s1</span><span class="p">,</span><span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span> <span class="o">&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">product</span><span class="p">(</span><span class="n">s2</span><span class="p">,</span><span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+            <span class="n">osize</span> <span class="o">=</span> <span class="n">s1</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">osize</span> <span class="o">=</span> <span class="n">s2</span>
+        <span class="k">return</span> <span class="n">trim_centered</span><span class="p">(</span><span class="n">ret</span><span class="p">,</span><span class="n">osize</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">mode</span> <span class="o">==</span> <span class="s2">&quot;valid&quot;</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">trim_centered</span><span class="p">(</span><span class="n">ret</span><span class="p">,</span><span class="nb">abs</span><span class="p">(</span><span class="n">s2</span><span class="o">-</span><span class="n">s1</span><span class="p">)</span><span class="o">+</span><span class="mi">1</span><span class="p">)</span></div>
+
+
+<span class="c1">#original changes and examples in sandbox.tsa.try_var_convolve</span>
+<span class="c1">#examples and tests are there</span>
+<div class="viewcode-block" id="recursive_filter"><a class="viewcode-back" href="../../../../generated/statsmodels.tsa.filters.filtertools.recursive_filter.html#statsmodels.tsa.filters.filtertools.recursive_filter">[docs]</a><span class="k">def</span> <span class="nf">recursive_filter</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">ar_coeff</span><span class="p">,</span> <span class="n">init</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">    Autoregressive, or recursive, filtering.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    x : array-like</span>
+<span class="sd">        Time-series data. Should be 1d or n x 1.</span>
+<span class="sd">    ar_coeff : array-like</span>
+<span class="sd">        AR coefficients in reverse time order. See Notes</span>
+<span class="sd">    init : array-like</span>
+<span class="sd">        Initial values of the time-series prior to the first value of y.</span>
+<span class="sd">        The default is zero.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    y : array</span>
+<span class="sd">        Filtered array, number of columns determined by x and ar_coeff. If a</span>
+<span class="sd">        pandas object is given, a pandas object is returned.</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+
+<span class="sd">    Computes the recursive filter ::</span>
+
+<span class="sd">        y[n] = ar_coeff[0] * y[n-1] + ...</span>
+<span class="sd">                + ar_coeff[n_coeff - 1] * y[n - n_coeff] + x[n]</span>
+
+<span class="sd">    where n_coeff = len(n_coeff).</span>
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="n">_pandas_wrapper</span> <span class="o">=</span> <span class="n">_maybe_get_pandas_wrapper</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+    <span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">x</span><span class="p">)</span><span class="o">.</span><span class="n">squeeze</span><span class="p">()</span>
+    <span class="n">ar_coeff</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">ar_coeff</span><span class="p">)</span><span class="o">.</span><span class="n">squeeze</span><span class="p">()</span>
+
+    <span class="k">if</span> <span class="n">x</span><span class="o">.</span><span class="n">ndim</span> <span class="o">&gt;</span> <span class="mi">1</span> <span class="ow">or</span> <span class="n">ar_coeff</span><span class="o">.</span><span class="n">ndim</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;x and ar_coeff have to be 1d&#39;</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">init</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>  <span class="c1"># integer init are treated differently in lfiltic</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">init</span><span class="p">)</span> <span class="o">!=</span> <span class="nb">len</span><span class="p">(</span><span class="n">ar_coeff</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;ar_coeff must be the same length as init&quot;</span><span class="p">)</span>
+        <span class="n">init</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">init</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">init</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">zi</span> <span class="o">=</span> <span class="n">signal</span><span class="o">.</span><span class="n">lfiltic</span><span class="p">([</span><span class="mi">1</span><span class="p">],</span> <span class="n">np</span><span class="o">.</span><span class="n">r_</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="n">ar_coeff</span><span class="p">],</span> <span class="n">init</span><span class="p">,</span> <span class="n">x</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">zi</span> <span class="o">=</span> <span class="kc">None</span>
+
+    <span class="n">y</span> <span class="o">=</span> <span class="n">signal</span><span class="o">.</span><span class="n">lfilter</span><span class="p">([</span><span class="mf">1.</span><span class="p">],</span> <span class="n">np</span><span class="o">.</span><span class="n">r_</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="n">ar_coeff</span><span class="p">],</span> <span class="n">x</span><span class="p">,</span> <span class="n">zi</span><span class="o">=</span><span class="n">zi</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">init</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="n">y</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="n">y</span>
+
+    <span class="k">if</span> <span class="n">_pandas_wrapper</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">_pandas_wrapper</span><span class="p">(</span><span class="n">result</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">result</span></div>
+
+
+<div class="viewcode-block" id="convolution_filter"><a class="viewcode-back" href="../../../../generated/statsmodels.tsa.filters.filtertools.convolution_filter.html#statsmodels.tsa.filters.filtertools.convolution_filter">[docs]</a><span class="k">def</span> <span class="nf">convolution_filter</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">filt</span><span class="p">,</span> <span class="n">nsides</span><span class="o">=</span><span class="mi">2</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">    Linear filtering via convolution. Centered and backward displaced moving</span>
+<span class="sd">    weighted average.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    x : array_like</span>
+<span class="sd">        data array, 1d or 2d, if 2d then observations in rows</span>
+<span class="sd">    filt : array_like</span>
+<span class="sd">        Linear filter coefficients in reverse time-order. Should have the</span>
+<span class="sd">        same number of dimensions as x though if 1d and ``x`` is 2d will be</span>
+<span class="sd">        coerced to 2d.</span>
+<span class="sd">    nsides : int, optional</span>
+<span class="sd">        If 2, a centered moving average is computed using the filter</span>
+<span class="sd">        coefficients. If 1, the filter coefficients are for past values only.</span>
+<span class="sd">        Both methods use scipy.signal.convolve.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    y : ndarray, 2d</span>
+<span class="sd">        Filtered array, number of columns determined by x and filt. If a</span>
+<span class="sd">        pandas object is given, a pandas object is returned. The index of</span>
+<span class="sd">        the return is the exact same as the time period in ``x``</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    In nsides == 1, x is filtered ::</span>
+
+<span class="sd">        y[n] = filt[0]*x[n-1] + ... + filt[n_filt-1]*x[n-n_filt]</span>
+
+<span class="sd">    where n_filt is len(filt).</span>
+
+<span class="sd">    If nsides == 2, x is filtered around lag 0 ::</span>
+
+<span class="sd">        y[n] = filt[0]*x[n - n_filt/2] + ... + filt[n_filt / 2] * x[n]</span>
+<span class="sd">               + ... + x[n + n_filt/2]</span>
+
+<span class="sd">    where n_filt is len(filt). If n_filt is even, then more of the filter</span>
+<span class="sd">    is forward in time than backward.</span>
+
+<span class="sd">    If filt is 1d or (nlags,1) one lag polynomial is applied to all</span>
+<span class="sd">    variables (columns of x). If filt is 2d, (nlags, nvars) each series is</span>
+<span class="sd">    independently filtered with its own lag polynomial, uses loop over nvar.</span>
+<span class="sd">    This is different than the usual 2d vs 2d convolution.</span>
+
+<span class="sd">    Filtering is done with scipy.signal.convolve, so it will be reasonably</span>
+<span class="sd">    fast for medium sized data. For large data fft convolution would be</span>
+<span class="sd">    faster.</span>
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="c1"># for nsides shift the index instead of using 0 for 0 lag this</span>
+    <span class="c1"># allows correct handling of NaNs</span>
+    <span class="k">if</span> <span class="n">nsides</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="n">trim_head</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">filt</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span>
+        <span class="n">trim_tail</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="k">elif</span> <span class="n">nsides</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
+        <span class="n">trim_head</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">ceil</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">filt</span><span class="p">)</span><span class="o">/</span><span class="mf">2.</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span> <span class="ow">or</span> <span class="kc">None</span>
+        <span class="n">trim_tail</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">ceil</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">filt</span><span class="p">)</span><span class="o">/</span><span class="mf">2.</span><span class="p">)</span> <span class="o">-</span> <span class="nb">len</span><span class="p">(</span><span class="n">filt</span><span class="p">)</span> <span class="o">%</span> <span class="mi">2</span><span class="p">)</span> <span class="ow">or</span> <span class="kc">None</span>
+    <span class="k">else</span><span class="p">:</span>  <span class="c1"># pragma : no cover</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;nsides must be 1 or 2&quot;</span><span class="p">)</span>
+
+    <span class="n">_pandas_wrapper</span> <span class="o">=</span> <span class="n">_maybe_get_pandas_wrapper</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+    <span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+    <span class="n">filt</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">filt</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">x</span><span class="o">.</span><span class="n">ndim</span> <span class="o">&gt;</span> <span class="mi">1</span> <span class="ow">and</span> <span class="n">filt</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="n">filt</span> <span class="o">=</span> <span class="n">filt</span><span class="p">[:,</span> <span class="kc">None</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">x</span><span class="o">.</span><span class="n">ndim</span> <span class="o">&gt;</span> <span class="mi">2</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;x array has to be 1d or 2d&#39;</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">filt</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">1</span> <span class="ow">or</span> <span class="nb">min</span><span class="p">(</span><span class="n">filt</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="n">signal</span><span class="o">.</span><span class="n">convolve</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">filt</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s1">&#39;valid&#39;</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">filt</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
+        <span class="n">nlags</span> <span class="o">=</span> <span class="n">filt</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">nvar</span> <span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">-</span> <span class="n">nlags</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="n">nvar</span><span class="p">))</span>
+        <span class="k">if</span> <span class="n">nsides</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nvar</span><span class="p">):</span>
+                <span class="c1"># could also use np.convolve, but easier for swiching to fft</span>
+                <span class="n">result</span><span class="p">[:,</span> <span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">signal</span><span class="o">.</span><span class="n">convolve</span><span class="p">(</span><span class="n">x</span><span class="p">[:,</span> <span class="n">i</span><span class="p">],</span> <span class="n">filt</span><span class="p">[:,</span> <span class="n">i</span><span class="p">],</span>
+                                               <span class="n">mode</span><span class="o">=</span><span class="s1">&#39;valid&#39;</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">nsides</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nvar</span><span class="p">):</span>
+                <span class="n">result</span><span class="p">[:,</span> <span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">signal</span><span class="o">.</span><span class="n">convolve</span><span class="p">(</span><span class="n">x</span><span class="p">[:,</span> <span class="n">i</span><span class="p">],</span> <span class="n">np</span><span class="o">.</span><span class="n">r_</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="n">filt</span><span class="p">[:,</span> <span class="n">i</span><span class="p">]],</span>
+                                               <span class="n">mode</span><span class="o">=</span><span class="s1">&#39;valid&#39;</span><span class="p">)</span>
+    <span class="n">result</span> <span class="o">=</span> <span class="n">_pad_nans</span><span class="p">(</span><span class="n">result</span><span class="p">,</span> <span class="n">trim_head</span><span class="p">,</span> <span class="n">trim_tail</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">_pandas_wrapper</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">_pandas_wrapper</span><span class="p">(</span><span class="n">result</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">result</span></div>
+
+
+<span class="c1"># previously located in sandbox.tsa.garch</span>
+<div class="viewcode-block" id="miso_lfilter"><a class="viewcode-back" href="../../../../generated/statsmodels.tsa.filters.filtertools.miso_lfilter.html#statsmodels.tsa.filters.filtertools.miso_lfilter">[docs]</a><span class="k">def</span> <span class="nf">miso_lfilter</span><span class="p">(</span><span class="n">ar</span><span class="p">,</span> <span class="n">ma</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">useic</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">    use nd convolution to merge inputs,</span>
+<span class="sd">    then use lfilter to produce output</span>
+
+<span class="sd">    arguments for column variables</span>
+<span class="sd">    return currently 1d</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    ar : array_like, 1d, float</span>
+<span class="sd">        autoregressive lag polynomial including lag zero, ar(L)y_t</span>
+<span class="sd">    ma : array_like, same ndim as x, currently 2d</span>
+<span class="sd">        moving average lag polynomial ma(L)x_t</span>
+<span class="sd">    x : array_like, 2d</span>
+<span class="sd">        input data series, time in rows, variables in columns</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    y : array, 1d</span>
+<span class="sd">        filtered output series</span>
+<span class="sd">    inp : array, 1d</span>
+<span class="sd">        combined input series</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    currently for 2d inputs only, no choice of axis</span>
+<span class="sd">    Use of signal.lfilter requires that ar lag polynomial contains</span>
+<span class="sd">    floating point numbers</span>
+<span class="sd">    does not cut off invalid starting and final values</span>
+
+<span class="sd">    miso_lfilter find array y such that::</span>
+
+<span class="sd">            ar(L)y_t = ma(L)x_t</span>
+
+<span class="sd">    with shapes y (nobs,), x (nobs,nvars), ar (narlags,), ma (narlags,nvars)</span>
+
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="n">ma</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">ma</span><span class="p">)</span>
+    <span class="n">ar</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">ar</span><span class="p">)</span>
+    <span class="c1">#inp = signal.convolve(x, ma, mode=&#39;valid&#39;)</span>
+    <span class="c1">#inp = signal.convolve(x, ma)[:, (x.shape[1]+1)//2]</span>
+    <span class="c1">#Note: convolve mixes up the variable left-right flip</span>
+    <span class="c1">#I only want the flip in time direction</span>
+    <span class="c1">#this might also be a mistake or problem in other code where I</span>
+    <span class="c1">#switched from correlate to convolve</span>
+    <span class="c1"># correct convolve version, for use with fftconvolve in other cases</span>
+    <span class="c1">#inp2 = signal.convolve(x, ma[:,::-1])[:, (x.shape[1]+1)//2]</span>
+    <span class="n">inp</span> <span class="o">=</span> <span class="n">signal</span><span class="o">.</span><span class="n">correlate</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">ma</span><span class="p">[::</span><span class="o">-</span><span class="mi">1</span><span class="p">,:])[:,</span> <span class="p">(</span><span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">+</span><span class="mi">1</span><span class="p">)</span><span class="o">//</span><span class="mi">2</span><span class="p">]</span>
+    <span class="c1">#for testing 2d equivalence between convolve and correlate</span>
+    <span class="c1">#np.testing.assert_almost_equal(inp2, inp)</span>
+    <span class="n">nobs</span> <span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="c1"># cut of extra values at end</span>
+
+    <span class="c1">#todo initialize also x for correlate</span>
+    <span class="k">if</span> <span class="n">useic</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">signal</span><span class="o">.</span><span class="n">lfilter</span><span class="p">([</span><span class="mi">1</span><span class="p">],</span> <span class="n">ar</span><span class="p">,</span> <span class="n">inp</span><span class="p">,</span>
+                <span class="c1">#zi=signal.lfilter_ic(np.array([1.,0.]),ar, ic))[0][:nobs], inp[:nobs]</span>
+                <span class="n">zi</span><span class="o">=</span><span class="n">signal</span><span class="o">.</span><span class="n">lfiltic</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">1.</span><span class="p">,</span><span class="mf">0.</span><span class="p">]),</span><span class="n">ar</span><span class="p">,</span> <span class="n">useic</span><span class="p">))[</span><span class="mi">0</span><span class="p">][:</span><span class="n">nobs</span><span class="p">],</span> <span class="n">inp</span><span class="p">[:</span><span class="n">nobs</span><span class="p">]</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">signal</span><span class="o">.</span><span class="n">lfilter</span><span class="p">([</span><span class="mi">1</span><span class="p">],</span> <span class="n">ar</span><span class="p">,</span> <span class="n">inp</span><span class="p">)[:</span><span class="n">nobs</span><span class="p">],</span> <span class="n">inp</span><span class="p">[:</span><span class="n">nobs</span><span class="p">]</span></div>
+    <span class="c1">#return signal.lfilter([1], ar, inp), inp</span>
+</pre></div>
+
+
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../../../../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" />
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer" role="contentinfo">
+        &#169; Copyright 2009-2018, Josef Perktold, Skipper Seabold, Jonathan Taylor, statsmodels-developers.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 2.1.2.
+    </div>
+  </body>
+</html>

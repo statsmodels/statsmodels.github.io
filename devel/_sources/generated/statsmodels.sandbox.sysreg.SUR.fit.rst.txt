@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.sandbox.sysreg.SUR.fit
+==================================
+
+.. currentmodule:: statsmodels.sandbox.sysreg
+
+.. automethod:: SUR.fit

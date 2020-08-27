@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.graphics.gofplots.ProbPlot.qqplot
+=============================================
+
+.. currentmodule:: statsmodels.graphics.gofplots
+
+.. automethod:: ProbPlot.qqplot

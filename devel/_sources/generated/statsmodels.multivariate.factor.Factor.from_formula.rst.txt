@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.multivariate.factor.Factor.from\_formula
+====================================================
+
+.. currentmodule:: statsmodels.multivariate.factor
+
+.. automethod:: Factor.from_formula

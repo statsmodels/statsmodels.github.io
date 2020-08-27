@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.tsa.statespace.sarimax.SARIMAXResults.remove\_data
+==============================================================
+
+.. currentmodule:: statsmodels.tsa.statespace.sarimax
+
+.. automethod:: SARIMAXResults.remove_data

@@ -1,0 +1,404 @@
+
+
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta charset="utf-8" />
+    <title>statsmodels.tsa.innovations.arma_innovations &#8212; statsmodels v0.10.1 documentation</title>
+    <link rel="stylesheet" href="../../../../_static/nature.css" type="text/css" />
+    <link rel="stylesheet" href="../../../../_static/pygments.css" type="text/css" />
+    <link rel="stylesheet" type="text/css" href="../../../../_static/graphviz.css" />
+    <script type="text/javascript" id="documentation_options" data-url_root="../../../../" src="../../../../_static/documentation_options.js"></script>
+    <script type="text/javascript" src="../../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../../_static/doctools.js"></script>
+    <script type="text/javascript" src="../../../../_static/language_data.js"></script>
+    <script async="async" type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/latest.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="shortcut icon" href="../../../../_static/statsmodels_hybi_favico.ico"/>
+    <link rel="author" title="About these documents" href="../../../../about.html" />
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" />
+<link rel="stylesheet" href="../../../../_static/examples.css" type="text/css" />
+<link rel="stylesheet" href="../../../../_static/facebox.css" type="text/css" />
+<script type="text/javascript" src="../../../../_static/scripts.js">
+</script>
+<script type="text/javascript" src="../../../../_static/facebox.js">
+</script>
+<script type="text/javascript">
+$.facebox.settings.closeImage = "../../../../_static/closelabel.png"
+$.facebox.settings.loadingImage = "../../../../_static/loading.gif"
+</script>
+
+<script>
+$(document).ready(function() {
+  $.getJSON("../../../../../versions.json", function(versions) {
+    var dropdown = document.createElement("div");
+    dropdown.className = "dropdown";
+    var button = document.createElement("button");
+    button.className = "dropbtn";
+    button.innerHTML = "Other Versions";
+    var content = document.createElement("div");
+    content.className = "dropdown-content";
+    dropdown.appendChild(button);
+    dropdown.appendChild(content);
+    $(".header").prepend(dropdown);
+    for (var i = 0; i < versions.length; i++) {
+      if (versions[i].substring(0, 1) == "v") {
+        versions[i] = [versions[i], versions[i].substring(1)];
+      } else {
+        versions[i] = [versions[i], versions[i]];
+      };
+    };
+    for (var i = 0; i < versions.length; i++) {
+      var a = document.createElement("a");
+      a.innerHTML = versions[i][1];
+      a.href = "../../../../../" + versions[i][0] + "/index.html";
+      a.title = versions[i][1];
+      $(".dropdown-content").append(a);
+    };
+  });
+});
+</script>
+
+
+  </head><body>
+<div class="headerwrap">
+    <div class = "header">
+        
+        <a href = "../../../../index.html">
+<img src="../../../../_static/statsmodels_hybi_banner.png" alt="Logo"
+    style="padding-left: 15px"/></a>
+        
+    </div>
+</div>
+
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+<li><a href ="../../../../install.html">Install</a></li> &nbsp;|&nbsp;
+<li><a href="https://groups.google.com/forum/?hl=en#!forum/pystatsmodels">Support</a></li> &nbsp;|&nbsp;
+<li><a href="https://github.com/statsmodels/statsmodels/issues">Bugs</a></li> &nbsp;|&nbsp;
+<li><a href="../../../../dev/index.html">Develop</a></li> &nbsp;|&nbsp;
+<li><a href="../../../../examples/index.html">Examples</a></li> &nbsp;|&nbsp;
+<li><a href="../../../../faq.html">FAQ</a></li> &nbsp;|&nbsp;
+
+          <li class="nav-item nav-item-1"><a href="../../../index.html" accesskey="U">Module code</a> |</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+
+
+
+
+  <h1>Source code for statsmodels.tsa.innovations.arma_innovations</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+
+<span class="kn">from</span> <span class="nn">statsmodels.tsa</span> <span class="k">import</span> <span class="n">arima_process</span>
+<span class="kn">from</span> <span class="nn">statsmodels.tsa.statespace.tools</span> <span class="k">import</span> <span class="n">prefix_dtype_map</span>
+<span class="kn">from</span> <span class="nn">statsmodels.tools.numdiff</span> <span class="k">import</span> <span class="n">_get_epsilon</span><span class="p">,</span> <span class="n">approx_fprime_cs</span>
+<span class="kn">from</span> <span class="nn">scipy.linalg.blas</span> <span class="k">import</span> <span class="n">find_best_blas_type</span>
+<span class="kn">from</span> <span class="nn">.</span> <span class="k">import</span> <span class="n">_arma_innovations</span>
+
+
+<div class="viewcode-block" id="arma_innovations"><a class="viewcode-back" href="../../../../generated/statsmodels.tsa.innovations.arma_innovations.arma_innovations.html#statsmodels.tsa.innovations.arma_innovations.arma_innovations">[docs]</a><span class="k">def</span> <span class="nf">arma_innovations</span><span class="p">(</span><span class="n">endog</span><span class="p">,</span> <span class="n">ar_params</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">ma_params</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">sigma2</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+                     <span class="n">normalize</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">prefix</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Compute innovations using a given ARMA process</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    endog : ndarray</span>
+<span class="sd">        The observed time-series process, may be univariate or multivariate.</span>
+<span class="sd">    ar_params : ndarray, optional</span>
+<span class="sd">        Autoregressive parameters.</span>
+<span class="sd">    ma_params : ndarray, optional</span>
+<span class="sd">        Moving average parameters.</span>
+<span class="sd">    sigma2 : ndarray, optional</span>
+<span class="sd">        The ARMA innovation variance. Default is 1.</span>
+<span class="sd">    normalize : boolean, optional</span>
+<span class="sd">        Whether or not to normalize the returned innovations. Default is False.</span>
+<span class="sd">    prefix : str, optional</span>
+<span class="sd">        The BLAS prefix associated with the datatype. Default is to find the</span>
+<span class="sd">        best datatype based on given input. This argument is typically only</span>
+<span class="sd">        used internally.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    innovations : ndarray</span>
+<span class="sd">        Innovations (one-step-ahead prediction errors) for the given `endog`</span>
+<span class="sd">        series with predictions based on the given ARMA process. If</span>
+<span class="sd">        `normalize=True`, then the returned innovations have been &quot;whitened&quot; by</span>
+<span class="sd">        dividing through by the square root of the mean square error.</span>
+<span class="sd">    innovations_mse : ndarray</span>
+<span class="sd">        Mean square error for the innovations.</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Parameters</span>
+    <span class="n">endog</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">endog</span><span class="p">)</span>
+    <span class="n">squeezed</span> <span class="o">=</span> <span class="n">endog</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">1</span>
+    <span class="k">if</span> <span class="n">squeezed</span><span class="p">:</span>
+        <span class="n">endog</span> <span class="o">=</span> <span class="n">endog</span><span class="p">[:,</span> <span class="kc">None</span><span class="p">]</span>
+
+    <span class="n">ar_params</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">atleast_1d</span><span class="p">([]</span> <span class="k">if</span> <span class="n">ar_params</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">ar_params</span><span class="p">)</span>
+    <span class="n">ma_params</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">atleast_1d</span><span class="p">([]</span> <span class="k">if</span> <span class="n">ma_params</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">ma_params</span><span class="p">)</span>
+
+    <span class="n">nobs</span><span class="p">,</span> <span class="n">k_endog</span> <span class="o">=</span> <span class="n">endog</span><span class="o">.</span><span class="n">shape</span>
+    <span class="n">ar</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">r_</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="n">ar_params</span><span class="p">]</span>
+    <span class="n">ma</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">r_</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="n">ma_params</span><span class="p">]</span>
+
+    <span class="c1"># Get BLAS prefix</span>
+    <span class="k">if</span> <span class="n">prefix</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">prefix</span><span class="p">,</span> <span class="n">dtype</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">find_best_blas_type</span><span class="p">(</span>
+            <span class="p">[</span><span class="n">endog</span><span class="p">,</span> <span class="n">ar_params</span><span class="p">,</span> <span class="n">ma_params</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">sigma2</span><span class="p">)])</span>
+    <span class="n">dtype</span> <span class="o">=</span> <span class="n">prefix_dtype_map</span><span class="p">[</span><span class="n">prefix</span><span class="p">]</span>
+
+    <span class="c1"># Make arrays contiguous for BLAS calls</span>
+    <span class="n">endog</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asfortranarray</span><span class="p">(</span><span class="n">endog</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">)</span>
+    <span class="n">ar_params</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asfortranarray</span><span class="p">(</span><span class="n">ar_params</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">)</span>
+    <span class="n">ma_params</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asfortranarray</span><span class="p">(</span><span class="n">ma_params</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">)</span>
+    <span class="n">sigma2</span> <span class="o">=</span> <span class="n">dtype</span><span class="p">(</span><span class="n">sigma2</span><span class="p">)</span><span class="o">.</span><span class="n">item</span><span class="p">()</span>
+
+    <span class="c1"># Get the appropriate functions</span>
+    <span class="n">arma_transformed_acovf_fast</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span>
+        <span class="n">_arma_innovations</span><span class="p">,</span> <span class="n">prefix</span> <span class="o">+</span> <span class="s1">&#39;arma_transformed_acovf_fast&#39;</span><span class="p">)</span>
+    <span class="n">arma_innovations_algo_fast</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span>
+        <span class="n">_arma_innovations</span><span class="p">,</span> <span class="n">prefix</span> <span class="o">+</span> <span class="s1">&#39;arma_innovations_algo_fast&#39;</span><span class="p">)</span>
+    <span class="n">arma_innovations_filter</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span>
+        <span class="n">_arma_innovations</span><span class="p">,</span> <span class="n">prefix</span> <span class="o">+</span> <span class="s1">&#39;arma_innovations_filter&#39;</span><span class="p">)</span>
+
+    <span class="c1"># Run the innovations algorithm for ARMA coefficients</span>
+    <span class="n">arma_acovf</span> <span class="o">=</span> <span class="n">arima_process</span><span class="o">.</span><span class="n">arma_acovf</span><span class="p">(</span><span class="n">ar</span><span class="p">,</span> <span class="n">ma</span><span class="p">,</span>
+                                          <span class="n">sigma2</span><span class="o">=</span><span class="n">sigma2</span><span class="p">,</span> <span class="n">nobs</span><span class="o">=</span><span class="n">nobs</span><span class="p">)</span> <span class="o">/</span> <span class="n">sigma2</span>
+    <span class="n">acovf</span><span class="p">,</span> <span class="n">acovf2</span> <span class="o">=</span> <span class="n">arma_transformed_acovf_fast</span><span class="p">(</span><span class="n">ar</span><span class="p">,</span> <span class="n">ma</span><span class="p">,</span> <span class="n">arma_acovf</span><span class="p">)</span>
+    <span class="n">theta</span><span class="p">,</span> <span class="n">v</span> <span class="o">=</span> <span class="n">arma_innovations_algo_fast</span><span class="p">(</span><span class="n">nobs</span><span class="p">,</span> <span class="n">ar_params</span><span class="p">,</span> <span class="n">ma_params</span><span class="p">,</span>
+                                          <span class="n">acovf</span><span class="p">,</span> <span class="n">acovf2</span><span class="p">)</span>
+    <span class="n">v</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">v</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">normalize</span><span class="p">:</span>
+        <span class="n">v05</span> <span class="o">=</span> <span class="n">v</span><span class="o">**</span><span class="mf">0.5</span>
+
+    <span class="c1"># Run the innovations filter across each series</span>
+    <span class="n">u</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">k_endog</span><span class="p">):</span>
+        <span class="n">u_i</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">arma_innovations_filter</span><span class="p">(</span><span class="n">endog</span><span class="p">[:,</span> <span class="n">i</span><span class="p">],</span> <span class="n">ar_params</span><span class="p">,</span>
+                                               <span class="n">ma_params</span><span class="p">,</span> <span class="n">theta</span><span class="p">))</span>
+        <span class="n">u</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">u_i</span> <span class="o">/</span> <span class="n">v05</span> <span class="k">if</span> <span class="n">normalize</span> <span class="k">else</span> <span class="n">u_i</span><span class="p">)</span>
+    <span class="n">u</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">(</span><span class="n">u</span><span class="p">)</span><span class="o">.</span><span class="n">T</span>
+
+    <span class="c1"># Post-processing</span>
+    <span class="k">if</span> <span class="n">squeezed</span><span class="p">:</span>
+        <span class="n">u</span> <span class="o">=</span> <span class="n">u</span><span class="o">.</span><span class="n">squeeze</span><span class="p">()</span>
+
+    <span class="k">return</span> <span class="n">u</span><span class="p">,</span> <span class="n">v</span></div>
+
+
+<div class="viewcode-block" id="arma_loglike"><a class="viewcode-back" href="../../../../generated/statsmodels.tsa.innovations.arma_innovations.arma_loglike.html#statsmodels.tsa.innovations.arma_innovations.arma_loglike">[docs]</a><span class="k">def</span> <span class="nf">arma_loglike</span><span class="p">(</span><span class="n">endog</span><span class="p">,</span> <span class="n">ar_params</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">ma_params</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">sigma2</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">prefix</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Compute loglikelihood of the given data assuming an ARMA process</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    endog : ndarray</span>
+<span class="sd">        The observed time-series process.</span>
+<span class="sd">    ar_params : ndarray, optional</span>
+<span class="sd">        Autoregressive parameters.</span>
+<span class="sd">    ma_params : ndarray, optional</span>
+<span class="sd">        Moving average parameters.</span>
+<span class="sd">    sigma2 : ndarray, optional</span>
+<span class="sd">        The ARMA innovation variance. Default is 1.</span>
+<span class="sd">    prefix : str, optional</span>
+<span class="sd">        The BLAS prefix associated with the datatype. Default is to find the</span>
+<span class="sd">        best datatype based on given input. This argument is typically only</span>
+<span class="sd">        used internally.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    loglike : numeric</span>
+<span class="sd">        The joint loglikelihood.</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">llf_obs</span> <span class="o">=</span> <span class="n">arma_loglikeobs</span><span class="p">(</span><span class="n">endog</span><span class="p">,</span> <span class="n">ar_params</span><span class="o">=</span><span class="n">ar_params</span><span class="p">,</span> <span class="n">ma_params</span><span class="o">=</span><span class="n">ma_params</span><span class="p">,</span>
+                              <span class="n">sigma2</span><span class="o">=</span><span class="n">sigma2</span><span class="p">,</span> <span class="n">prefix</span><span class="o">=</span><span class="n">prefix</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">llf_obs</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="arma_loglikeobs"><a class="viewcode-back" href="../../../../generated/statsmodels.tsa.innovations.arma_innovations.arma_loglikeobs.html#statsmodels.tsa.innovations.arma_innovations.arma_loglikeobs">[docs]</a><span class="k">def</span> <span class="nf">arma_loglikeobs</span><span class="p">(</span><span class="n">endog</span><span class="p">,</span> <span class="n">ar_params</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">ma_params</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">sigma2</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+                    <span class="n">prefix</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Compute loglikelihood for each observation assuming an ARMA process</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    endog : ndarray</span>
+<span class="sd">        The observed time-series process.</span>
+<span class="sd">    ar_params : ndarray, optional</span>
+<span class="sd">        Autoregressive parameters.</span>
+<span class="sd">    ma_params : ndarray, optional</span>
+<span class="sd">        Moving average parameters.</span>
+<span class="sd">    sigma2 : ndarray, optional</span>
+<span class="sd">        The ARMA innovation variance. Default is 1.</span>
+<span class="sd">    prefix : str, optional</span>
+<span class="sd">        The BLAS prefix associated with the datatype. Default is to find the</span>
+<span class="sd">        best datatype based on given input. This argument is typically only</span>
+<span class="sd">        used internally.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    loglikeobs : array of numeric</span>
+<span class="sd">        Array of loglikelihood values for each observation.</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">endog</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">endog</span><span class="p">)</span>
+    <span class="n">ar_params</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">atleast_1d</span><span class="p">([]</span> <span class="k">if</span> <span class="n">ar_params</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">ar_params</span><span class="p">)</span>
+    <span class="n">ma_params</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">atleast_1d</span><span class="p">([]</span> <span class="k">if</span> <span class="n">ma_params</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">ma_params</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">prefix</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">prefix</span><span class="p">,</span> <span class="n">dtype</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">find_best_blas_type</span><span class="p">(</span>
+            <span class="p">[</span><span class="n">endog</span><span class="p">,</span> <span class="n">ar_params</span><span class="p">,</span> <span class="n">ma_params</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">sigma2</span><span class="p">)])</span>
+    <span class="n">dtype</span> <span class="o">=</span> <span class="n">prefix_dtype_map</span><span class="p">[</span><span class="n">prefix</span><span class="p">]</span>
+
+    <span class="n">endog</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ascontiguousarray</span><span class="p">(</span><span class="n">endog</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">)</span>
+    <span class="n">ar_params</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asfortranarray</span><span class="p">(</span><span class="n">ar_params</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">)</span>
+    <span class="n">ma_params</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asfortranarray</span><span class="p">(</span><span class="n">ma_params</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">)</span>
+    <span class="n">sigma2</span> <span class="o">=</span> <span class="n">dtype</span><span class="p">(</span><span class="n">sigma2</span><span class="p">)</span><span class="o">.</span><span class="n">item</span><span class="p">()</span>
+
+    <span class="n">func</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">_arma_innovations</span><span class="p">,</span> <span class="n">prefix</span> <span class="o">+</span> <span class="s1">&#39;arma_loglikeobs_fast&#39;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">func</span><span class="p">(</span><span class="n">endog</span><span class="p">,</span> <span class="n">ar_params</span><span class="p">,</span> <span class="n">ma_params</span><span class="p">,</span> <span class="n">sigma2</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="arma_score"><a class="viewcode-back" href="../../../../generated/statsmodels.tsa.innovations.arma_innovations.arma_score.html#statsmodels.tsa.innovations.arma_innovations.arma_score">[docs]</a><span class="k">def</span> <span class="nf">arma_score</span><span class="p">(</span><span class="n">endog</span><span class="p">,</span> <span class="n">ar_params</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">ma_params</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">sigma2</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+               <span class="n">prefix</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Compute the score (gradient of the loglikelihood function)</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    endog : ndarray</span>
+<span class="sd">        The observed time-series process.</span>
+<span class="sd">    ar_params : ndarray, optional</span>
+<span class="sd">        Autoregressive coefficients, not including the zero lag.</span>
+<span class="sd">    ma_params : ndarray, optional</span>
+<span class="sd">        Moving average coefficients, not including the zero lag, where the sign</span>
+<span class="sd">        convention assumes the coefficients are part of the lag polynomial on</span>
+<span class="sd">        the right-hand-side of the ARMA definition (i.e. they have the same</span>
+<span class="sd">        sign from the usual econometrics convention in which the coefficients</span>
+<span class="sd">        are on the right-hand-side of the ARMA definition).</span>
+<span class="sd">    sigma2 : ndarray, optional</span>
+<span class="sd">        The ARMA innovation variance. Default is 1.</span>
+<span class="sd">    prefix : str, optional</span>
+<span class="sd">        The BLAS prefix associated with the datatype. Default is to find the</span>
+<span class="sd">        best datatype based on given input. This argument is typically only</span>
+<span class="sd">        used internally.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    ---------</span>
+<span class="sd">    score : array</span>
+<span class="sd">        Score, evaluated at the given parameters.</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    This is a numerical approximation, calculated using first-order complex</span>
+<span class="sd">    step differentiation on the `arma_loglike` method.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">ar_params</span> <span class="o">=</span> <span class="p">[]</span> <span class="k">if</span> <span class="n">ar_params</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">ar_params</span>
+    <span class="n">ma_params</span> <span class="o">=</span> <span class="p">[]</span> <span class="k">if</span> <span class="n">ma_params</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">ma_params</span>
+
+    <span class="n">p</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">ar_params</span><span class="p">)</span>
+    <span class="n">q</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">ma_params</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">func</span><span class="p">(</span><span class="n">params</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">arma_loglike</span><span class="p">(</span><span class="n">endog</span><span class="p">,</span> <span class="n">params</span><span class="p">[:</span><span class="n">p</span><span class="p">],</span> <span class="n">params</span><span class="p">[</span><span class="n">p</span><span class="p">:</span><span class="n">p</span> <span class="o">+</span> <span class="n">q</span><span class="p">],</span> <span class="n">params</span><span class="p">[</span><span class="n">p</span> <span class="o">+</span> <span class="n">q</span><span class="p">:])</span>
+
+    <span class="n">params0</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">r_</span><span class="p">[</span><span class="n">ar_params</span><span class="p">,</span> <span class="n">ma_params</span><span class="p">,</span> <span class="n">sigma2</span><span class="p">]</span>
+    <span class="n">epsilon</span> <span class="o">=</span> <span class="n">_get_epsilon</span><span class="p">(</span><span class="n">params0</span><span class="p">,</span> <span class="mf">2.</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">params0</span><span class="p">))</span>
+    <span class="k">return</span> <span class="n">approx_fprime_cs</span><span class="p">(</span><span class="n">params0</span><span class="p">,</span> <span class="n">func</span><span class="p">,</span> <span class="n">epsilon</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="arma_scoreobs"><a class="viewcode-back" href="../../../../generated/statsmodels.tsa.innovations.arma_innovations.arma_scoreobs.html#statsmodels.tsa.innovations.arma_innovations.arma_scoreobs">[docs]</a><span class="k">def</span> <span class="nf">arma_scoreobs</span><span class="p">(</span><span class="n">endog</span><span class="p">,</span> <span class="n">ar_params</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">ma_params</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">sigma2</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+                  <span class="n">prefix</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Compute the score per observation (gradient of the loglikelihood function)</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    endog : ndarray</span>
+<span class="sd">        The observed time-series process.</span>
+<span class="sd">    ar_params : ndarray, optional</span>
+<span class="sd">        Autoregressive coefficients, not including the zero lag.</span>
+<span class="sd">    ma_params : ndarray, optional</span>
+<span class="sd">        Moving average coefficients, not including the zero lag, where the sign</span>
+<span class="sd">        convention assumes the coefficients are part of the lag polynomial on</span>
+<span class="sd">        the right-hand-side of the ARMA definition (i.e. they have the same</span>
+<span class="sd">        sign from the usual econometrics convention in which the coefficients</span>
+<span class="sd">        are on the right-hand-side of the ARMA definition).</span>
+<span class="sd">    sigma2 : ndarray, optional</span>
+<span class="sd">        The ARMA innovation variance. Default is 1.</span>
+<span class="sd">    prefix : str, optional</span>
+<span class="sd">        The BLAS prefix associated with the datatype. Default is to find the</span>
+<span class="sd">        best datatype based on given input. This argument is typically only</span>
+<span class="sd">        used internally.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    ---------</span>
+<span class="sd">    scoreobs : array</span>
+<span class="sd">        Score per observation, evaluated at the given parameters.</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    This is a numerical approximation, calculated using first-order complex</span>
+<span class="sd">    step differentiation on the `arma_loglike` method.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">ar_params</span> <span class="o">=</span> <span class="p">[]</span> <span class="k">if</span> <span class="n">ar_params</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">ar_params</span>
+    <span class="n">ma_params</span> <span class="o">=</span> <span class="p">[]</span> <span class="k">if</span> <span class="n">ma_params</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">ma_params</span>
+
+    <span class="n">p</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">ar_params</span><span class="p">)</span>
+    <span class="n">q</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">ma_params</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">func</span><span class="p">(</span><span class="n">params</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">arma_loglikeobs</span><span class="p">(</span><span class="n">endog</span><span class="p">,</span> <span class="n">params</span><span class="p">[:</span><span class="n">p</span><span class="p">],</span> <span class="n">params</span><span class="p">[</span><span class="n">p</span><span class="p">:</span><span class="n">p</span> <span class="o">+</span> <span class="n">q</span><span class="p">],</span>
+                               <span class="n">params</span><span class="p">[</span><span class="n">p</span> <span class="o">+</span> <span class="n">q</span><span class="p">:])</span>
+
+    <span class="n">params0</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">r_</span><span class="p">[</span><span class="n">ar_params</span><span class="p">,</span> <span class="n">ma_params</span><span class="p">,</span> <span class="n">sigma2</span><span class="p">]</span>
+    <span class="n">epsilon</span> <span class="o">=</span> <span class="n">_get_epsilon</span><span class="p">(</span><span class="n">params0</span><span class="p">,</span> <span class="mf">2.</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">params0</span><span class="p">))</span>
+    <span class="k">return</span> <span class="n">approx_fprime_cs</span><span class="p">(</span><span class="n">params0</span><span class="p">,</span> <span class="n">func</span><span class="p">,</span> <span class="n">epsilon</span><span class="p">)</span></div>
+</pre></div>
+
+
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../../../../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" />
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer" role="contentinfo">
+        &#169; Copyright 2009-2018, Josef Perktold, Skipper Seabold, Jonathan Taylor, statsmodels-developers.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 2.1.2.
+    </div>
+  </body>
+</html>

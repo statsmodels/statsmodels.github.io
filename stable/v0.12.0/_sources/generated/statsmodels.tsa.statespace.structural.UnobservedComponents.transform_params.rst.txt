@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.tsa.statespace.structural.UnobservedComponents.transform\_params
+============================================================================
+
+.. currentmodule:: statsmodels.tsa.statespace.structural
+
+.. automethod:: UnobservedComponents.transform_params

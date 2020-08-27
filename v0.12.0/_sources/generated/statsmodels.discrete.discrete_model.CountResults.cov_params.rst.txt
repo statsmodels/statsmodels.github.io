@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.discrete.discrete\_model.CountResults.cov\_params
+=============================================================
+
+.. currentmodule:: statsmodels.discrete.discrete_model
+
+.. automethod:: CountResults.cov_params

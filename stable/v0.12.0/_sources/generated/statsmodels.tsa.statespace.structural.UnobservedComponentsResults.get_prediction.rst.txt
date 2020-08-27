@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.tsa.statespace.structural.UnobservedComponentsResults.get\_prediction
+=================================================================================
+
+.. currentmodule:: statsmodels.tsa.statespace.structural
+
+.. automethod:: UnobservedComponentsResults.get_prediction

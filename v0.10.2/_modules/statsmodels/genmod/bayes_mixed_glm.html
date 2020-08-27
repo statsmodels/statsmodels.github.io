@@ -1,0 +1,1324 @@
+
+
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta charset="utf-8" />
+    <title>statsmodels.genmod.bayes_mixed_glm &#8212; statsmodels v0.10.2 documentation</title>
+    <link rel="stylesheet" href="../../../_static/nature.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css" />
+    <script type="text/javascript" id="documentation_options" data-url_root="../../../" src="../../../_static/documentation_options.js"></script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <script type="text/javascript" src="../../../_static/language_data.js"></script>
+    <script async="async" type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/latest.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="shortcut icon" href="../../../_static/statsmodels_hybi_favico.ico"/>
+    <link rel="author" title="About these documents" href="../../../about.html" />
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+<link rel="stylesheet" href="../../../_static/examples.css" type="text/css" />
+<link rel="stylesheet" href="../../../_static/facebox.css" type="text/css" />
+<script type="text/javascript" src="../../../_static/scripts.js">
+</script>
+<script type="text/javascript" src="../../../_static/facebox.js">
+</script>
+<script type="text/javascript">
+$.facebox.settings.closeImage = "../../../_static/closelabel.png"
+$.facebox.settings.loadingImage = "../../../_static/loading.gif"
+</script>
+
+<script>
+$(document).ready(function() {
+  $.getJSON("../../../../versions.json", function(versions) {
+    var dropdown = document.createElement("div");
+    dropdown.className = "dropdown";
+    var button = document.createElement("button");
+    button.className = "dropbtn";
+    button.innerHTML = "Other Versions";
+    var content = document.createElement("div");
+    content.className = "dropdown-content";
+    dropdown.appendChild(button);
+    dropdown.appendChild(content);
+    $(".header").prepend(dropdown);
+    for (var i = 0; i < versions.length; i++) {
+      if (versions[i].substring(0, 1) == "v") {
+        versions[i] = [versions[i], versions[i].substring(1)];
+      } else {
+        versions[i] = [versions[i], versions[i]];
+      };
+    };
+    for (var i = 0; i < versions.length; i++) {
+      var a = document.createElement("a");
+      a.innerHTML = versions[i][1];
+      a.href = "../../../../" + versions[i][0] + "/index.html";
+      a.title = versions[i][1];
+      $(".dropdown-content").append(a);
+    };
+  });
+});
+</script>
+
+
+  </head><body>
+<div class="headerwrap">
+    <div class = "header">
+        
+        <a href = "../../../index.html">
+<img src="../../../_static/statsmodels_hybi_banner.png" alt="Logo"
+    style="padding-left: 15px"/></a>
+        
+    </div>
+</div>
+
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+<li><a href ="../../../install.html">Install</a></li> &nbsp;|&nbsp;
+<li><a href="https://groups.google.com/forum/?hl=en#!forum/pystatsmodels">Support</a></li> &nbsp;|&nbsp;
+<li><a href="https://github.com/statsmodels/statsmodels/issues">Bugs</a></li> &nbsp;|&nbsp;
+<li><a href="../../../dev/index.html">Develop</a></li> &nbsp;|&nbsp;
+<li><a href="../../../examples/index.html">Examples</a></li> &nbsp;|&nbsp;
+<li><a href="../../../faq.html">FAQ</a></li> &nbsp;|&nbsp;
+
+          <li class="nav-item nav-item-1"><a href="../../index.html" accesskey="U">Module code</a> |</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+
+
+
+
+  <h1>Source code for statsmodels.genmod.bayes_mixed_glm</h1><div class="highlight"><pre>
+<span></span><span class="sa">r</span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Bayesian inference for generalized linear mixed models.</span>
+
+<span class="sd">Currently only families without additional scale or shape parameters</span>
+<span class="sd">are supported (binomial and Poisson).</span>
+
+<span class="sd">Two estimation approaches are supported: Laplace approximation</span>
+<span class="sd">(&#39;maximum a posteriori&#39;), and variational Bayes (mean field</span>
+<span class="sd">approximation to the posterior distribution).</span>
+
+<span class="sd">All realizations of random effects are modeled to be mutually</span>
+<span class="sd">independent in this implementation.</span>
+
+<span class="sd">The `exog_vc` matrix is the design matrix for the random effects.</span>
+<span class="sd">Every column of `exog_vc` corresponds to an independent realization of</span>
+<span class="sd">a random effect.  These random effects have mean zero and an unknown</span>
+<span class="sd">standard deviation.  The standard deviation parameters are constrained</span>
+<span class="sd">to be equal within subsets of the columns. When not using formulas,</span>
+<span class="sd">these subsets are specified through the parameter `ident`.  `ident`</span>
+<span class="sd">must have the same length as the number of columns of `exog_vc`, and</span>
+<span class="sd">two columns whose `ident` values are equal have the same standard</span>
+<span class="sd">deviation.  When formulas are used, the columns of `exog_vc` derived</span>
+<span class="sd">from a common formula are constrained to have the same standard</span>
+<span class="sd">deviation.</span>
+
+<span class="sd">In many applications, `exog_vc` will be sparse.  A sparse matrix may</span>
+<span class="sd">be passed when constructing a model class.  If a dense matrix is</span>
+<span class="sd">passed, it will be converted internally to a sparse matrix.  There</span>
+<span class="sd">currently is no way to avoid creating a temporary dense version of</span>
+<span class="sd">`exog_vc` when using formulas.</span>
+
+<span class="sd">Model and parameterization</span>
+<span class="sd">--------------------------</span>
+<span class="sd">The joint density of data and parameters factors as:</span>
+
+<span class="sd">.. math::</span>
+
+<span class="sd">    p(y | vc, fep) p(vc | vcp) p(vcp) p(fe)</span>
+
+<span class="sd">The terms :math:`p(vcp)` and :math:`p(fe)` are prior distributions</span>
+<span class="sd">that are taken to be Gaussian (the :math:`vcp` parameters are log</span>
+<span class="sd">standard deviations so the standard deviations have log-normal</span>
+<span class="sd">distributions).  The random effects distribution :math:`p(vc | vcp)`</span>
+<span class="sd">is independent Gaussian (random effect realizations are independent</span>
+<span class="sd">within and between values of the `ident` array).  The model</span>
+<span class="sd">:math:`p(y | vc, fep)` depends on the specific GLM being fit.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">from</span> <span class="nn">__future__</span> <span class="k">import</span> <span class="n">division</span>
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+<span class="kn">from</span> <span class="nn">scipy.optimize</span> <span class="k">import</span> <span class="n">minimize</span>
+<span class="kn">from</span> <span class="nn">scipy</span> <span class="k">import</span> <span class="n">sparse</span>
+<span class="kn">import</span> <span class="nn">statsmodels.base.model</span> <span class="k">as</span> <span class="nn">base</span>
+<span class="kn">from</span> <span class="nn">statsmodels.iolib</span> <span class="k">import</span> <span class="n">summary2</span>
+<span class="kn">from</span> <span class="nn">statsmodels.genmod</span> <span class="k">import</span> <span class="n">families</span>
+<span class="kn">import</span> <span class="nn">pandas</span> <span class="k">as</span> <span class="nn">pd</span>
+<span class="kn">import</span> <span class="nn">warnings</span>
+<span class="kn">import</span> <span class="nn">patsy</span>
+
+<span class="c1"># Gauss-Legendre weights</span>
+<span class="n">glw</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="p">[</span><span class="mf">0.2955242247147529</span><span class="p">,</span> <span class="o">-</span><span class="mf">0.1488743389816312</span><span class="p">],</span>
+    <span class="p">[</span><span class="mf">0.2955242247147529</span><span class="p">,</span> <span class="mf">0.1488743389816312</span><span class="p">],</span>
+    <span class="p">[</span><span class="mf">0.2692667193099963</span><span class="p">,</span> <span class="o">-</span><span class="mf">0.4333953941292472</span><span class="p">],</span>
+    <span class="p">[</span><span class="mf">0.2692667193099963</span><span class="p">,</span> <span class="mf">0.4333953941292472</span><span class="p">],</span>
+    <span class="p">[</span><span class="mf">0.2190863625159820</span><span class="p">,</span> <span class="o">-</span><span class="mf">0.6794095682990244</span><span class="p">],</span>
+    <span class="p">[</span><span class="mf">0.2190863625159820</span><span class="p">,</span> <span class="mf">0.6794095682990244</span><span class="p">],</span>
+    <span class="p">[</span><span class="mf">0.1494513491505806</span><span class="p">,</span> <span class="o">-</span><span class="mf">0.8650633666889845</span><span class="p">],</span>
+    <span class="p">[</span><span class="mf">0.1494513491505806</span><span class="p">,</span> <span class="mf">0.8650633666889845</span><span class="p">],</span>
+    <span class="p">[</span><span class="mf">0.0666713443086881</span><span class="p">,</span> <span class="o">-</span><span class="mf">0.9739065285171717</span><span class="p">],</span>
+    <span class="p">[</span><span class="mf">0.0666713443086881</span><span class="p">,</span> <span class="mf">0.9739065285171717</span><span class="p">],</span>
+<span class="p">]</span>
+
+<span class="n">_init_doc</span> <span class="o">=</span> <span class="sa">r</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">    Fit a generalized linear mixed model using Bayesian methods.</span>
+
+<span class="s2">    The class implements the Laplace approximation to the posterior</span>
+<span class="s2">    distribution (`fit_map`) and a variational Bayes approximation to</span>
+<span class="s2">    the posterior (`fit_vb`).  See the two fit method docstrings for</span>
+<span class="s2">    more information about the fitting approaches.</span>
+
+<span class="s2">    Parameters</span>
+<span class="s2">    ----------</span>
+<span class="s2">    endog : array-like</span>
+<span class="s2">        Vector of response values.</span>
+<span class="s2">    exog : array-like</span>
+<span class="s2">        Array of covariates for the fixed effects part of the mean</span>
+<span class="s2">        structure.</span>
+<span class="s2">    exog_vc : array-like</span>
+<span class="s2">        Array of covariates for the random part of the model.  A</span>
+<span class="s2">        scipy.sparse array may be provided, or else the passed</span>
+<span class="s2">        array will be converted to sparse internally.</span>
+<span class="s2">    ident : array-like</span>
+<span class="s2">        Array of integer labels showing which random terms (columns</span>
+<span class="s2">        of `exog_vc`) have a common variance.</span>
+<span class="s2">    vcp_p : float</span>
+<span class="s2">        Prior standard deviation for variance component parameters</span>
+<span class="s2">        (the prior standard deviation of log(s) is vcp_p, where s is</span>
+<span class="s2">        the standard deviation of a random effect).</span>
+<span class="s2">    fe_p : float</span>
+<span class="s2">        Prior standard deviation for fixed effects parameters.</span>
+<span class="s2">    family : statsmodels.genmod.families instance</span>
+<span class="s2">        The GLM family.</span>
+<span class="s2">    fep_names : list of strings</span>
+<span class="s2">        The names of the fixed effects parameters (corresponding to</span>
+<span class="s2">        columns of exog).  If None, default names are constructed.</span>
+<span class="s2">    vcp_names : list of strings</span>
+<span class="s2">        The names of the variance component parameters (corresponding</span>
+<span class="s2">        to distinct labels in ident).  If None, default names are</span>
+<span class="s2">        constructed.</span>
+<span class="s2">    vc_names : list of strings</span>
+<span class="s2">        The names of the random effect realizations.</span>
+
+<span class="s2">    Returns</span>
+<span class="s2">    -------</span>
+<span class="s2">    MixedGLMResults object</span>
+
+<span class="s2">    Notes</span>
+<span class="s2">    -----</span>
+<span class="s2">    There are three types of values in the posterior distribution:</span>
+<span class="s2">    fixed effects parameters (fep), corresponding to the columns of</span>
+<span class="s2">    `exog`, random effects realizations (vc), corresponding to the</span>
+<span class="s2">    columns of `exog_vc`, and the standard deviations of the random</span>
+<span class="s2">    effects realizations (vcp), corresponding to the unique integer</span>
+<span class="s2">    labels in `ident`.</span>
+
+<span class="s2">    All random effects are modeled as being independent Gaussian</span>
+<span class="s2">    values (given the variance structure parameters).  Every column of</span>
+<span class="s2">    `exog_vc` has a distinct realized random effect that is used to</span>
+<span class="s2">    form the linear predictors.  The elements of `ident` determine the</span>
+<span class="s2">    distinct variance structure parameters.  Two random effect</span>
+<span class="s2">    realizations that have the same value in `ident` have the same</span>
+<span class="s2">    variance.  When fitting with a formula, `ident` is constructed</span>
+<span class="s2">    internally (each element of `vc_formulas` yields a distinct label</span>
+<span class="s2">    in `ident`).</span>
+
+<span class="s2">    The random effect standard deviation parameters (`vcp`) have</span>
+<span class="s2">    log-normal prior distributions with mean 0 and standard deviation</span>
+<span class="s2">    `vcp_p`.</span>
+
+<span class="s2">    Note that for some families, e.g. Binomial, the posterior mode may</span>
+<span class="s2">    be difficult to find numerically if `vcp_p` is set to too large of</span>
+<span class="s2">    a value.  Setting `vcp_p` to 0.5 seems to work well.</span>
+
+<span class="s2">    The prior for the fixed effects parameters is Gaussian with mean 0</span>
+<span class="s2">    and standard deviation `fe_p`.</span>
+
+<span class="s2">    Examples</span>
+<span class="s2">    --------</span><span class="si">{example}</span><span class="s2"></span>
+
+
+<span class="s2">    References</span>
+<span class="s2">    ----------</span>
+<span class="s2">    Introduction to generalized linear mixed models:</span>
+<span class="s2">    https://stats.idre.ucla.edu/other/mult-pkg/introduction-to-generalized-linear-mixed-models</span>
+
+<span class="s2">    SAS documentation:</span>
+<span class="s2">    https://support.sas.com/documentation/cdl/en/statug/63033/HTML/default/viewer.htm#statug_intromix_a0000000215.htm</span>
+
+<span class="s2">    An assessment of estimation methods for generalized linear mixed</span>
+<span class="s2">    models with binary outcomes</span>
+<span class="s2">    https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3866838/</span>
+<span class="s2">    &quot;&quot;&quot;</span>
+
+<span class="c1"># The code in the example should be identical to what appears in</span>
+<span class="c1"># the test_doc_examples unit test</span>
+<span class="n">_logit_example</span> <span class="o">=</span> <span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">    A binomial (logistic) random effects model with random intercepts</span>
+<span class="s2">    for villages and random slopes for each year within each village:</span>
+
+<span class="s2">    &gt;&gt;&gt; random = {&quot;a&quot;: &#39;0 + C(Village)&#39;, &quot;b&quot;: &#39;0 + C(Village)*year_cen&#39;}</span>
+<span class="s2">    &gt;&gt;&gt; model = BinomialBayesMixedGLM.from_formula(</span>
+<span class="s2">                   &#39;y ~ year_cen&#39;, random, data)</span>
+<span class="s2">    &gt;&gt;&gt; result = model.fit_vb()</span>
+<span class="s2">&quot;&quot;&quot;</span>
+
+<span class="c1"># The code in the example should be identical to what appears in</span>
+<span class="c1"># the test_doc_examples unit test</span>
+<span class="n">_poisson_example</span> <span class="o">=</span> <span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">    A Poisson random effects model with random intercepts for villages</span>
+<span class="s2">    and random slopes for each year within each village:</span>
+
+<span class="s2">    &gt;&gt;&gt; random = {&quot;a&quot;: &#39;0 + C(Village)&#39;, &quot;b&quot;: &#39;0 + C(Village)*year_cen&#39;}</span>
+<span class="s2">    &gt;&gt;&gt; model = PoissonBayesMixedGLM.from_formula(</span>
+<span class="s2">                    &#39;y ~ year_cen&#39;, random, data)</span>
+<span class="s2">    &gt;&gt;&gt; result = model.fit_vb()</span>
+<span class="s2">&quot;&quot;&quot;</span>
+
+
+<span class="k">class</span> <span class="nc">_BayesMixedGLM</span><span class="p">(</span><span class="n">base</span><span class="o">.</span><span class="n">Model</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
+                 <span class="n">endog</span><span class="p">,</span>
+                 <span class="n">exog</span><span class="p">,</span>
+                 <span class="n">exog_vc</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                 <span class="n">ident</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                 <span class="n">family</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                 <span class="n">vcp_p</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+                 <span class="n">fe_p</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
+                 <span class="n">fep_names</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                 <span class="n">vcp_names</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                 <span class="n">vc_names</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                 <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+
+        <span class="k">if</span> <span class="n">exog</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">exog</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">):</span>
+                <span class="n">exog</span> <span class="o">=</span> <span class="n">exog</span><span class="p">[:,</span> <span class="kc">None</span><span class="p">]</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">exog</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">exog</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">exog</span><span class="o">.</span><span class="n">ndim</span> <span class="o">!=</span> <span class="mi">2</span><span class="p">:</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="s2">&quot;&#39;exog&#39; must have one or two columns&quot;</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">exog_vc</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">exog_vc</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">):</span>
+                <span class="n">exog_vc</span> <span class="o">=</span> <span class="n">exog_vc</span><span class="p">[:,</span> <span class="kc">None</span><span class="p">]</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">exog_vc</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">exog_vc</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">exog_vc</span><span class="o">.</span><span class="n">ndim</span> <span class="o">!=</span> <span class="mi">2</span><span class="p">:</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="s2">&quot;&#39;exog_vc&#39; must have one or two columns&quot;</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+
+        <span class="n">ident</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">ident</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">ident</span><span class="o">.</span><span class="n">ndim</span> <span class="o">!=</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="s2">&quot;ident must be a one-dimensional array&quot;</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">ident</span><span class="p">)</span> <span class="o">!=</span> <span class="n">exog_vc</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]:</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="s2">&quot;len(ident) should match the number of columns of exog_vc&quot;</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">issubdtype</span><span class="p">(</span><span class="n">ident</span><span class="o">.</span><span class="n">dtype</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">integer</span><span class="p">):</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="s2">&quot;ident must have an integer dtype&quot;</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+
+        <span class="c1"># Get the fixed effects parameter names</span>
+        <span class="k">if</span> <span class="n">fep_names</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">exog</span><span class="p">,</span> <span class="s2">&quot;columns&quot;</span><span class="p">):</span>
+                <span class="n">fep_names</span> <span class="o">=</span> <span class="n">exog</span><span class="o">.</span><span class="n">columns</span><span class="o">.</span><span class="n">tolist</span><span class="p">()</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">fep_names</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;FE_</span><span class="si">%d</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">k</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">exog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">])]</span>
+
+        <span class="c1"># Get the variance parameter names</span>
+        <span class="k">if</span> <span class="n">vcp_names</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">vcp_names</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;VC_</span><span class="si">%d</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">k</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="nb">max</span><span class="p">(</span><span class="n">ident</span><span class="p">))</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">vcp_names</span><span class="p">)</span> <span class="o">!=</span> <span class="nb">len</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="n">ident</span><span class="p">)):</span>
+                <span class="n">msg</span> <span class="o">=</span> <span class="s2">&quot;The lengths of vcp_names and ident should be the same&quot;</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">sparse</span><span class="o">.</span><span class="n">issparse</span><span class="p">(</span><span class="n">exog_vc</span><span class="p">):</span>
+            <span class="n">exog_vc</span> <span class="o">=</span> <span class="n">sparse</span><span class="o">.</span><span class="n">csr_matrix</span><span class="p">(</span><span class="n">exog_vc</span><span class="p">)</span>
+
+        <span class="n">ident</span> <span class="o">=</span> <span class="n">ident</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">int</span><span class="p">)</span>
+        <span class="n">vcp_p</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">vcp_p</span><span class="p">)</span>
+        <span class="n">fe_p</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">fe_p</span><span class="p">)</span>
+
+        <span class="c1"># Number of fixed effects parameters</span>
+        <span class="k">if</span> <span class="n">exog</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">k_fep</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">k_fep</span> <span class="o">=</span> <span class="n">exog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+
+        <span class="c1"># Number of variance component structure parameters and</span>
+        <span class="c1"># variance component realizations.</span>
+        <span class="k">if</span> <span class="n">exog_vc</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">k_vc</span> <span class="o">=</span> <span class="mi">0</span>
+            <span class="n">k_vcp</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">k_vc</span> <span class="o">=</span> <span class="n">exog_vc</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+            <span class="n">k_vcp</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">ident</span><span class="p">)</span> <span class="o">+</span> <span class="mi">1</span>
+
+        <span class="c1"># power might be better but not available in older scipy</span>
+        <span class="n">exog_vc2</span> <span class="o">=</span> <span class="n">exog_vc</span><span class="o">.</span><span class="n">multiply</span><span class="p">(</span><span class="n">exog_vc</span><span class="p">)</span>
+
+        <span class="nb">super</span><span class="p">(</span><span class="n">_BayesMixedGLM</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">endog</span><span class="p">,</span> <span class="n">exog</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">exog_vc</span> <span class="o">=</span> <span class="n">exog_vc</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">exog_vc2</span> <span class="o">=</span> <span class="n">exog_vc2</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">ident</span> <span class="o">=</span> <span class="n">ident</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">family</span> <span class="o">=</span> <span class="n">family</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">k_fep</span> <span class="o">=</span> <span class="n">k_fep</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">k_vc</span> <span class="o">=</span> <span class="n">k_vc</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">k_vcp</span> <span class="o">=</span> <span class="n">k_vcp</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">fep_names</span> <span class="o">=</span> <span class="n">fep_names</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">vcp_names</span> <span class="o">=</span> <span class="n">vcp_names</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">vc_names</span> <span class="o">=</span> <span class="n">vc_names</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">fe_p</span> <span class="o">=</span> <span class="n">fe_p</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">vcp_p</span> <span class="o">=</span> <span class="n">vcp_p</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">names</span> <span class="o">=</span> <span class="n">fep_names</span> <span class="o">+</span> <span class="n">vcp_names</span>
+        <span class="k">if</span> <span class="n">vc_names</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">names</span> <span class="o">+=</span> <span class="n">vc_names</span>
+
+    <span class="k">def</span> <span class="nf">_unpack</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">vec</span><span class="p">):</span>
+
+        <span class="n">ii</span> <span class="o">=</span> <span class="mi">0</span>
+
+        <span class="c1"># Fixed effects parameters</span>
+        <span class="n">fep</span> <span class="o">=</span> <span class="n">vec</span><span class="p">[:</span><span class="n">ii</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_fep</span><span class="p">]</span>
+        <span class="n">ii</span> <span class="o">+=</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_fep</span>
+
+        <span class="c1"># Variance component structure parameters (standard</span>
+        <span class="c1"># deviations).  These are on the log scale.  The standard</span>
+        <span class="c1"># deviation for random effect j is exp(vcp[ident[j]]).</span>
+        <span class="n">vcp</span> <span class="o">=</span> <span class="n">vec</span><span class="p">[</span><span class="n">ii</span><span class="p">:</span><span class="n">ii</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_vcp</span><span class="p">]</span>
+        <span class="n">ii</span> <span class="o">+=</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_vcp</span>
+
+        <span class="c1"># Random effect realizations</span>
+        <span class="n">vc</span> <span class="o">=</span> <span class="n">vec</span><span class="p">[</span><span class="n">ii</span><span class="p">:]</span>
+
+        <span class="k">return</span> <span class="n">fep</span><span class="p">,</span> <span class="n">vcp</span><span class="p">,</span> <span class="n">vc</span>
+
+    <span class="k">def</span> <span class="nf">logposterior</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        The overall log-density: log p(y, fe, vc, vcp).</span>
+
+<span class="sd">        This differs by an additive constant from the log posterior</span>
+<span class="sd">        log p(fe, vc, vcp | y).</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="n">fep</span><span class="p">,</span> <span class="n">vcp</span><span class="p">,</span> <span class="n">vc</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_unpack</span><span class="p">(</span><span class="n">params</span><span class="p">)</span>
+
+        <span class="c1"># Contributions from p(y | x, vc)</span>
+        <span class="n">lp</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_fep</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">lp</span> <span class="o">+=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">exog</span><span class="p">,</span> <span class="n">fep</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_vc</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">lp</span> <span class="o">+=</span> <span class="bp">self</span><span class="o">.</span><span class="n">exog_vc</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">vc</span><span class="p">)</span>
+
+        <span class="n">mu</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">family</span><span class="o">.</span><span class="n">link</span><span class="o">.</span><span class="n">inverse</span><span class="p">(</span><span class="n">lp</span><span class="p">)</span>
+        <span class="n">ll</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">family</span><span class="o">.</span><span class="n">loglike</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">endog</span><span class="p">,</span> <span class="n">mu</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_vc</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+
+            <span class="c1"># Contributions from p(vc | vcp)</span>
+            <span class="n">vcp0</span> <span class="o">=</span> <span class="n">vcp</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">ident</span><span class="p">]</span>
+            <span class="n">s</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">vcp0</span><span class="p">)</span>
+            <span class="n">ll</span> <span class="o">-=</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">vc</span><span class="o">**</span><span class="mi">2</span> <span class="o">/</span> <span class="n">s</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">vcp0</span><span class="p">)</span>
+
+            <span class="c1"># Contributions from p(vc)</span>
+            <span class="n">ll</span> <span class="o">-=</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">vcp</span><span class="o">**</span><span class="mi">2</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">vcp_p</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span>
+
+        <span class="c1"># Contributions from p(fep)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_fep</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">ll</span> <span class="o">-=</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">fep</span><span class="o">**</span><span class="mi">2</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">fe_p</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">ll</span>
+
+    <span class="k">def</span> <span class="nf">logposterior_grad</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        The gradient of the log posterior.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="n">fep</span><span class="p">,</span> <span class="n">vcp</span><span class="p">,</span> <span class="n">vc</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_unpack</span><span class="p">(</span><span class="n">params</span><span class="p">)</span>
+
+        <span class="n">lp</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_fep</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">lp</span> <span class="o">+=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">exog</span><span class="p">,</span> <span class="n">fep</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_vc</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">lp</span> <span class="o">+=</span> <span class="bp">self</span><span class="o">.</span><span class="n">exog_vc</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">vc</span><span class="p">)</span>
+
+        <span class="n">mu</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">family</span><span class="o">.</span><span class="n">link</span><span class="o">.</span><span class="n">inverse</span><span class="p">(</span><span class="n">lp</span><span class="p">)</span>
+
+        <span class="n">score_factor</span> <span class="o">=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">endog</span> <span class="o">-</span> <span class="n">mu</span><span class="p">)</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">family</span><span class="o">.</span><span class="n">link</span><span class="o">.</span><span class="n">deriv</span><span class="p">(</span><span class="n">mu</span><span class="p">)</span>
+        <span class="n">score_factor</span> <span class="o">/=</span> <span class="bp">self</span><span class="o">.</span><span class="n">family</span><span class="o">.</span><span class="n">variance</span><span class="p">(</span><span class="n">mu</span><span class="p">)</span>
+
+        <span class="n">te</span> <span class="o">=</span> <span class="p">[</span><span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">]</span>
+
+        <span class="c1"># Contributions from p(y | x, z, vc)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_fep</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">te</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">score_factor</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">exog</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_vc</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">te</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">exog_vc</span><span class="o">.</span><span class="n">transpose</span><span class="p">()</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">score_factor</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_vc</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="c1"># Contributions from p(vc | vcp)</span>
+            <span class="c1"># vcp0 = vcp[self.ident]</span>
+            <span class="c1"># s = np.exp(vcp0)</span>
+            <span class="c1"># ll -= 0.5 * np.sum(vc**2 / s**2) + np.sum(vcp0)</span>
+            <span class="n">vcp0</span> <span class="o">=</span> <span class="n">vcp</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">ident</span><span class="p">]</span>
+            <span class="n">s</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">vcp0</span><span class="p">)</span>
+            <span class="n">u</span> <span class="o">=</span> <span class="n">vc</span><span class="o">**</span><span class="mi">2</span> <span class="o">/</span> <span class="n">s</span><span class="o">**</span><span class="mi">2</span> <span class="o">-</span> <span class="mi">1</span>
+            <span class="n">te</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">bincount</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ident</span><span class="p">,</span> <span class="n">weights</span><span class="o">=</span><span class="n">u</span><span class="p">)</span>
+            <span class="n">te</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">-=</span> <span class="n">vc</span> <span class="o">/</span> <span class="n">s</span><span class="o">**</span><span class="mi">2</span>
+
+            <span class="c1"># Contributions from p(vcp)</span>
+            <span class="c1"># ll -= 0.5 * np.sum(vcp**2 / self.vcp_p**2)</span>
+            <span class="n">te</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">-=</span> <span class="n">vcp</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">vcp_p</span><span class="o">**</span><span class="mi">2</span>
+
+        <span class="c1"># Contributions from p(fep)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_fep</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">te</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">-=</span> <span class="n">fep</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">fe_p</span><span class="o">**</span><span class="mi">2</span>
+
+        <span class="n">te</span> <span class="o">=</span> <span class="p">[</span><span class="n">x</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">te</span> <span class="k">if</span> <span class="n">x</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">]</span>
+
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(</span><span class="n">te</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_get_start</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">start_fep</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">k_fep</span><span class="p">)</span>
+        <span class="n">start_vcp</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">k_vcp</span><span class="p">)</span>
+        <span class="n">start_vc</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="n">size</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">k_vc</span><span class="p">)</span>
+        <span class="n">start</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">((</span><span class="n">start_fep</span><span class="p">,</span> <span class="n">start_vcp</span><span class="p">,</span> <span class="n">start_vc</span><span class="p">))</span>
+        <span class="k">return</span> <span class="n">start</span>
+
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span> <span class="nf">from_formula</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span>
+                     <span class="n">formula</span><span class="p">,</span>
+                     <span class="n">vc_formulas</span><span class="p">,</span>
+                     <span class="n">data</span><span class="p">,</span>
+                     <span class="n">family</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                     <span class="n">vcp_p</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+                     <span class="n">fe_p</span><span class="o">=</span><span class="mi">2</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Fit a BayesMixedGLM using a formula.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        formula : string</span>
+<span class="sd">            Formula for the endog and fixed effects terms (use ~ to</span>
+<span class="sd">            separate dependent and independent expressions).</span>
+<span class="sd">        vc_formulas : dictionary</span>
+<span class="sd">            vc_formulas[name] is a one-sided formula that creates one</span>
+<span class="sd">            collection of random effects with a common variance</span>
+<span class="sd">            prameter.  If using categorical (factor) variables to</span>
+<span class="sd">            produce variance components, note that generally `0 + ...`</span>
+<span class="sd">            should be used so that an intercept is not included.</span>
+<span class="sd">        data : data frame</span>
+<span class="sd">            The data to which the formulas are applied.</span>
+<span class="sd">        family : genmod.families instance</span>
+<span class="sd">            A GLM family.</span>
+<span class="sd">        vcp_p : float</span>
+<span class="sd">            The prior standard deviation for the logarithms of the standard</span>
+<span class="sd">            deviations of the random effects.</span>
+<span class="sd">        fe_p : float</span>
+<span class="sd">            The prior standard deviation for the fixed effects parameters.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="n">ident</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">exog_vc</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">vcp_names</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">j</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">for</span> <span class="n">na</span><span class="p">,</span> <span class="n">fml</span> <span class="ow">in</span> <span class="n">vc_formulas</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="n">mat</span> <span class="o">=</span> <span class="n">patsy</span><span class="o">.</span><span class="n">dmatrix</span><span class="p">(</span><span class="n">fml</span><span class="p">,</span> <span class="n">data</span><span class="p">,</span> <span class="n">return_type</span><span class="o">=</span><span class="s1">&#39;dataframe&#39;</span><span class="p">)</span>
+            <span class="n">exog_vc</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">mat</span><span class="p">)</span>
+            <span class="n">vcp_names</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">na</span><span class="p">)</span>
+            <span class="n">ident</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">j</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">mat</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">integer</span><span class="p">))</span>
+            <span class="n">j</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="n">exog_vc</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">concat</span><span class="p">(</span><span class="n">exog_vc</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+        <span class="n">vc_names</span> <span class="o">=</span> <span class="n">exog_vc</span><span class="o">.</span><span class="n">columns</span><span class="o">.</span><span class="n">tolist</span><span class="p">()</span>
+
+        <span class="n">ident</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(</span><span class="n">ident</span><span class="p">)</span>
+
+        <span class="n">model</span> <span class="o">=</span> <span class="nb">super</span><span class="p">(</span><span class="n">_BayesMixedGLM</span><span class="p">,</span> <span class="bp">cls</span><span class="p">)</span><span class="o">.</span><span class="n">from_formula</span><span class="p">(</span>
+            <span class="n">formula</span><span class="p">,</span>
+            <span class="n">data</span><span class="o">=</span><span class="n">data</span><span class="p">,</span>
+            <span class="n">family</span><span class="o">=</span><span class="n">family</span><span class="p">,</span>
+            <span class="n">subset</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+            <span class="n">exog_vc</span><span class="o">=</span><span class="n">exog_vc</span><span class="p">,</span>
+            <span class="n">ident</span><span class="o">=</span><span class="n">ident</span><span class="p">,</span>
+            <span class="n">vc_names</span><span class="o">=</span><span class="n">vc_names</span><span class="p">,</span>
+            <span class="n">vcp_names</span><span class="o">=</span><span class="n">vcp_names</span><span class="p">,</span>
+            <span class="n">fe_p</span><span class="o">=</span><span class="n">fe_p</span><span class="p">,</span>
+            <span class="n">vcp_p</span><span class="o">=</span><span class="n">vcp_p</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">model</span>
+
+    <span class="k">def</span> <span class="nf">fit</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s2">&quot;BFGS&quot;</span><span class="p">,</span> <span class="n">minim_opts</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        fit is equivalent to fit_map.</span>
+
+<span class="sd">        See fit_map for parameter information.</span>
+
+<span class="sd">        Use `fit_vb` to fit the model using variational Bayes.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">fit_map</span><span class="p">(</span><span class="n">method</span><span class="p">,</span> <span class="n">minim_opts</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">fit_map</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s2">&quot;BFGS&quot;</span><span class="p">,</span> <span class="n">minim_opts</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">scale_fe</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Construct the Laplace approximation to the posterior</span>
+<span class="sd">        distribution.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        method : string</span>
+<span class="sd">            Optimization method for finding the posterior mode.</span>
+<span class="sd">        minim_opts : dict-like</span>
+<span class="sd">            Options passed to scipy.minimize.</span>
+<span class="sd">        scale_fe : bool</span>
+<span class="sd">            If True, the columns of the fixed effects design matrix</span>
+<span class="sd">            are centered and scaled to unit variance before fitting</span>
+<span class="sd">            the model.  The results are back-transformed so that the</span>
+<span class="sd">            results are presented on the original scale.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        BayesMixedGLMResults instance.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="k">if</span> <span class="n">scale_fe</span><span class="p">:</span>
+            <span class="n">mn</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">exog</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+            <span class="n">sc</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">exog</span><span class="o">.</span><span class="n">std</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_exog_save</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">exog</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">exog</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">exog</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+            <span class="n">ixs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">flatnonzero</span><span class="p">(</span><span class="n">sc</span> <span class="o">&gt;</span> <span class="mf">1e-8</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">exog</span><span class="p">[:,</span> <span class="n">ixs</span><span class="p">]</span> <span class="o">-=</span> <span class="n">mn</span><span class="p">[</span><span class="n">ixs</span><span class="p">]</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">exog</span><span class="p">[:,</span> <span class="n">ixs</span><span class="p">]</span> <span class="o">/=</span> <span class="n">sc</span><span class="p">[</span><span class="n">ixs</span><span class="p">]</span>
+
+        <span class="k">def</span> <span class="nf">fun</span><span class="p">(</span><span class="n">params</span><span class="p">):</span>
+            <span class="k">return</span> <span class="o">-</span><span class="bp">self</span><span class="o">.</span><span class="n">logposterior</span><span class="p">(</span><span class="n">params</span><span class="p">)</span>
+
+        <span class="k">def</span> <span class="nf">grad</span><span class="p">(</span><span class="n">params</span><span class="p">):</span>
+            <span class="k">return</span> <span class="o">-</span><span class="bp">self</span><span class="o">.</span><span class="n">logposterior_grad</span><span class="p">(</span><span class="n">params</span><span class="p">)</span>
+
+        <span class="n">start</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_start</span><span class="p">()</span>
+
+        <span class="n">r</span> <span class="o">=</span> <span class="n">minimize</span><span class="p">(</span><span class="n">fun</span><span class="p">,</span> <span class="n">start</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="n">method</span><span class="p">,</span> <span class="n">jac</span><span class="o">=</span><span class="n">grad</span><span class="p">,</span> <span class="n">options</span><span class="o">=</span><span class="n">minim_opts</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">r</span><span class="o">.</span><span class="n">success</span><span class="p">:</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="p">(</span><span class="s2">&quot;Laplace fitting did not converge, |gradient|=</span><span class="si">%.6f</span><span class="s2">&quot;</span> <span class="o">%</span>
+                   <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">r</span><span class="o">.</span><span class="n">jac</span><span class="o">**</span><span class="mi">2</span><span class="p">)))</span>
+            <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+
+        <span class="kn">from</span> <span class="nn">statsmodels.tools.numdiff</span> <span class="k">import</span> <span class="n">approx_fprime</span>
+        <span class="n">hess</span> <span class="o">=</span> <span class="n">approx_fprime</span><span class="p">(</span><span class="n">r</span><span class="o">.</span><span class="n">x</span><span class="p">,</span> <span class="n">grad</span><span class="p">)</span>
+        <span class="n">cov</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">inv</span><span class="p">(</span><span class="n">hess</span><span class="p">)</span>
+
+        <span class="n">params</span> <span class="o">=</span> <span class="n">r</span><span class="o">.</span><span class="n">x</span>
+
+        <span class="k">if</span> <span class="n">scale_fe</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">exog</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_exog_save</span>
+            <span class="k">del</span> <span class="bp">self</span><span class="o">.</span><span class="n">_exog_save</span>
+            <span class="n">params</span><span class="p">[</span><span class="n">ixs</span><span class="p">]</span> <span class="o">/=</span> <span class="n">sc</span><span class="p">[</span><span class="n">ixs</span><span class="p">]</span>
+            <span class="n">cov</span><span class="p">[</span><span class="n">ixs</span><span class="p">,</span> <span class="p">:][:,</span> <span class="n">ixs</span><span class="p">]</span> <span class="o">/=</span> <span class="n">np</span><span class="o">.</span><span class="n">outer</span><span class="p">(</span><span class="n">sc</span><span class="p">[</span><span class="n">ixs</span><span class="p">],</span> <span class="n">sc</span><span class="p">[</span><span class="n">ixs</span><span class="p">])</span>
+
+        <span class="k">return</span> <span class="n">BayesMixedGLMResults</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">cov</span><span class="p">,</span> <span class="n">optim_retvals</span><span class="o">=</span><span class="n">r</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">predict</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">exog</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">linear</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return the fitted mean structure.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        params : array-like</span>
+<span class="sd">            The parameter vector, may be the full parameter vector, or may</span>
+<span class="sd">            be truncated to include only the mean parameters.</span>
+<span class="sd">        exog : array-like</span>
+<span class="sd">            The design matrix for the mean structure.  If omitted, use the</span>
+<span class="sd">            model&#39;s design matrix.</span>
+<span class="sd">        linear : bool</span>
+<span class="sd">            If True, return the linear predictor without passing through the</span>
+<span class="sd">            link function.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        A 1-dimensional array of predicted values</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="k">if</span> <span class="n">exog</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">exog</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">exog</span>
+
+        <span class="n">q</span> <span class="o">=</span> <span class="n">exog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+        <span class="n">pr</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">exog</span><span class="p">,</span> <span class="n">params</span><span class="p">[</span><span class="mi">0</span><span class="p">:</span><span class="n">q</span><span class="p">])</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">linear</span><span class="p">:</span>
+            <span class="n">pr</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">family</span><span class="o">.</span><span class="n">link</span><span class="o">.</span><span class="n">inverse</span><span class="p">(</span><span class="n">pr</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">pr</span>
+
+
+<span class="k">class</span> <span class="nc">_VariationalBayesMixedGLM</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A mixin providing generic (not family-specific) methods for</span>
+<span class="sd">    variational Bayes mean field fitting.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="c1"># Integration range (from -rng to +rng).  The integrals are with</span>
+    <span class="c1"># respect to a standard Gaussian distribution so (-5, 5) will be</span>
+    <span class="c1"># sufficient in many cases.</span>
+    <span class="n">rng</span> <span class="o">=</span> <span class="mi">5</span>
+
+    <span class="n">verbose</span> <span class="o">=</span> <span class="kc">False</span>
+
+    <span class="c1"># Returns the mean and variance of the linear predictor under the</span>
+    <span class="c1"># given distribution parameters.</span>
+    <span class="k">def</span> <span class="nf">_lp_stats</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fep_mean</span><span class="p">,</span> <span class="n">fep_sd</span><span class="p">,</span> <span class="n">vc_mean</span><span class="p">,</span> <span class="n">vc_sd</span><span class="p">):</span>
+
+        <span class="n">tm</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">exog</span><span class="p">,</span> <span class="n">fep_mean</span><span class="p">)</span>
+        <span class="n">tv</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">exog</span><span class="o">**</span><span class="mi">2</span><span class="p">,</span> <span class="n">fep_sd</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span>
+        <span class="n">tm</span> <span class="o">+=</span> <span class="bp">self</span><span class="o">.</span><span class="n">exog_vc</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">vc_mean</span><span class="p">)</span>
+        <span class="n">tv</span> <span class="o">+=</span> <span class="bp">self</span><span class="o">.</span><span class="n">exog_vc2</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">vc_sd</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">tm</span><span class="p">,</span> <span class="n">tv</span>
+
+    <span class="k">def</span> <span class="nf">vb_elbo_base</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">h</span><span class="p">,</span> <span class="n">tm</span><span class="p">,</span> <span class="n">fep_mean</span><span class="p">,</span> <span class="n">vcp_mean</span><span class="p">,</span> <span class="n">vc_mean</span><span class="p">,</span> <span class="n">fep_sd</span><span class="p">,</span> <span class="n">vcp_sd</span><span class="p">,</span>
+                     <span class="n">vc_sd</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Returns the evidence lower bound (ELBO) for the model.</span>
+
+<span class="sd">        This function calculates the family-specific ELBO function</span>
+<span class="sd">        based on information provided from a subclass.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        h : function mapping 1d vector to 1d vector</span>
+<span class="sd">            The contribution of the model to the ELBO function can be</span>
+<span class="sd">            expressed as y_i*lp_i + Eh_i(z), where y_i and lp_i are</span>
+<span class="sd">            the response and linear predictor for observation i, and z</span>
+<span class="sd">            is a standard normal rangom variable.  This formulation</span>
+<span class="sd">            can be achieved for any GLM with a canonical link</span>
+<span class="sd">            function.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="c1"># p(y | vc) contributions</span>
+        <span class="n">iv</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">for</span> <span class="n">w</span> <span class="ow">in</span> <span class="n">glw</span><span class="p">:</span>
+            <span class="n">z</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">rng</span> <span class="o">*</span> <span class="n">w</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+            <span class="n">iv</span> <span class="o">+=</span> <span class="n">w</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="n">h</span><span class="p">(</span><span class="n">z</span><span class="p">)</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="o">-</span><span class="n">z</span><span class="o">**</span><span class="mi">2</span> <span class="o">/</span> <span class="mi">2</span><span class="p">)</span>
+        <span class="n">iv</span> <span class="o">/=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">pi</span><span class="p">)</span>
+        <span class="n">iv</span> <span class="o">*=</span> <span class="bp">self</span><span class="o">.</span><span class="n">rng</span>
+        <span class="n">iv</span> <span class="o">+=</span> <span class="bp">self</span><span class="o">.</span><span class="n">endog</span> <span class="o">*</span> <span class="n">tm</span>
+        <span class="n">iv</span> <span class="o">=</span> <span class="n">iv</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
+
+        <span class="c1"># p(vc | vcp) * p(vcp) * p(fep) contributions</span>
+        <span class="n">iv</span> <span class="o">+=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_elbo_common</span><span class="p">(</span><span class="n">fep_mean</span><span class="p">,</span> <span class="n">fep_sd</span><span class="p">,</span> <span class="n">vcp_mean</span><span class="p">,</span> <span class="n">vcp_sd</span><span class="p">,</span> <span class="n">vc_mean</span><span class="p">,</span>
+                                <span class="n">vc_sd</span><span class="p">)</span>
+
+        <span class="n">r</span> <span class="o">=</span> <span class="p">(</span><span class="n">iv</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">fep_sd</span><span class="p">))</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">vcp_sd</span><span class="p">))</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span>
+            <span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">vc_sd</span><span class="p">)))</span>
+
+        <span class="k">return</span> <span class="n">r</span>
+
+    <span class="k">def</span> <span class="nf">vb_elbo_grad_base</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">h</span><span class="p">,</span> <span class="n">tm</span><span class="p">,</span> <span class="n">tv</span><span class="p">,</span> <span class="n">fep_mean</span><span class="p">,</span> <span class="n">vcp_mean</span><span class="p">,</span> <span class="n">vc_mean</span><span class="p">,</span> <span class="n">fep_sd</span><span class="p">,</span>
+                          <span class="n">vcp_sd</span><span class="p">,</span> <span class="n">vc_sd</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return the gradient of the ELBO function.</span>
+
+<span class="sd">        See vb_elbo_base for parameters.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="n">fep_mean_grad</span> <span class="o">=</span> <span class="mf">0.</span>
+        <span class="n">fep_sd_grad</span> <span class="o">=</span> <span class="mf">0.</span>
+        <span class="n">vcp_mean_grad</span> <span class="o">=</span> <span class="mf">0.</span>
+        <span class="n">vcp_sd_grad</span> <span class="o">=</span> <span class="mf">0.</span>
+        <span class="n">vc_mean_grad</span> <span class="o">=</span> <span class="mf">0.</span>
+        <span class="n">vc_sd_grad</span> <span class="o">=</span> <span class="mf">0.</span>
+
+        <span class="c1"># p(y | vc) contributions</span>
+        <span class="k">for</span> <span class="n">w</span> <span class="ow">in</span> <span class="n">glw</span><span class="p">:</span>
+            <span class="n">z</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">rng</span> <span class="o">*</span> <span class="n">w</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+            <span class="n">u</span> <span class="o">=</span> <span class="n">h</span><span class="p">(</span><span class="n">z</span><span class="p">)</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="o">-</span><span class="n">z</span><span class="o">**</span><span class="mi">2</span> <span class="o">/</span> <span class="mi">2</span><span class="p">)</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">pi</span><span class="p">)</span>
+            <span class="n">r</span> <span class="o">=</span> <span class="n">u</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">tv</span><span class="p">)</span>
+            <span class="n">fep_mean_grad</span> <span class="o">+=</span> <span class="n">w</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">u</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">exog</span><span class="p">)</span>
+            <span class="n">vc_mean_grad</span> <span class="o">+=</span> <span class="n">w</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">exog_vc</span><span class="o">.</span><span class="n">transpose</span><span class="p">()</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">u</span><span class="p">)</span>
+            <span class="n">fep_sd_grad</span> <span class="o">+=</span> <span class="n">w</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="n">z</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">r</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">exog</span><span class="o">**</span><span class="mi">2</span> <span class="o">*</span> <span class="n">fep_sd</span><span class="p">)</span>
+            <span class="n">v</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">exog_vc2</span><span class="o">.</span><span class="n">multiply</span><span class="p">(</span><span class="n">vc_sd</span><span class="p">)</span><span class="o">.</span><span class="n">transpose</span><span class="p">()</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">r</span><span class="p">)</span>
+            <span class="n">v</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">squeeze</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">v</span><span class="p">))</span>
+            <span class="n">vc_sd_grad</span> <span class="o">+=</span> <span class="n">w</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="n">z</span> <span class="o">*</span> <span class="n">v</span>
+
+        <span class="n">fep_mean_grad</span> <span class="o">*=</span> <span class="bp">self</span><span class="o">.</span><span class="n">rng</span>
+        <span class="n">vc_mean_grad</span> <span class="o">*=</span> <span class="bp">self</span><span class="o">.</span><span class="n">rng</span>
+        <span class="n">fep_sd_grad</span> <span class="o">*=</span> <span class="bp">self</span><span class="o">.</span><span class="n">rng</span>
+        <span class="n">vc_sd_grad</span> <span class="o">*=</span> <span class="bp">self</span><span class="o">.</span><span class="n">rng</span>
+        <span class="n">fep_mean_grad</span> <span class="o">+=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">endog</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">exog</span><span class="p">)</span>
+        <span class="n">vc_mean_grad</span> <span class="o">+=</span> <span class="bp">self</span><span class="o">.</span><span class="n">exog_vc</span><span class="o">.</span><span class="n">transpose</span><span class="p">()</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">endog</span><span class="p">)</span>
+
+        <span class="p">(</span><span class="n">fep_mean_grad_i</span><span class="p">,</span> <span class="n">fep_sd_grad_i</span><span class="p">,</span> <span class="n">vcp_mean_grad_i</span><span class="p">,</span> <span class="n">vcp_sd_grad_i</span><span class="p">,</span>
+         <span class="n">vc_mean_grad_i</span><span class="p">,</span> <span class="n">vc_sd_grad_i</span><span class="p">)</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_elbo_grad_common</span><span class="p">(</span>
+             <span class="n">fep_mean</span><span class="p">,</span> <span class="n">fep_sd</span><span class="p">,</span> <span class="n">vcp_mean</span><span class="p">,</span> <span class="n">vcp_sd</span><span class="p">,</span> <span class="n">vc_mean</span><span class="p">,</span> <span class="n">vc_sd</span><span class="p">)</span>
+
+        <span class="n">fep_mean_grad</span> <span class="o">+=</span> <span class="n">fep_mean_grad_i</span>
+        <span class="n">fep_sd_grad</span> <span class="o">+=</span> <span class="n">fep_sd_grad_i</span>
+        <span class="n">vcp_mean_grad</span> <span class="o">+=</span> <span class="n">vcp_mean_grad_i</span>
+        <span class="n">vcp_sd_grad</span> <span class="o">+=</span> <span class="n">vcp_sd_grad_i</span>
+        <span class="n">vc_mean_grad</span> <span class="o">+=</span> <span class="n">vc_mean_grad_i</span>
+        <span class="n">vc_sd_grad</span> <span class="o">+=</span> <span class="n">vc_sd_grad_i</span>
+
+        <span class="n">fep_sd_grad</span> <span class="o">+=</span> <span class="mi">1</span> <span class="o">/</span> <span class="n">fep_sd</span>
+        <span class="n">vcp_sd_grad</span> <span class="o">+=</span> <span class="mi">1</span> <span class="o">/</span> <span class="n">vcp_sd</span>
+        <span class="n">vc_sd_grad</span> <span class="o">+=</span> <span class="mi">1</span> <span class="o">/</span> <span class="n">vc_sd</span>
+
+        <span class="n">mean_grad</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">((</span><span class="n">fep_mean_grad</span><span class="p">,</span> <span class="n">vcp_mean_grad</span><span class="p">,</span>
+                                    <span class="n">vc_mean_grad</span><span class="p">))</span>
+        <span class="n">sd_grad</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">((</span><span class="n">fep_sd_grad</span><span class="p">,</span> <span class="n">vcp_sd_grad</span><span class="p">,</span> <span class="n">vc_sd_grad</span><span class="p">))</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">verbose</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span>
+                <span class="s2">&quot;|G|=</span><span class="si">%f</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">mean_grad</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">sd_grad</span><span class="o">**</span><span class="mi">2</span><span class="p">)))</span>
+
+        <span class="k">return</span> <span class="n">mean_grad</span><span class="p">,</span> <span class="n">sd_grad</span>
+
+    <span class="k">def</span> <span class="nf">fit_vb</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
+               <span class="n">mean</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+               <span class="n">sd</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+               <span class="n">fit_method</span><span class="o">=</span><span class="s2">&quot;BFGS&quot;</span><span class="p">,</span>
+               <span class="n">minim_opts</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+               <span class="n">scale_fe</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+               <span class="n">verbose</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Fit a model using the variational Bayes mean field approximation.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        mean : array-like</span>
+<span class="sd">            Starting value for VB mean vector</span>
+<span class="sd">        sd : array-like</span>
+<span class="sd">            Starting value for VB standard deviation vector</span>
+<span class="sd">        fit_method : string</span>
+<span class="sd">            Algorithm for scipy.minimize</span>
+<span class="sd">        minim_opts : dict-like</span>
+<span class="sd">            Options passed to scipy.minimize</span>
+<span class="sd">        scale_fe : bool</span>
+<span class="sd">            If true, the columns of the fixed effects design matrix</span>
+<span class="sd">            are centered and scaled to unit variance before fitting</span>
+<span class="sd">            the model.  The results are back-transformed so that the</span>
+<span class="sd">            results are presented on the original scale.</span>
+<span class="sd">        verbose : bool</span>
+<span class="sd">            If True, print the gradient norm to the screen each time</span>
+<span class="sd">            it is calculated.</span>
+
+<span class="sd">        Notes</span>
+<span class="sd">        -----</span>
+<span class="sd">        The goal is to find a factored Gaussian approximation</span>
+<span class="sd">        q1*q2*...  to the posterior distribution, approximately</span>
+<span class="sd">        minimizing the KL divergence from the factored approximation</span>
+<span class="sd">        to the actual posterior.  The KL divergence, or ELBO function</span>
+<span class="sd">        has the form</span>
+
+<span class="sd">            E* log p(y, fe, vcp, vc) - E* log q</span>
+
+<span class="sd">        where E* is expectation with respect to the product of qj.</span>
+
+<span class="sd">        References</span>
+<span class="sd">        ----------</span>
+<span class="sd">        Blei, Kucukelbir, McAuliffe (2017).  Variational Inference: A</span>
+<span class="sd">        review for Statisticians</span>
+<span class="sd">        https://arxiv.org/pdf/1601.00670.pdf</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">verbose</span> <span class="o">=</span> <span class="n">verbose</span>
+
+        <span class="k">if</span> <span class="n">scale_fe</span><span class="p">:</span>
+            <span class="n">mn</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">exog</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+            <span class="n">sc</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">exog</span><span class="o">.</span><span class="n">std</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_exog_save</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">exog</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">exog</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">exog</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+            <span class="n">ixs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">flatnonzero</span><span class="p">(</span><span class="n">sc</span> <span class="o">&gt;</span> <span class="mf">1e-8</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">exog</span><span class="p">[:,</span> <span class="n">ixs</span><span class="p">]</span> <span class="o">-=</span> <span class="n">mn</span><span class="p">[</span><span class="n">ixs</span><span class="p">]</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">exog</span><span class="p">[:,</span> <span class="n">ixs</span><span class="p">]</span> <span class="o">/=</span> <span class="n">sc</span><span class="p">[</span><span class="n">ixs</span><span class="p">]</span>
+
+        <span class="n">n</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_fep</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_vcp</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_vc</span>
+        <span class="n">ml</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_fep</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_vcp</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_vc</span>
+        <span class="k">if</span> <span class="n">mean</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">m</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">n</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">mean</span><span class="p">)</span> <span class="o">!=</span> <span class="n">ml</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                    <span class="s2">&quot;mean has incorrect length, </span><span class="si">%d</span><span class="s2"> != </span><span class="si">%d</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">mean</span><span class="p">),</span> <span class="n">ml</span><span class="p">))</span>
+            <span class="n">m</span> <span class="o">=</span> <span class="n">mean</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">sd</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">s</span> <span class="o">=</span> <span class="o">-</span><span class="mf">0.5</span> <span class="o">+</span> <span class="mf">0.1</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="n">size</span><span class="o">=</span><span class="n">n</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">sd</span><span class="p">)</span> <span class="o">!=</span> <span class="n">ml</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                    <span class="s2">&quot;sd has incorrect length, </span><span class="si">%d</span><span class="s2"> != </span><span class="si">%d</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">sd</span><span class="p">),</span> <span class="n">ml</span><span class="p">))</span>
+
+            <span class="c1"># s is parameterized on the log-scale internally when</span>
+            <span class="c1"># optimizing the ELBO function (this is transparent to the</span>
+            <span class="c1"># caller)</span>
+            <span class="n">s</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">sd</span><span class="p">)</span>
+
+        <span class="c1"># Don&#39;t allow the variance parameter starting mean values to</span>
+        <span class="c1"># be too small.</span>
+        <span class="n">i1</span><span class="p">,</span> <span class="n">i2</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_fep</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_fep</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_vcp</span>
+        <span class="n">m</span><span class="p">[</span><span class="n">i1</span><span class="p">:</span><span class="n">i2</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">m</span><span class="p">[</span><span class="n">i1</span><span class="p">:</span><span class="n">i2</span><span class="p">]</span> <span class="o">&lt;</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">m</span><span class="p">[</span><span class="n">i1</span><span class="p">:</span><span class="n">i2</span><span class="p">])</span>
+
+        <span class="c1"># Don&#39;t allow the posterior standard deviation starting values</span>
+        <span class="c1"># to be too small.</span>
+        <span class="n">s</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">s</span> <span class="o">&lt;</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">s</span><span class="p">)</span>
+
+        <span class="k">def</span> <span class="nf">elbo</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+            <span class="n">n</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="o">//</span> <span class="mi">2</span>
+            <span class="k">return</span> <span class="o">-</span><span class="bp">self</span><span class="o">.</span><span class="n">vb_elbo</span><span class="p">(</span><span class="n">x</span><span class="p">[:</span><span class="n">n</span><span class="p">],</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">x</span><span class="p">[</span><span class="n">n</span><span class="p">:]))</span>
+
+        <span class="k">def</span> <span class="nf">elbo_grad</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+            <span class="n">n</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="o">//</span> <span class="mi">2</span>
+            <span class="n">gm</span><span class="p">,</span> <span class="n">gs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">vb_elbo_grad</span><span class="p">(</span><span class="n">x</span><span class="p">[:</span><span class="n">n</span><span class="p">],</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">x</span><span class="p">[</span><span class="n">n</span><span class="p">:]))</span>
+            <span class="n">gs</span> <span class="o">*=</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">x</span><span class="p">[</span><span class="n">n</span><span class="p">:])</span>
+            <span class="k">return</span> <span class="o">-</span><span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">((</span><span class="n">gm</span><span class="p">,</span> <span class="n">gs</span><span class="p">))</span>
+
+        <span class="n">start</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">((</span><span class="n">m</span><span class="p">,</span> <span class="n">s</span><span class="p">))</span>
+        <span class="n">mm</span> <span class="o">=</span> <span class="n">minimize</span><span class="p">(</span>
+            <span class="n">elbo</span><span class="p">,</span> <span class="n">start</span><span class="p">,</span> <span class="n">jac</span><span class="o">=</span><span class="n">elbo_grad</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="n">fit_method</span><span class="p">,</span> <span class="n">options</span><span class="o">=</span><span class="n">minim_opts</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">mm</span><span class="o">.</span><span class="n">success</span><span class="p">:</span>
+            <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="s2">&quot;VB fitting did not converge&quot;</span><span class="p">)</span>
+
+        <span class="n">n</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">mm</span><span class="o">.</span><span class="n">x</span><span class="p">)</span> <span class="o">//</span> <span class="mi">2</span>
+        <span class="n">params</span> <span class="o">=</span> <span class="n">mm</span><span class="o">.</span><span class="n">x</span><span class="p">[</span><span class="mi">0</span><span class="p">:</span><span class="n">n</span><span class="p">]</span>
+        <span class="n">va</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">mm</span><span class="o">.</span><span class="n">x</span><span class="p">[</span><span class="n">n</span><span class="p">:])</span>
+
+        <span class="k">if</span> <span class="n">scale_fe</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">exog</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_exog_save</span>
+            <span class="k">del</span> <span class="bp">self</span><span class="o">.</span><span class="n">_exog_save</span>
+            <span class="n">params</span><span class="p">[</span><span class="n">ixs</span><span class="p">]</span> <span class="o">/=</span> <span class="n">sc</span><span class="p">[</span><span class="n">ixs</span><span class="p">]</span>
+            <span class="n">va</span><span class="p">[</span><span class="n">ixs</span><span class="p">]</span> <span class="o">/=</span> <span class="n">sc</span><span class="p">[</span><span class="n">ixs</span><span class="p">]</span><span class="o">**</span><span class="mi">2</span>
+
+        <span class="k">return</span> <span class="n">BayesMixedGLMResults</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">va</span><span class="p">,</span> <span class="n">mm</span><span class="p">)</span>
+
+    <span class="c1"># Handle terms in the ELBO that are common to all models.</span>
+    <span class="k">def</span> <span class="nf">_elbo_common</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fep_mean</span><span class="p">,</span> <span class="n">fep_sd</span><span class="p">,</span> <span class="n">vcp_mean</span><span class="p">,</span> <span class="n">vcp_sd</span><span class="p">,</span> <span class="n">vc_mean</span><span class="p">,</span> <span class="n">vc_sd</span><span class="p">):</span>
+
+        <span class="n">iv</span> <span class="o">=</span> <span class="mi">0</span>
+
+        <span class="c1"># p(vc | vcp) contributions</span>
+        <span class="n">m</span> <span class="o">=</span> <span class="n">vcp_mean</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">ident</span><span class="p">]</span>
+        <span class="n">s</span> <span class="o">=</span> <span class="n">vcp_sd</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">ident</span><span class="p">]</span>
+        <span class="n">iv</span> <span class="o">-=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">((</span><span class="n">vc_mean</span><span class="o">**</span><span class="mi">2</span> <span class="o">+</span> <span class="n">vc_sd</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="p">(</span><span class="n">s</span><span class="o">**</span><span class="mi">2</span> <span class="o">-</span> <span class="n">m</span><span class="p">)))</span> <span class="o">/</span> <span class="mi">2</span>
+        <span class="n">iv</span> <span class="o">-=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">m</span><span class="p">)</span>
+
+        <span class="c1"># p(vcp) contributions</span>
+        <span class="n">iv</span> <span class="o">-=</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="p">(</span><span class="n">vcp_mean</span><span class="o">**</span><span class="mi">2</span> <span class="o">+</span> <span class="n">vcp_sd</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">vcp_p</span><span class="o">**</span><span class="mi">2</span>
+
+        <span class="c1"># p(b) contributions</span>
+        <span class="n">iv</span> <span class="o">-=</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="p">(</span><span class="n">fep_mean</span><span class="o">**</span><span class="mi">2</span> <span class="o">+</span> <span class="n">fep_sd</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">fe_p</span><span class="o">**</span><span class="mi">2</span>
+
+        <span class="k">return</span> <span class="n">iv</span>
+
+    <span class="k">def</span> <span class="nf">_elbo_grad_common</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fep_mean</span><span class="p">,</span> <span class="n">fep_sd</span><span class="p">,</span> <span class="n">vcp_mean</span><span class="p">,</span> <span class="n">vcp_sd</span><span class="p">,</span> <span class="n">vc_mean</span><span class="p">,</span>
+                          <span class="n">vc_sd</span><span class="p">):</span>
+
+        <span class="c1"># p(vc | vcp) contributions</span>
+        <span class="n">m</span> <span class="o">=</span> <span class="n">vcp_mean</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">ident</span><span class="p">]</span>
+        <span class="n">s</span> <span class="o">=</span> <span class="n">vcp_sd</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">ident</span><span class="p">]</span>
+        <span class="n">u</span> <span class="o">=</span> <span class="n">vc_mean</span><span class="o">**</span><span class="mi">2</span> <span class="o">+</span> <span class="n">vc_sd</span><span class="o">**</span><span class="mi">2</span>
+        <span class="n">ve</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="p">(</span><span class="n">s</span><span class="o">**</span><span class="mi">2</span> <span class="o">-</span> <span class="n">m</span><span class="p">))</span>
+        <span class="n">dm</span> <span class="o">=</span> <span class="n">u</span> <span class="o">*</span> <span class="n">ve</span> <span class="o">-</span> <span class="mi">1</span>
+        <span class="n">ds</span> <span class="o">=</span> <span class="o">-</span><span class="mi">2</span> <span class="o">*</span> <span class="n">u</span> <span class="o">*</span> <span class="n">ve</span> <span class="o">*</span> <span class="n">s</span>
+        <span class="n">vcp_mean_grad</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">bincount</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ident</span><span class="p">,</span> <span class="n">weights</span><span class="o">=</span><span class="n">dm</span><span class="p">)</span>
+        <span class="n">vcp_sd_grad</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">bincount</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ident</span><span class="p">,</span> <span class="n">weights</span><span class="o">=</span><span class="n">ds</span><span class="p">)</span>
+
+        <span class="n">vc_mean_grad</span> <span class="o">=</span> <span class="o">-</span><span class="n">vc_mean</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span> <span class="o">*</span> <span class="n">ve</span>
+        <span class="n">vc_sd_grad</span> <span class="o">=</span> <span class="o">-</span><span class="n">vc_sd</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span> <span class="o">*</span> <span class="n">ve</span>
+
+        <span class="c1"># p(vcp) contributions</span>
+        <span class="n">vcp_mean_grad</span> <span class="o">-=</span> <span class="n">vcp_mean</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">vcp_p</span><span class="o">**</span><span class="mi">2</span>
+        <span class="n">vcp_sd_grad</span> <span class="o">-=</span> <span class="n">vcp_sd</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">vcp_p</span><span class="o">**</span><span class="mi">2</span>
+
+        <span class="c1"># p(b) contributions</span>
+        <span class="n">fep_mean_grad</span> <span class="o">=</span> <span class="o">-</span><span class="n">fep_mean</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">fe_p</span><span class="o">**</span><span class="mi">2</span>
+        <span class="n">fep_sd_grad</span> <span class="o">=</span> <span class="o">-</span><span class="n">fep_sd</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">fe_p</span><span class="o">**</span><span class="mi">2</span>
+
+        <span class="k">return</span> <span class="p">(</span><span class="n">fep_mean_grad</span><span class="p">,</span> <span class="n">fep_sd_grad</span><span class="p">,</span> <span class="n">vcp_mean_grad</span><span class="p">,</span> <span class="n">vcp_sd_grad</span><span class="p">,</span>
+                <span class="n">vc_mean_grad</span><span class="p">,</span> <span class="n">vc_sd_grad</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="BayesMixedGLMResults"><a class="viewcode-back" href="../../../generated/statsmodels.genmod.bayes_mixed_glm.BayesMixedGLMResults.html#statsmodels.genmod.bayes_mixed_glm.BayesMixedGLMResults">[docs]</a><span class="k">class</span> <span class="nc">BayesMixedGLMResults</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Class to hold results from a Bayesian estimation of a Mixed GLM model.</span>
+
+<span class="sd">    Attributes</span>
+<span class="sd">    ----------</span>
+<span class="sd">    fe_mean : array-like</span>
+<span class="sd">        Posterior mean of the fixed effects coefficients.</span>
+<span class="sd">    fe_sd : array-like</span>
+<span class="sd">        Posterior standard deviation of the fixed effects coefficients</span>
+<span class="sd">    vcp_mean : array-like</span>
+<span class="sd">        Posterior mean of the logged variance component standard</span>
+<span class="sd">        deviations.</span>
+<span class="sd">    vcp_sd : array-like</span>
+<span class="sd">        Posterior standard deviation of the logged variance component</span>
+<span class="sd">        standard deviations.</span>
+<span class="sd">    vc_mean : array-like</span>
+<span class="sd">        Posterior mean of the random coefficients</span>
+<span class="sd">    vc_sd : array-like</span>
+<span class="sd">        Posterior standard deviation of the random coefficients</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">cov_params</span><span class="p">,</span> <span class="n">optim_retvals</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">model</span> <span class="o">=</span> <span class="n">model</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">params</span> <span class="o">=</span> <span class="n">params</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_cov_params</span> <span class="o">=</span> <span class="n">cov_params</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">optim_retvals</span> <span class="o">=</span> <span class="n">optim_retvals</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">fe_mean</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">vcp_mean</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">vc_mean</span> <span class="o">=</span> <span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">_unpack</span><span class="p">(</span><span class="n">params</span><span class="p">))</span>
+
+        <span class="k">if</span> <span class="n">cov_params</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
+            <span class="n">cp</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">diag</span><span class="p">(</span><span class="n">cov_params</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">cp</span> <span class="o">=</span> <span class="n">cov_params</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">fe_sd</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">vcp_sd</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">vc_sd</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">_unpack</span><span class="p">(</span><span class="n">cp</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">fe_sd</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">fe_sd</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">vcp_sd</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">vcp_sd</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">vc_sd</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">vc_sd</span><span class="p">)</span>
+
+<div class="viewcode-block" id="BayesMixedGLMResults.cov_params"><a class="viewcode-back" href="../../../generated/statsmodels.genmod.bayes_mixed_glm.BayesMixedGLMResults.cov_params.html#statsmodels.genmod.bayes_mixed_glm.BayesMixedGLMResults.cov_params">[docs]</a>    <span class="k">def</span> <span class="nf">cov_params</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">data</span><span class="p">,</span> <span class="s2">&quot;frame&quot;</span><span class="p">):</span>
+            <span class="c1"># Return the covariance matrix as a dataframe or series</span>
+            <span class="n">na</span> <span class="o">=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">fep_names</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">vcp_names</span> <span class="o">+</span>
+                  <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">vc_names</span><span class="p">)</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_cov_params</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_cov_params</span><span class="p">,</span> <span class="n">index</span><span class="o">=</span><span class="n">na</span><span class="p">,</span> <span class="n">columns</span><span class="o">=</span><span class="n">na</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_cov_params</span><span class="p">,</span> <span class="n">index</span><span class="o">=</span><span class="n">na</span><span class="p">)</span>
+
+        <span class="c1"># Return the covariance matrix as a ndarray</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_cov_params</span></div>
+
+<div class="viewcode-block" id="BayesMixedGLMResults.summary"><a class="viewcode-back" href="../../../generated/statsmodels.genmod.bayes_mixed_glm.BayesMixedGLMResults.summary.html#statsmodels.genmod.bayes_mixed_glm.BayesMixedGLMResults.summary">[docs]</a>    <span class="k">def</span> <span class="nf">summary</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+
+        <span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">()</span>
+        <span class="n">m</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">k_fep</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">k_vcp</span>
+        <span class="n">df</span><span class="p">[</span><span class="s2">&quot;Type&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">([</span><span class="s2">&quot;M&quot;</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">k_fep</span><span class="p">)]</span> <span class="o">+</span>
+                      <span class="p">[</span><span class="s2">&quot;V&quot;</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">k_vcp</span><span class="p">)])</span>
+
+        <span class="n">df</span><span class="p">[</span><span class="s2">&quot;Post. Mean&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">params</span><span class="p">[</span><span class="mi">0</span><span class="p">:</span><span class="n">m</span><span class="p">]</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_cov_params</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
+            <span class="n">v</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">diag</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_cov_params</span><span class="p">)[</span><span class="mi">0</span><span class="p">:</span><span class="n">m</span><span class="p">]</span>
+            <span class="n">df</span><span class="p">[</span><span class="s2">&quot;Post. SD&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">v</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">df</span><span class="p">[</span><span class="s2">&quot;Post. SD&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_cov_params</span><span class="p">[</span><span class="mi">0</span><span class="p">:</span><span class="n">m</span><span class="p">])</span>
+
+        <span class="c1"># Convert variance parameters to natural scale</span>
+        <span class="n">df</span><span class="p">[</span><span class="s2">&quot;SD&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">df</span><span class="p">[</span><span class="s2">&quot;Post. Mean&quot;</span><span class="p">])</span>
+        <span class="n">df</span><span class="p">[</span><span class="s2">&quot;SD (LB)&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">df</span><span class="p">[</span><span class="s2">&quot;Post. Mean&quot;</span><span class="p">]</span> <span class="o">-</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">df</span><span class="p">[</span><span class="s2">&quot;Post. SD&quot;</span><span class="p">])</span>
+        <span class="n">df</span><span class="p">[</span><span class="s2">&quot;SD (UB)&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">df</span><span class="p">[</span><span class="s2">&quot;Post. Mean&quot;</span><span class="p">]</span> <span class="o">+</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">df</span><span class="p">[</span><span class="s2">&quot;Post. SD&quot;</span><span class="p">])</span>
+        <span class="n">df</span><span class="p">[</span><span class="s2">&quot;SD&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;</span><span class="si">%.3f</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">x</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">df</span><span class="o">.</span><span class="n">SD</span><span class="p">]</span>
+        <span class="n">df</span><span class="p">[</span><span class="s2">&quot;SD (LB)&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;</span><span class="si">%.3f</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">x</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">df</span><span class="p">[</span><span class="s2">&quot;SD (LB)&quot;</span><span class="p">]]</span>
+        <span class="n">df</span><span class="p">[</span><span class="s2">&quot;SD (UB)&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;</span><span class="si">%.3f</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">x</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">df</span><span class="p">[</span><span class="s2">&quot;SD (UB)&quot;</span><span class="p">]]</span>
+        <span class="n">df</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">df</span><span class="o">.</span><span class="n">index</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">k_fep</span><span class="p">,</span> <span class="s2">&quot;SD&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+        <span class="n">df</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">df</span><span class="o">.</span><span class="n">index</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">k_fep</span><span class="p">,</span> <span class="s2">&quot;SD (LB)&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+        <span class="n">df</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">df</span><span class="o">.</span><span class="n">index</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">k_fep</span><span class="p">,</span> <span class="s2">&quot;SD (UB)&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+
+        <span class="n">df</span><span class="o">.</span><span class="n">index</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">fep_names</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">vcp_names</span>
+
+        <span class="n">summ</span> <span class="o">=</span> <span class="n">summary2</span><span class="o">.</span><span class="n">Summary</span><span class="p">()</span>
+        <span class="n">summ</span><span class="o">.</span><span class="n">add_title</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">family</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span> <span class="o">+</span>
+                       <span class="s2">&quot; Mixed GLM Results&quot;</span><span class="p">)</span>
+        <span class="n">summ</span><span class="o">.</span><span class="n">add_df</span><span class="p">(</span><span class="n">df</span><span class="p">)</span>
+
+        <span class="n">summ</span><span class="o">.</span><span class="n">add_text</span><span class="p">(</span><span class="s2">&quot;Parameter types are mean structure (M) and &quot;</span>
+                      <span class="s2">&quot;variance structure (V)&quot;</span><span class="p">)</span>
+        <span class="n">summ</span><span class="o">.</span><span class="n">add_text</span><span class="p">(</span><span class="s2">&quot;Variance parameters are modeled as log &quot;</span>
+                      <span class="s2">&quot;standard deviations&quot;</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">summ</span></div>
+
+<div class="viewcode-block" id="BayesMixedGLMResults.random_effects"><a class="viewcode-back" href="../../../generated/statsmodels.genmod.bayes_mixed_glm.BayesMixedGLMResults.random_effects.html#statsmodels.genmod.bayes_mixed_glm.BayesMixedGLMResults.random_effects">[docs]</a>    <span class="k">def</span> <span class="nf">random_effects</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">term</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Posterior mean and standard deviation of random effects.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        term : int or None</span>
+<span class="sd">            If None, results for all random effects are returned.  If</span>
+<span class="sd">            an integer, returns results for a given set of random</span>
+<span class="sd">            effects.  The value of `term` refers to an element of the</span>
+<span class="sd">            `ident` vector, or to a position in the `vc_formulas`</span>
+<span class="sd">            list.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        Data frame of posterior means and posterior standard</span>
+<span class="sd">        deviations of random effects.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="n">z</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">vc_mean</span>
+        <span class="n">s</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">vc_sd</span>
+        <span class="n">na</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">vc_names</span>
+
+        <span class="k">if</span> <span class="n">term</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">termix</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">vcp_names</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="n">term</span><span class="p">)</span>
+            <span class="n">ii</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">flatnonzero</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">ident</span> <span class="o">==</span> <span class="n">termix</span><span class="p">)</span>
+            <span class="n">z</span> <span class="o">=</span> <span class="n">z</span><span class="p">[</span><span class="n">ii</span><span class="p">]</span>
+            <span class="n">s</span> <span class="o">=</span> <span class="n">s</span><span class="p">[</span><span class="n">ii</span><span class="p">]</span>
+            <span class="n">na</span> <span class="o">=</span> <span class="p">[</span><span class="n">na</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">ii</span><span class="p">]</span>
+
+        <span class="n">x</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span><span class="s2">&quot;Mean&quot;</span><span class="p">:</span> <span class="n">z</span><span class="p">,</span> <span class="s2">&quot;SD&quot;</span><span class="p">:</span> <span class="n">s</span><span class="p">})</span>
+
+        <span class="k">if</span> <span class="n">na</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">x</span><span class="o">.</span><span class="n">index</span> <span class="o">=</span> <span class="n">na</span>
+
+        <span class="k">return</span> <span class="n">x</span></div>
+
+<div class="viewcode-block" id="BayesMixedGLMResults.predict"><a class="viewcode-back" href="../../../generated/statsmodels.genmod.bayes_mixed_glm.BayesMixedGLMResults.predict.html#statsmodels.genmod.bayes_mixed_glm.BayesMixedGLMResults.predict">[docs]</a>    <span class="k">def</span> <span class="nf">predict</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">exog</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">linear</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return predicted values for the mean structure.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        exog : array-like</span>
+<span class="sd">            The design matrix for the mean structure.  If None,</span>
+<span class="sd">            use the model&#39;s design matrix.</span>
+<span class="sd">        linear : bool</span>
+<span class="sd">            If True, returns the linear predictor, otherwise</span>
+<span class="sd">            transform the linear predictor using the link function.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        A one-dimensional array of fitted values.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">predict</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">params</span><span class="p">,</span> <span class="n">exog</span><span class="p">,</span> <span class="n">linear</span><span class="p">)</span></div></div>
+
+
+<div class="viewcode-block" id="BinomialBayesMixedGLM"><a class="viewcode-back" href="../../../generated/statsmodels.genmod.bayes_mixed_glm.BinomialBayesMixedGLM.html#statsmodels.genmod.bayes_mixed_glm.BinomialBayesMixedGLM">[docs]</a><span class="k">class</span> <span class="nc">BinomialBayesMixedGLM</span><span class="p">(</span><span class="n">_VariationalBayesMixedGLM</span><span class="p">,</span> <span class="n">_BayesMixedGLM</span><span class="p">):</span>
+
+    <span class="vm">__doc__</span> <span class="o">=</span> <span class="n">_init_doc</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">example</span><span class="o">=</span><span class="n">_logit_example</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
+                 <span class="n">endog</span><span class="p">,</span>
+                 <span class="n">exog</span><span class="p">,</span>
+                 <span class="n">exog_vc</span><span class="p">,</span>
+                 <span class="n">ident</span><span class="p">,</span>
+                 <span class="n">vcp_p</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+                 <span class="n">fe_p</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
+                 <span class="n">fep_names</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                 <span class="n">vcp_names</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                 <span class="n">vc_names</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+
+        <span class="nb">super</span><span class="p">(</span><span class="n">BinomialBayesMixedGLM</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span>
+            <span class="n">endog</span><span class="p">,</span>
+            <span class="n">exog</span><span class="p">,</span>
+            <span class="n">exog_vc</span><span class="o">=</span><span class="n">exog_vc</span><span class="p">,</span>
+            <span class="n">ident</span><span class="o">=</span><span class="n">ident</span><span class="p">,</span>
+            <span class="n">vcp_p</span><span class="o">=</span><span class="n">vcp_p</span><span class="p">,</span>
+            <span class="n">fe_p</span><span class="o">=</span><span class="n">fe_p</span><span class="p">,</span>
+            <span class="n">family</span><span class="o">=</span><span class="n">families</span><span class="o">.</span><span class="n">Binomial</span><span class="p">(),</span>
+            <span class="n">fep_names</span><span class="o">=</span><span class="n">fep_names</span><span class="p">,</span>
+            <span class="n">vcp_names</span><span class="o">=</span><span class="n">vcp_names</span><span class="p">,</span>
+            <span class="n">vc_names</span><span class="o">=</span><span class="n">vc_names</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">unique</span><span class="p">(</span><span class="n">endog</span><span class="p">)</span> <span class="o">==</span> <span class="n">np</span><span class="o">.</span><span class="n">r_</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">]):</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="s2">&quot;endog values must be 0 and 1, and not all identical&quot;</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+
+<div class="viewcode-block" id="BinomialBayesMixedGLM.from_formula"><a class="viewcode-back" href="../../../generated/statsmodels.genmod.bayes_mixed_glm.BinomialBayesMixedGLM.from_formula.html#statsmodels.genmod.bayes_mixed_glm.BinomialBayesMixedGLM.from_formula">[docs]</a>    <span class="nd">@classmethod</span>
+    <span class="k">def</span> <span class="nf">from_formula</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">formula</span><span class="p">,</span> <span class="n">vc_formulas</span><span class="p">,</span> <span class="n">data</span><span class="p">,</span> <span class="n">vcp_p</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">fe_p</span><span class="o">=</span><span class="mi">2</span><span class="p">):</span>
+
+        <span class="n">fam</span> <span class="o">=</span> <span class="n">families</span><span class="o">.</span><span class="n">Binomial</span><span class="p">()</span>
+        <span class="n">x</span> <span class="o">=</span> <span class="n">_BayesMixedGLM</span><span class="o">.</span><span class="n">from_formula</span><span class="p">(</span>
+            <span class="n">formula</span><span class="p">,</span> <span class="n">vc_formulas</span><span class="p">,</span> <span class="n">data</span><span class="p">,</span> <span class="n">family</span><span class="o">=</span><span class="n">fam</span><span class="p">,</span> <span class="n">vcp_p</span><span class="o">=</span><span class="n">vcp_p</span><span class="p">,</span> <span class="n">fe_p</span><span class="o">=</span><span class="n">fe_p</span><span class="p">)</span>
+
+        <span class="c1"># Copy over to the intended class structure</span>
+        <span class="n">mod</span> <span class="o">=</span> <span class="n">BinomialBayesMixedGLM</span><span class="p">(</span>
+            <span class="n">x</span><span class="o">.</span><span class="n">endog</span><span class="p">,</span>
+            <span class="n">x</span><span class="o">.</span><span class="n">exog</span><span class="p">,</span>
+            <span class="n">exog_vc</span><span class="o">=</span><span class="n">x</span><span class="o">.</span><span class="n">exog_vc</span><span class="p">,</span>
+            <span class="n">ident</span><span class="o">=</span><span class="n">x</span><span class="o">.</span><span class="n">ident</span><span class="p">,</span>
+            <span class="n">vcp_p</span><span class="o">=</span><span class="n">x</span><span class="o">.</span><span class="n">vcp_p</span><span class="p">,</span>
+            <span class="n">fe_p</span><span class="o">=</span><span class="n">x</span><span class="o">.</span><span class="n">fe_p</span><span class="p">,</span>
+            <span class="n">fep_names</span><span class="o">=</span><span class="n">x</span><span class="o">.</span><span class="n">fep_names</span><span class="p">,</span>
+            <span class="n">vcp_names</span><span class="o">=</span><span class="n">x</span><span class="o">.</span><span class="n">vcp_names</span><span class="p">,</span>
+            <span class="n">vc_names</span><span class="o">=</span><span class="n">x</span><span class="o">.</span><span class="n">vc_names</span><span class="p">)</span>
+        <span class="n">mod</span><span class="o">.</span><span class="n">data</span> <span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">data</span>
+
+        <span class="k">return</span> <span class="n">mod</span></div>
+
+<div class="viewcode-block" id="BinomialBayesMixedGLM.vb_elbo"><a class="viewcode-back" href="../../../generated/statsmodels.genmod.bayes_mixed_glm.BinomialBayesMixedGLM.vb_elbo.html#statsmodels.genmod.bayes_mixed_glm.BinomialBayesMixedGLM.vb_elbo">[docs]</a>    <span class="k">def</span> <span class="nf">vb_elbo</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">vb_mean</span><span class="p">,</span> <span class="n">vb_sd</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Returns the evidence lower bound (ELBO) for the model.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="n">fep_mean</span><span class="p">,</span> <span class="n">vcp_mean</span><span class="p">,</span> <span class="n">vc_mean</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_unpack</span><span class="p">(</span><span class="n">vb_mean</span><span class="p">)</span>
+        <span class="n">fep_sd</span><span class="p">,</span> <span class="n">vcp_sd</span><span class="p">,</span> <span class="n">vc_sd</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_unpack</span><span class="p">(</span><span class="n">vb_sd</span><span class="p">)</span>
+        <span class="n">tm</span><span class="p">,</span> <span class="n">tv</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_lp_stats</span><span class="p">(</span><span class="n">fep_mean</span><span class="p">,</span> <span class="n">fep_sd</span><span class="p">,</span> <span class="n">vc_mean</span><span class="p">,</span> <span class="n">vc_sd</span><span class="p">)</span>
+
+        <span class="k">def</span> <span class="nf">h</span><span class="p">(</span><span class="n">z</span><span class="p">):</span>
+            <span class="k">return</span> <span class="o">-</span><span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="mi">1</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">tm</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">tv</span><span class="p">)</span> <span class="o">*</span> <span class="n">z</span><span class="p">))</span>
+
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">vb_elbo_base</span><span class="p">(</span><span class="n">h</span><span class="p">,</span> <span class="n">tm</span><span class="p">,</span> <span class="n">fep_mean</span><span class="p">,</span> <span class="n">vcp_mean</span><span class="p">,</span> <span class="n">vc_mean</span><span class="p">,</span> <span class="n">fep_sd</span><span class="p">,</span>
+                                 <span class="n">vcp_sd</span><span class="p">,</span> <span class="n">vc_sd</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="BinomialBayesMixedGLM.vb_elbo_grad"><a class="viewcode-back" href="../../../generated/statsmodels.genmod.bayes_mixed_glm.BinomialBayesMixedGLM.vb_elbo_grad.html#statsmodels.genmod.bayes_mixed_glm.BinomialBayesMixedGLM.vb_elbo_grad">[docs]</a>    <span class="k">def</span> <span class="nf">vb_elbo_grad</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">vb_mean</span><span class="p">,</span> <span class="n">vb_sd</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Returns the gradient of the model&#39;s evidence lower bound (ELBO).</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="n">fep_mean</span><span class="p">,</span> <span class="n">vcp_mean</span><span class="p">,</span> <span class="n">vc_mean</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_unpack</span><span class="p">(</span><span class="n">vb_mean</span><span class="p">)</span>
+        <span class="n">fep_sd</span><span class="p">,</span> <span class="n">vcp_sd</span><span class="p">,</span> <span class="n">vc_sd</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_unpack</span><span class="p">(</span><span class="n">vb_sd</span><span class="p">)</span>
+        <span class="n">tm</span><span class="p">,</span> <span class="n">tv</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_lp_stats</span><span class="p">(</span><span class="n">fep_mean</span><span class="p">,</span> <span class="n">fep_sd</span><span class="p">,</span> <span class="n">vc_mean</span><span class="p">,</span> <span class="n">vc_sd</span><span class="p">)</span>
+
+        <span class="k">def</span> <span class="nf">h</span><span class="p">(</span><span class="n">z</span><span class="p">):</span>
+            <span class="n">u</span> <span class="o">=</span> <span class="n">tm</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">tv</span><span class="p">)</span> <span class="o">*</span> <span class="n">z</span>
+            <span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros_like</span><span class="p">(</span><span class="n">u</span><span class="p">)</span>
+            <span class="n">ii</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">flatnonzero</span><span class="p">(</span><span class="n">u</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">)</span>
+            <span class="n">uu</span> <span class="o">=</span> <span class="n">u</span><span class="p">[</span><span class="n">ii</span><span class="p">]</span>
+            <span class="n">x</span><span class="p">[</span><span class="n">ii</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">/</span> <span class="p">(</span><span class="mi">1</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="o">-</span><span class="n">uu</span><span class="p">))</span>
+            <span class="n">ii</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">flatnonzero</span><span class="p">(</span><span class="n">u</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">)</span>
+            <span class="n">uu</span> <span class="o">=</span> <span class="n">u</span><span class="p">[</span><span class="n">ii</span><span class="p">]</span>
+            <span class="n">x</span><span class="p">[</span><span class="n">ii</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">uu</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="mi">1</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">uu</span><span class="p">))</span>
+            <span class="k">return</span> <span class="o">-</span><span class="n">x</span>
+
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">vb_elbo_grad_base</span><span class="p">(</span><span class="n">h</span><span class="p">,</span> <span class="n">tm</span><span class="p">,</span> <span class="n">tv</span><span class="p">,</span> <span class="n">fep_mean</span><span class="p">,</span> <span class="n">vcp_mean</span><span class="p">,</span> <span class="n">vc_mean</span><span class="p">,</span>
+                                      <span class="n">fep_sd</span><span class="p">,</span> <span class="n">vcp_sd</span><span class="p">,</span> <span class="n">vc_sd</span><span class="p">)</span></div></div>
+
+
+<div class="viewcode-block" id="PoissonBayesMixedGLM"><a class="viewcode-back" href="../../../generated/statsmodels.genmod.bayes_mixed_glm.PoissonBayesMixedGLM.html#statsmodels.genmod.bayes_mixed_glm.PoissonBayesMixedGLM">[docs]</a><span class="k">class</span> <span class="nc">PoissonBayesMixedGLM</span><span class="p">(</span><span class="n">_VariationalBayesMixedGLM</span><span class="p">,</span> <span class="n">_BayesMixedGLM</span><span class="p">):</span>
+
+    <span class="vm">__doc__</span> <span class="o">=</span> <span class="n">_init_doc</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">example</span><span class="o">=</span><span class="n">_poisson_example</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
+                 <span class="n">endog</span><span class="p">,</span>
+                 <span class="n">exog</span><span class="p">,</span>
+                 <span class="n">exog_vc</span><span class="p">,</span>
+                 <span class="n">ident</span><span class="p">,</span>
+                 <span class="n">vcp_p</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+                 <span class="n">fe_p</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
+                 <span class="n">fep_names</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                 <span class="n">vcp_names</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                 <span class="n">vc_names</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+
+        <span class="nb">super</span><span class="p">(</span><span class="n">PoissonBayesMixedGLM</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span>
+            <span class="n">endog</span><span class="o">=</span><span class="n">endog</span><span class="p">,</span>
+            <span class="n">exog</span><span class="o">=</span><span class="n">exog</span><span class="p">,</span>
+            <span class="n">exog_vc</span><span class="o">=</span><span class="n">exog_vc</span><span class="p">,</span>
+            <span class="n">ident</span><span class="o">=</span><span class="n">ident</span><span class="p">,</span>
+            <span class="n">vcp_p</span><span class="o">=</span><span class="n">vcp_p</span><span class="p">,</span>
+            <span class="n">fe_p</span><span class="o">=</span><span class="n">fe_p</span><span class="p">,</span>
+            <span class="n">family</span><span class="o">=</span><span class="n">families</span><span class="o">.</span><span class="n">Poisson</span><span class="p">(),</span>
+            <span class="n">fep_names</span><span class="o">=</span><span class="n">fep_names</span><span class="p">,</span>
+            <span class="n">vcp_names</span><span class="o">=</span><span class="n">vcp_names</span><span class="p">,</span>
+            <span class="n">vc_names</span><span class="o">=</span><span class="n">vc_names</span><span class="p">)</span>
+
+<div class="viewcode-block" id="PoissonBayesMixedGLM.from_formula"><a class="viewcode-back" href="../../../generated/statsmodels.genmod.bayes_mixed_glm.PoissonBayesMixedGLM.from_formula.html#statsmodels.genmod.bayes_mixed_glm.PoissonBayesMixedGLM.from_formula">[docs]</a>    <span class="nd">@classmethod</span>
+    <span class="k">def</span> <span class="nf">from_formula</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span>
+                     <span class="n">formula</span><span class="p">,</span>
+                     <span class="n">vc_formulas</span><span class="p">,</span>
+                     <span class="n">data</span><span class="p">,</span>
+                     <span class="n">vcp_p</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+                     <span class="n">fe_p</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
+                     <span class="n">vcp_names</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                     <span class="n">vc_names</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+
+        <span class="n">fam</span> <span class="o">=</span> <span class="n">families</span><span class="o">.</span><span class="n">Poisson</span><span class="p">()</span>
+        <span class="n">x</span> <span class="o">=</span> <span class="n">_BayesMixedGLM</span><span class="o">.</span><span class="n">from_formula</span><span class="p">(</span>
+            <span class="n">formula</span><span class="p">,</span>
+            <span class="n">vc_formulas</span><span class="p">,</span>
+            <span class="n">data</span><span class="p">,</span>
+            <span class="n">family</span><span class="o">=</span><span class="n">fam</span><span class="p">,</span>
+            <span class="n">vcp_p</span><span class="o">=</span><span class="n">vcp_p</span><span class="p">,</span>
+            <span class="n">fe_p</span><span class="o">=</span><span class="n">fe_p</span><span class="p">)</span>
+
+        <span class="c1"># Copy over to the intended class structure</span>
+        <span class="n">mod</span> <span class="o">=</span> <span class="n">PoissonBayesMixedGLM</span><span class="p">(</span>
+            <span class="n">endog</span><span class="o">=</span><span class="n">x</span><span class="o">.</span><span class="n">endog</span><span class="p">,</span>
+            <span class="n">exog</span><span class="o">=</span><span class="n">x</span><span class="o">.</span><span class="n">exog</span><span class="p">,</span>
+            <span class="n">exog_vc</span><span class="o">=</span><span class="n">x</span><span class="o">.</span><span class="n">exog_vc</span><span class="p">,</span>
+            <span class="n">ident</span><span class="o">=</span><span class="n">x</span><span class="o">.</span><span class="n">ident</span><span class="p">,</span>
+            <span class="n">vcp_p</span><span class="o">=</span><span class="n">x</span><span class="o">.</span><span class="n">vcp_p</span><span class="p">,</span>
+            <span class="n">fe_p</span><span class="o">=</span><span class="n">x</span><span class="o">.</span><span class="n">fe_p</span><span class="p">,</span>
+            <span class="n">fep_names</span><span class="o">=</span><span class="n">x</span><span class="o">.</span><span class="n">fep_names</span><span class="p">,</span>
+            <span class="n">vcp_names</span><span class="o">=</span><span class="n">x</span><span class="o">.</span><span class="n">vcp_names</span><span class="p">,</span>
+            <span class="n">vc_names</span><span class="o">=</span><span class="n">x</span><span class="o">.</span><span class="n">vc_names</span><span class="p">)</span>
+        <span class="n">mod</span><span class="o">.</span><span class="n">data</span> <span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">data</span>
+
+        <span class="k">return</span> <span class="n">mod</span></div>
+
+<div class="viewcode-block" id="PoissonBayesMixedGLM.vb_elbo"><a class="viewcode-back" href="../../../generated/statsmodels.genmod.bayes_mixed_glm.PoissonBayesMixedGLM.vb_elbo.html#statsmodels.genmod.bayes_mixed_glm.PoissonBayesMixedGLM.vb_elbo">[docs]</a>    <span class="k">def</span> <span class="nf">vb_elbo</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">vb_mean</span><span class="p">,</span> <span class="n">vb_sd</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Returns the evidence lower bound (ELBO) for the model.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="n">fep_mean</span><span class="p">,</span> <span class="n">vcp_mean</span><span class="p">,</span> <span class="n">vc_mean</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_unpack</span><span class="p">(</span><span class="n">vb_mean</span><span class="p">)</span>
+        <span class="n">fep_sd</span><span class="p">,</span> <span class="n">vcp_sd</span><span class="p">,</span> <span class="n">vc_sd</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_unpack</span><span class="p">(</span><span class="n">vb_sd</span><span class="p">)</span>
+        <span class="n">tm</span><span class="p">,</span> <span class="n">tv</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_lp_stats</span><span class="p">(</span><span class="n">fep_mean</span><span class="p">,</span> <span class="n">fep_sd</span><span class="p">,</span> <span class="n">vc_mean</span><span class="p">,</span> <span class="n">vc_sd</span><span class="p">)</span>
+
+        <span class="k">def</span> <span class="nf">h</span><span class="p">(</span><span class="n">z</span><span class="p">):</span>
+            <span class="k">return</span> <span class="o">-</span><span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">tm</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">tv</span><span class="p">)</span> <span class="o">*</span> <span class="n">z</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">vb_elbo_base</span><span class="p">(</span><span class="n">h</span><span class="p">,</span> <span class="n">tm</span><span class="p">,</span> <span class="n">fep_mean</span><span class="p">,</span> <span class="n">vcp_mean</span><span class="p">,</span> <span class="n">vc_mean</span><span class="p">,</span> <span class="n">fep_sd</span><span class="p">,</span>
+                                 <span class="n">vcp_sd</span><span class="p">,</span> <span class="n">vc_sd</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="PoissonBayesMixedGLM.vb_elbo_grad"><a class="viewcode-back" href="../../../generated/statsmodels.genmod.bayes_mixed_glm.PoissonBayesMixedGLM.vb_elbo_grad.html#statsmodels.genmod.bayes_mixed_glm.PoissonBayesMixedGLM.vb_elbo_grad">[docs]</a>    <span class="k">def</span> <span class="nf">vb_elbo_grad</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">vb_mean</span><span class="p">,</span> <span class="n">vb_sd</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Returns the gradient of the model&#39;s evidence lower bound (ELBO).</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="n">fep_mean</span><span class="p">,</span> <span class="n">vcp_mean</span><span class="p">,</span> <span class="n">vc_mean</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_unpack</span><span class="p">(</span><span class="n">vb_mean</span><span class="p">)</span>
+        <span class="n">fep_sd</span><span class="p">,</span> <span class="n">vcp_sd</span><span class="p">,</span> <span class="n">vc_sd</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_unpack</span><span class="p">(</span><span class="n">vb_sd</span><span class="p">)</span>
+        <span class="n">tm</span><span class="p">,</span> <span class="n">tv</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_lp_stats</span><span class="p">(</span><span class="n">fep_mean</span><span class="p">,</span> <span class="n">fep_sd</span><span class="p">,</span> <span class="n">vc_mean</span><span class="p">,</span> <span class="n">vc_sd</span><span class="p">)</span>
+
+        <span class="k">def</span> <span class="nf">h</span><span class="p">(</span><span class="n">z</span><span class="p">):</span>
+            <span class="n">y</span> <span class="o">=</span> <span class="o">-</span><span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">tm</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">tv</span><span class="p">)</span> <span class="o">*</span> <span class="n">z</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">y</span>
+
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">vb_elbo_grad_base</span><span class="p">(</span><span class="n">h</span><span class="p">,</span> <span class="n">tm</span><span class="p">,</span> <span class="n">tv</span><span class="p">,</span> <span class="n">fep_mean</span><span class="p">,</span> <span class="n">vcp_mean</span><span class="p">,</span> <span class="n">vc_mean</span><span class="p">,</span>
+                                      <span class="n">fep_sd</span><span class="p">,</span> <span class="n">vcp_sd</span><span class="p">,</span> <span class="n">vc_sd</span><span class="p">)</span></div></div>
+</pre></div>
+
+
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../../../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" />
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer" role="contentinfo">
+        &#169; Copyright 2009-2018, Josef Perktold, Skipper Seabold, Jonathan Taylor, statsmodels-developers.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 2.2.1.
+    </div>
+  </body>
+</html>

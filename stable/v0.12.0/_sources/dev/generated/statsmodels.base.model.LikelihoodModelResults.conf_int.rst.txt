@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.base.model.LikelihoodModelResults.conf\_int
+=======================================================
+
+.. currentmodule:: statsmodels.base.model
+
+.. automethod:: LikelihoodModelResults.conf_int

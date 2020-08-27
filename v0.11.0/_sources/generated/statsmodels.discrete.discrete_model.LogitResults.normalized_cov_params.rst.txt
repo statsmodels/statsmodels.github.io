@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.discrete.discrete\_model.LogitResults.normalized\_cov\_params
+=========================================================================
+
+.. currentmodule:: statsmodels.discrete.discrete_model
+
+.. automethod:: LogitResults.normalized_cov_params

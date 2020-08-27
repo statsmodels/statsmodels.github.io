@@ -1,0 +1,645 @@
+
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="X-UA-Compatible" content="IE=Edge" />
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>statsmodels.sandbox.tsa.fftarma &#8212; statsmodels 0.9.0 documentation</title>
+    <link rel="stylesheet" href="../../../../_static/nature.css" type="text/css" />
+    <link rel="stylesheet" href="../../../../_static/pygments.css" type="text/css" />
+    <script type="text/javascript" src="../../../../_static/documentation_options.js"></script>
+    <script type="text/javascript" src="../../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../../_static/doctools.js"></script>
+    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.1/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="shortcut icon" href="../../../../_static/statsmodels_hybi_favico.ico"/>
+    <link rel="author" title="About these documents" href="../../../../about.html" />
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" />
+<link rel="stylesheet" href="../../../../_static/examples.css" type="text/css" />
+<link rel="stylesheet" href="../../../../_static/facebox.css" type="text/css" />
+<script type="text/javascript" src="../../../../_static/scripts.js">
+</script>
+<script type="text/javascript" src="../../../../_static/facebox.js">
+</script>
+<script type="text/javascript">
+$.facebox.settings.closeImage = "../../../../_static/closelabel.png"
+$.facebox.settings.loadingImage = "../../../../_static/loading.gif"
+</script>
+
+  </head><body>
+<div class="headerwrap">
+    <div class = "header">
+        
+        <a href = "../../../../index.html">
+<img src="../../../../_static/statsmodels_hybi_banner.png" alt="Logo"
+    style="padding-left: 15px"/></a>
+        
+    </div>
+</div>
+
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+<li><a href ="../../../../install.html">Install</a></li> &nbsp;|&nbsp;
+<li><a href="https://groups.google.com/forum/?hl=en#!forum/pystatsmodels">Support</a></li> &nbsp;|&nbsp;
+<li><a href="https://github.com/statsmodels/statsmodels/issues">Bugs</a></li> &nbsp;|&nbsp;
+<li><a href="../../../../dev/index.html">Develop</a></li> &nbsp;|&nbsp;
+<li><a href="../../../../examples/index.html">Examples</a></li> &nbsp;|&nbsp;
+<li><a href="../../../../faq.html">FAQ</a></li> &nbsp;|&nbsp;
+
+          <li class="nav-item nav-item-1"><a href="../../../index.html" accesskey="U">Module code</a> |</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+
+
+
+
+  <h1>Source code for statsmodels.sandbox.tsa.fftarma</h1><div class="highlight"><pre>
+<span></span><span class="c1"># -*- coding: utf-8 -*-</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Created on Mon Dec 14 19:53:25 2009</span>
+
+<span class="sd">Author: josef-pktd</span>
+
+<span class="sd">generate arma sample using fft with all the lfilter it looks slow</span>
+<span class="sd">to get the ma representation first</span>
+
+<span class="sd">apply arma filter (in ar representation) to time series to get white noise</span>
+<span class="sd">but seems slow to be useful for fast estimation for nobs=10000</span>
+
+<span class="sd">change/check: instead of using marep, use fft-transform of ar and ma</span>
+<span class="sd">    separately, use ratio check theory is correct and example works</span>
+<span class="sd">    DONE : feels much faster than lfilter</span>
+<span class="sd">    -&gt; use for estimation of ARMA</span>
+<span class="sd">    -&gt; use pade (scipy.misc) approximation to get starting polynomial</span>
+<span class="sd">       from autocorrelation (is autocorrelation of AR(p) related to marep?)</span>
+<span class="sd">       check if pade is fast, not for larger arrays ?</span>
+<span class="sd">       maybe pade doesn&#39;t do the right thing for this, not tried yet</span>
+<span class="sd">       scipy.pade([ 1.    ,  0.6,  0.25, 0.125, 0.0625, 0.1],2)</span>
+<span class="sd">       raises LinAlgError: singular matrix</span>
+<span class="sd">       also doesn&#39;t have roots inside unit circle ??</span>
+<span class="sd">    -&gt; even without initialization, it might be fast for estimation</span>
+<span class="sd">    -&gt; how do I enforce stationarity and invertibility,</span>
+<span class="sd">       need helper function</span>
+
+<span class="sd">get function drop imag if close to zero from numpy/scipy source, where?</span>
+
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">from</span> <span class="nn">__future__</span> <span class="k">import</span> <span class="n">print_function</span>
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+<span class="kn">import</span> <span class="nn">numpy.fft</span> <span class="k">as</span> <span class="nn">fft</span>
+<span class="c1">#import scipy.fftpack as fft</span>
+<span class="kn">from</span> <span class="nn">scipy</span> <span class="k">import</span> <span class="n">signal</span>
+<span class="c1">#from try_var_convolve import maxabs</span>
+<span class="kn">from</span> <span class="nn">statsmodels.sandbox.archive.linalg_decomp_1</span> <span class="k">import</span> <span class="n">OneTimeProperty</span>
+<span class="kn">from</span> <span class="nn">statsmodels.tsa.arima_process</span> <span class="k">import</span> <span class="n">ArmaProcess</span>
+
+
+<span class="c1">#trying to convert old experiments to a class</span>
+
+
+<div class="viewcode-block" id="ArmaFft"><a class="viewcode-back" href="../../../../generated/statsmodels.sandbox.tsa.fftarma.ArmaFft.html#statsmodels.sandbox.tsa.fftarma.ArmaFft">[docs]</a><span class="k">class</span> <span class="nc">ArmaFft</span><span class="p">(</span><span class="n">ArmaProcess</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;fft tools for arma processes</span>
+
+<span class="sd">    This class contains several methods that are providing the same or similar</span>
+<span class="sd">    returns to try out and test different implementations.</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    TODO:</span>
+<span class="sd">    check whether we don&#39;t want to fix maxlags, and create new instance if</span>
+<span class="sd">    maxlag changes. usage for different lengths of timeseries ?</span>
+<span class="sd">    or fix frequency and length for fft</span>
+
+<span class="sd">    check default frequencies w, terminology norw  n_or_w</span>
+
+<span class="sd">    some ffts are currently done without padding with zeros</span>
+
+<span class="sd">    returns for spectral density methods needs checking, is it always the power</span>
+<span class="sd">    spectrum hw*hw.conj()</span>
+
+<span class="sd">    normalization of the power spectrum, spectral density: not checked yet, for</span>
+<span class="sd">    example no variance of underlying process is used</span>
+
+<span class="sd">    &#39;&#39;&#39;</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ar</span><span class="p">,</span> <span class="n">ma</span><span class="p">,</span> <span class="n">n</span><span class="p">):</span>
+        <span class="c1">#duplicates now that are subclassing ArmaProcess</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">ArmaFft</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">ar</span><span class="p">,</span> <span class="n">ma</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">ar</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">ar</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">ma</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">ma</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span> <span class="o">=</span> <span class="n">n</span>
+        <span class="c1">#could make the polynomials into cached attributes</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">arpoly</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">polynomial</span><span class="o">.</span><span class="n">Polynomial</span><span class="p">(</span><span class="n">ar</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">mapoly</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">polynomial</span><span class="o">.</span><span class="n">Polynomial</span><span class="p">(</span><span class="n">ma</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">nar</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">ar</span><span class="p">)</span>  <span class="c1">#1d only currently</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">nma</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">ma</span><span class="p">)</span>
+
+<div class="viewcode-block" id="ArmaFft.padarr"><a class="viewcode-back" href="../../../../generated/statsmodels.sandbox.tsa.fftarma.ArmaFft.padarr.html#statsmodels.sandbox.tsa.fftarma.ArmaFft.padarr">[docs]</a>    <span class="k">def</span> <span class="nf">padarr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">arr</span><span class="p">,</span> <span class="n">maxlag</span><span class="p">,</span> <span class="n">atend</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;pad 1d array with zeros at end to have length maxlag</span>
+<span class="sd">        function that is a method, no self used</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        arr : array_like, 1d</span>
+<span class="sd">            array that will be padded with zeros</span>
+<span class="sd">        maxlag : int</span>
+<span class="sd">            length of array after padding</span>
+<span class="sd">        atend : boolean</span>
+<span class="sd">            If True (default), then the zeros are added to the end, otherwise</span>
+<span class="sd">            to the front of the array</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        arrp : ndarray</span>
+<span class="sd">            zero-padded array</span>
+
+<span class="sd">        Notes</span>
+<span class="sd">        -----</span>
+<span class="sd">        This is mainly written to extend coefficient arrays for the lag-polynomials.</span>
+<span class="sd">        It returns a copy.</span>
+
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">if</span> <span class="n">atend</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">r_</span><span class="p">[</span><span class="n">arr</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">maxlag</span><span class="o">-</span><span class="nb">len</span><span class="p">(</span><span class="n">arr</span><span class="p">))]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">r_</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">maxlag</span><span class="o">-</span><span class="nb">len</span><span class="p">(</span><span class="n">arr</span><span class="p">)),</span> <span class="n">arr</span><span class="p">]</span></div>
+
+
+<div class="viewcode-block" id="ArmaFft.pad"><a class="viewcode-back" href="../../../../generated/statsmodels.sandbox.tsa.fftarma.ArmaFft.pad.html#statsmodels.sandbox.tsa.fftarma.ArmaFft.pad">[docs]</a>    <span class="k">def</span> <span class="nf">pad</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">maxlag</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;construct AR and MA polynomials that are zero-padded to a common length</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        maxlag : int</span>
+<span class="sd">            new length of lag-polynomials</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        ar : ndarray</span>
+<span class="sd">            extended AR polynomial coefficients</span>
+<span class="sd">        ma : ndarray</span>
+<span class="sd">            extended AR polynomial coefficients</span>
+
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="n">arpad</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">r_</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">ar</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">maxlag</span><span class="o">-</span><span class="bp">self</span><span class="o">.</span><span class="n">nar</span><span class="p">)]</span>
+        <span class="n">mapad</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">r_</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">ma</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">maxlag</span><span class="o">-</span><span class="bp">self</span><span class="o">.</span><span class="n">nma</span><span class="p">)]</span>
+        <span class="k">return</span> <span class="n">arpad</span><span class="p">,</span> <span class="n">mapad</span></div>
+
+<div class="viewcode-block" id="ArmaFft.fftar"><a class="viewcode-back" href="../../../../generated/statsmodels.sandbox.tsa.fftarma.ArmaFft.fftar.html#statsmodels.sandbox.tsa.fftarma.ArmaFft.fftar">[docs]</a>    <span class="k">def</span> <span class="nf">fftar</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;Fourier transform of AR polynomial, zero-padded at end to n</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        n : int</span>
+<span class="sd">            length of array after zero-padding</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        fftar : ndarray</span>
+<span class="sd">            fft of zero-padded ar polynomial</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">if</span> <span class="n">n</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">n</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ar</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">fft</span><span class="o">.</span><span class="n">fft</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">padarr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ar</span><span class="p">,</span> <span class="n">n</span><span class="p">))</span></div>
+
+<div class="viewcode-block" id="ArmaFft.fftma"><a class="viewcode-back" href="../../../../generated/statsmodels.sandbox.tsa.fftarma.ArmaFft.fftma.html#statsmodels.sandbox.tsa.fftarma.ArmaFft.fftma">[docs]</a>    <span class="k">def</span> <span class="nf">fftma</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">n</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;Fourier transform of MA polynomial, zero-padded at end to n</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        n : int</span>
+<span class="sd">            length of array after zero-padding</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        fftar : ndarray</span>
+<span class="sd">            fft of zero-padded ar polynomial</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">if</span> <span class="n">n</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">n</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ar</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">fft</span><span class="o">.</span><span class="n">fft</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">padarr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ma</span><span class="p">,</span> <span class="n">n</span><span class="p">))</span></div>
+
+    <span class="c1">#@OneTimeProperty  # not while still debugging things</span>
+<div class="viewcode-block" id="ArmaFft.fftarma"><a class="viewcode-back" href="../../../../generated/statsmodels.sandbox.tsa.fftarma.ArmaFft.fftarma.html#statsmodels.sandbox.tsa.fftarma.ArmaFft.fftarma">[docs]</a>    <span class="k">def</span> <span class="nf">fftarma</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;Fourier transform of ARMA polynomial, zero-padded at end to n</span>
+
+<span class="sd">        The Fourier transform of the ARMA process is calculated as the ratio</span>
+<span class="sd">        of the fft of the MA polynomial divided by the fft of the AR polynomial.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        n : int</span>
+<span class="sd">            length of array after zero-padding</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        fftarma : ndarray</span>
+<span class="sd">            fft of zero-padded arma polynomial</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">if</span> <span class="n">n</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">n</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span>
+        <span class="k">return</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">fftma</span><span class="p">(</span><span class="n">n</span><span class="p">)</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">fftar</span><span class="p">(</span><span class="n">n</span><span class="p">))</span></div>
+
+<div class="viewcode-block" id="ArmaFft.spd"><a class="viewcode-back" href="../../../../generated/statsmodels.sandbox.tsa.fftarma.ArmaFft.spd.html#statsmodels.sandbox.tsa.fftarma.ArmaFft.spd">[docs]</a>    <span class="k">def</span> <span class="nf">spd</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">npos</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;raw spectral density, returns Fourier transform</span>
+
+<span class="sd">        n is number of points in positive spectrum, the actual number of points</span>
+<span class="sd">        is twice as large. different from other spd methods with fft</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="n">n</span> <span class="o">=</span> <span class="n">npos</span>
+        <span class="n">w</span> <span class="o">=</span> <span class="n">fft</span><span class="o">.</span><span class="n">fftfreq</span><span class="p">(</span><span class="mi">2</span><span class="o">*</span><span class="n">n</span><span class="p">)</span> <span class="o">*</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">pi</span>
+        <span class="n">hw</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">fftarma</span><span class="p">(</span><span class="mi">2</span><span class="o">*</span><span class="n">n</span><span class="p">)</span>  <span class="c1">#not sure, need to check normalization</span>
+        <span class="c1">#return (hw*hw.conj()).real[n//2-1:]  * 0.5 / np.pi #doesn&#39;t show in plot</span>
+        <span class="k">return</span> <span class="p">(</span><span class="n">hw</span><span class="o">*</span><span class="n">hw</span><span class="o">.</span><span class="n">conj</span><span class="p">())</span><span class="o">.</span><span class="n">real</span> <span class="o">*</span> <span class="mf">0.5</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">pi</span><span class="p">,</span> <span class="n">w</span></div>
+
+<div class="viewcode-block" id="ArmaFft.spdshift"><a class="viewcode-back" href="../../../../generated/statsmodels.sandbox.tsa.fftarma.ArmaFft.spdshift.html#statsmodels.sandbox.tsa.fftarma.ArmaFft.spdshift">[docs]</a>    <span class="k">def</span> <span class="nf">spdshift</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">n</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;power spectral density using fftshift</span>
+
+<span class="sd">        currently returns two-sided according to fft frequencies, use first half</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="c1">#size = s1+s2-1</span>
+        <span class="n">mapadded</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">padarr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ma</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span>
+        <span class="n">arpadded</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">padarr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ar</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span>
+        <span class="n">hw</span> <span class="o">=</span> <span class="n">fft</span><span class="o">.</span><span class="n">fft</span><span class="p">(</span><span class="n">fft</span><span class="o">.</span><span class="n">fftshift</span><span class="p">(</span><span class="n">mapadded</span><span class="p">))</span> <span class="o">/</span> <span class="n">fft</span><span class="o">.</span><span class="n">fft</span><span class="p">(</span><span class="n">fft</span><span class="o">.</span><span class="n">fftshift</span><span class="p">(</span><span class="n">arpadded</span><span class="p">))</span>
+        <span class="c1">#return np.abs(spd)[n//2-1:]</span>
+        <span class="n">w</span> <span class="o">=</span> <span class="n">fft</span><span class="o">.</span><span class="n">fftfreq</span><span class="p">(</span><span class="n">n</span><span class="p">)</span> <span class="o">*</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">pi</span>
+        <span class="n">wslice</span> <span class="o">=</span> <span class="nb">slice</span><span class="p">(</span><span class="n">n</span><span class="o">//</span><span class="mi">2</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+        <span class="c1">#return (hw*hw.conj()).real[wslice], w[wslice]</span>
+        <span class="k">return</span> <span class="p">(</span><span class="n">hw</span><span class="o">*</span><span class="n">hw</span><span class="o">.</span><span class="n">conj</span><span class="p">())</span><span class="o">.</span><span class="n">real</span><span class="p">,</span> <span class="n">w</span></div>
+
+<div class="viewcode-block" id="ArmaFft.spddirect"><a class="viewcode-back" href="../../../../generated/statsmodels.sandbox.tsa.fftarma.ArmaFft.spddirect.html#statsmodels.sandbox.tsa.fftarma.ArmaFft.spddirect">[docs]</a>    <span class="k">def</span> <span class="nf">spddirect</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">n</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;power spectral density using padding to length n done by fft</span>
+
+<span class="sd">        currently returns two-sided according to fft frequencies, use first half</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="c1">#size = s1+s2-1</span>
+        <span class="c1">#abs looks wrong</span>
+        <span class="n">hw</span> <span class="o">=</span> <span class="n">fft</span><span class="o">.</span><span class="n">fft</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ma</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span> <span class="o">/</span> <span class="n">fft</span><span class="o">.</span><span class="n">fft</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ar</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span>
+        <span class="n">w</span> <span class="o">=</span> <span class="n">fft</span><span class="o">.</span><span class="n">fftfreq</span><span class="p">(</span><span class="n">n</span><span class="p">)</span> <span class="o">*</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">pi</span>
+        <span class="n">wslice</span> <span class="o">=</span> <span class="nb">slice</span><span class="p">(</span><span class="kc">None</span><span class="p">,</span> <span class="n">n</span><span class="o">//</span><span class="mi">2</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+        <span class="c1">#return (np.abs(hw)**2)[wslice], w[wslice]</span>
+        <span class="k">return</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">hw</span><span class="p">)</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span> <span class="o">*</span> <span class="mf">0.5</span><span class="o">/</span><span class="n">np</span><span class="o">.</span><span class="n">pi</span><span class="p">,</span> <span class="n">w</span></div>
+
+    <span class="k">def</span> <span class="nf">_spddirect2</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">n</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;this looks bad, maybe with an fftshift</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="c1">#size = s1+s2-1</span>
+        <span class="n">hw</span> <span class="o">=</span> <span class="p">(</span><span class="n">fft</span><span class="o">.</span><span class="n">fft</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">r_</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">ma</span><span class="p">[::</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span><span class="bp">self</span><span class="o">.</span><span class="n">ma</span><span class="p">],</span> <span class="n">n</span><span class="p">)</span>
+                <span class="o">/</span> <span class="n">fft</span><span class="o">.</span><span class="n">fft</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">r_</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">ar</span><span class="p">[::</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span><span class="bp">self</span><span class="o">.</span><span class="n">ar</span><span class="p">],</span> <span class="n">n</span><span class="p">))</span>
+        <span class="k">return</span> <span class="p">(</span><span class="n">hw</span><span class="o">*</span><span class="n">hw</span><span class="o">.</span><span class="n">conj</span><span class="p">())</span> <span class="c1">#.real[n//2-1:]</span>
+
+<div class="viewcode-block" id="ArmaFft.spdroots"><a class="viewcode-back" href="../../../../generated/statsmodels.sandbox.tsa.fftarma.ArmaFft.spdroots.html#statsmodels.sandbox.tsa.fftarma.ArmaFft.spdroots">[docs]</a>    <span class="k">def</span> <span class="nf">spdroots</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">w</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;spectral density for frequency using polynomial roots</span>
+
+<span class="sd">        builds two arrays (number of roots, number of frequencies)</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_spdroots</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">arroots</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">maroots</span><span class="p">,</span> <span class="n">w</span><span class="p">)</span></div>
+
+    <span class="k">def</span> <span class="nf">_spdroots</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">arroots</span><span class="p">,</span> <span class="n">maroots</span><span class="p">,</span> <span class="n">w</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;spectral density for frequency using polynomial roots</span>
+
+<span class="sd">        builds two arrays (number of roots, number of frequencies)</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        arroots : ndarray</span>
+<span class="sd">            roots of ar (denominator) lag-polynomial</span>
+<span class="sd">        maroots : ndarray</span>
+<span class="sd">            roots of ma (numerator) lag-polynomial</span>
+<span class="sd">        w : array_like</span>
+<span class="sd">            frequencies for which spd is calculated</span>
+
+<span class="sd">        Notes</span>
+<span class="sd">        -----</span>
+<span class="sd">        this should go into a function</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="n">w</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">atleast_2d</span><span class="p">(</span><span class="n">w</span><span class="p">)</span><span class="o">.</span><span class="n">T</span>
+        <span class="n">cosw</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">cos</span><span class="p">(</span><span class="n">w</span><span class="p">)</span>
+        <span class="c1">#Greene 5th edt. p626, section 20.2.7.a.</span>
+        <span class="n">maroots</span> <span class="o">=</span> <span class="mf">1.</span><span class="o">/</span><span class="n">maroots</span>
+        <span class="n">arroots</span> <span class="o">=</span> <span class="mf">1.</span><span class="o">/</span><span class="n">arroots</span>
+        <span class="n">num</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">+</span> <span class="n">maroots</span><span class="o">**</span><span class="mi">2</span> <span class="o">-</span> <span class="mi">2</span><span class="o">*</span> <span class="n">maroots</span> <span class="o">*</span> <span class="n">cosw</span>
+        <span class="n">den</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">+</span> <span class="n">arroots</span><span class="o">**</span><span class="mi">2</span> <span class="o">-</span> <span class="mi">2</span><span class="o">*</span> <span class="n">arroots</span> <span class="o">*</span> <span class="n">cosw</span>
+        <span class="c1">#print &#39;num.shape, den.shape&#39;, num.shape, den.shape</span>
+        <span class="n">hw</span> <span class="o">=</span> <span class="mf">0.5</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">pi</span> <span class="o">*</span> <span class="n">num</span><span class="o">.</span><span class="n">prod</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span> <span class="o">/</span> <span class="n">den</span><span class="o">.</span><span class="n">prod</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span> <span class="c1">#or use expsumlog</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">squeeze</span><span class="p">(</span><span class="n">hw</span><span class="p">),</span> <span class="n">w</span><span class="o">.</span><span class="n">squeeze</span><span class="p">()</span>
+
+<div class="viewcode-block" id="ArmaFft.spdpoly"><a class="viewcode-back" href="../../../../generated/statsmodels.sandbox.tsa.fftarma.ArmaFft.spdpoly.html#statsmodels.sandbox.tsa.fftarma.ArmaFft.spdpoly">[docs]</a>    <span class="k">def</span> <span class="nf">spdpoly</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">w</span><span class="p">,</span> <span class="n">nma</span><span class="o">=</span><span class="mi">50</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;spectral density from MA polynomial representation for ARMA process</span>
+
+<span class="sd">        References</span>
+<span class="sd">        ----------</span>
+<span class="sd">        Cochrane, section 8.3.3</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="n">mpoly</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">polynomial</span><span class="o">.</span><span class="n">Polynomial</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">arma2ma</span><span class="p">(</span><span class="n">nma</span><span class="p">))</span>
+        <span class="n">hw</span> <span class="o">=</span> <span class="n">mpoly</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="mi">1</span><span class="n">j</span> <span class="o">*</span> <span class="n">w</span><span class="p">))</span>
+        <span class="n">spd</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">real_if_close</span><span class="p">(</span><span class="n">hw</span> <span class="o">*</span> <span class="n">hw</span><span class="o">.</span><span class="n">conj</span><span class="p">()</span> <span class="o">*</span> <span class="mf">0.5</span><span class="o">/</span><span class="n">np</span><span class="o">.</span><span class="n">pi</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">spd</span><span class="p">,</span> <span class="n">w</span></div>
+
+<div class="viewcode-block" id="ArmaFft.filter"><a class="viewcode-back" href="../../../../generated/statsmodels.sandbox.tsa.fftarma.ArmaFft.filter.html#statsmodels.sandbox.tsa.fftarma.ArmaFft.filter">[docs]</a>    <span class="k">def</span> <span class="nf">filter</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        filter a timeseries with the ARMA filter</span>
+
+<span class="sd">        padding with zero is missing, in example I needed the padding to get</span>
+<span class="sd">        initial conditions identical to direct filter</span>
+
+<span class="sd">        Initial filtered observations differ from filter2 and signal.lfilter, but</span>
+<span class="sd">        at end they are the same.</span>
+
+<span class="sd">        See Also</span>
+<span class="sd">        --------</span>
+<span class="sd">        tsa.filters.fftconvolve</span>
+
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="n">n</span> <span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">n</span> <span class="o">==</span> <span class="bp">self</span><span class="o">.</span><span class="n">fftarma</span><span class="p">:</span>
+            <span class="n">fftarma</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">fftarma</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">fftarma</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">fftma</span><span class="p">(</span><span class="n">n</span><span class="p">)</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">fftar</span><span class="p">(</span><span class="n">n</span><span class="p">)</span>
+        <span class="n">tmpfft</span> <span class="o">=</span> <span class="n">fftarma</span> <span class="o">*</span> <span class="n">fft</span><span class="o">.</span><span class="n">fft</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">fft</span><span class="o">.</span><span class="n">ifft</span><span class="p">(</span><span class="n">tmpfft</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="ArmaFft.filter2"><a class="viewcode-back" href="../../../../generated/statsmodels.sandbox.tsa.fftarma.ArmaFft.filter2.html#statsmodels.sandbox.tsa.fftarma.ArmaFft.filter2">[docs]</a>    <span class="k">def</span> <span class="nf">filter2</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">pad</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;filter a time series using fftconvolve3 with ARMA filter</span>
+
+<span class="sd">        padding of x currently works only if x is 1d</span>
+<span class="sd">        in example it produces same observations at beginning as lfilter even</span>
+<span class="sd">        without padding.</span>
+
+<span class="sd">        TODO: this returns 1 additional observation at the end</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="kn">from</span> <span class="nn">statsmodels.tsa.filters</span> <span class="k">import</span> <span class="n">fftconvolve3</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">pad</span><span class="p">:</span>
+            <span class="k">pass</span>
+        <span class="k">elif</span> <span class="n">pad</span> <span class="o">==</span> <span class="s1">&#39;auto&#39;</span><span class="p">:</span>
+            <span class="c1">#just guessing how much padding</span>
+            <span class="n">x</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">padarr</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">+</span> <span class="mi">2</span><span class="o">*</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">nma</span><span class="o">+</span><span class="bp">self</span><span class="o">.</span><span class="n">nar</span><span class="p">),</span> <span class="n">atend</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">x</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">padarr</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">+</span> <span class="nb">int</span><span class="p">(</span><span class="n">pad</span><span class="p">),</span> <span class="n">atend</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">fftconvolve3</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">ma</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">ar</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="ArmaFft.acf2spdfreq"><a class="viewcode-back" href="../../../../generated/statsmodels.sandbox.tsa.fftarma.ArmaFft.acf2spdfreq.html#statsmodels.sandbox.tsa.fftarma.ArmaFft.acf2spdfreq">[docs]</a>    <span class="k">def</span> <span class="nf">acf2spdfreq</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">acovf</span><span class="p">,</span> <span class="n">nfreq</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="n">w</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        not really a method</span>
+<span class="sd">        just for comparison, not efficient for large n or long acf</span>
+
+<span class="sd">        this is also similarly use in tsa.stattools.periodogram with window</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">if</span> <span class="n">w</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">w</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">pi</span><span class="p">,</span> <span class="n">nfreq</span><span class="p">)[:,</span> <span class="kc">None</span><span class="p">]</span>
+        <span class="n">nac</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">acovf</span><span class="p">)</span>
+        <span class="n">hw</span> <span class="o">=</span> <span class="mf">0.5</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">pi</span> <span class="o">*</span> <span class="p">(</span><span class="n">acovf</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">+</span>
+                            <span class="mi">2</span> <span class="o">*</span> <span class="p">(</span><span class="n">acovf</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">cos</span><span class="p">(</span><span class="n">w</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="n">nac</span><span class="p">)))</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="mi">1</span><span class="p">))</span>
+        <span class="k">return</span> <span class="n">hw</span></div>
+
+<div class="viewcode-block" id="ArmaFft.invpowerspd"><a class="viewcode-back" href="../../../../generated/statsmodels.sandbox.tsa.fftarma.ArmaFft.invpowerspd.html#statsmodels.sandbox.tsa.fftarma.ArmaFft.invpowerspd">[docs]</a>    <span class="k">def</span> <span class="nf">invpowerspd</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">n</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;autocovariance from spectral density</span>
+
+<span class="sd">        scaling is correct, but n needs to be large for numerical accuracy</span>
+<span class="sd">        maybe padding with zero in fft would be faster</span>
+<span class="sd">        without slicing it returns 2-sided autocovariance with fftshift</span>
+
+<span class="sd">        &gt;&gt;&gt; ArmaFft([1, -0.5], [1., 0.4], 40).invpowerspd(2**8)[:10]</span>
+<span class="sd">        array([ 2.08    ,  1.44    ,  0.72    ,  0.36    ,  0.18    ,  0.09    ,</span>
+<span class="sd">                0.045   ,  0.0225  ,  0.01125 ,  0.005625])</span>
+<span class="sd">        &gt;&gt;&gt; ArmaFft([1, -0.5], [1., 0.4], 40).acovf(10)</span>
+<span class="sd">        array([ 2.08    ,  1.44    ,  0.72    ,  0.36    ,  0.18    ,  0.09    ,</span>
+<span class="sd">                0.045   ,  0.0225  ,  0.01125 ,  0.005625])</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="n">hw</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">fftarma</span><span class="p">(</span><span class="n">n</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">real_if_close</span><span class="p">(</span><span class="n">fft</span><span class="o">.</span><span class="n">ifft</span><span class="p">(</span><span class="n">hw</span><span class="o">*</span><span class="n">hw</span><span class="o">.</span><span class="n">conj</span><span class="p">()),</span> <span class="n">tol</span><span class="o">=</span><span class="mi">200</span><span class="p">)[:</span><span class="n">n</span><span class="p">]</span></div>
+
+<div class="viewcode-block" id="ArmaFft.spdmapoly"><a class="viewcode-back" href="../../../../generated/statsmodels.sandbox.tsa.fftarma.ArmaFft.spdmapoly.html#statsmodels.sandbox.tsa.fftarma.ArmaFft.spdmapoly">[docs]</a>    <span class="k">def</span> <span class="nf">spdmapoly</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">w</span><span class="p">,</span> <span class="n">twosided</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;ma only, need division for ar, use LagPolynomial</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">if</span> <span class="n">w</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">w</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">pi</span><span class="p">,</span> <span class="n">nfreq</span><span class="p">)</span>
+        <span class="k">return</span> <span class="mf">0.5</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">pi</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">mapoly</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">w</span><span class="o">*</span><span class="mi">1</span><span class="n">j</span><span class="p">))</span></div>
+
+
+<div class="viewcode-block" id="ArmaFft.plot4"><a class="viewcode-back" href="../../../../generated/statsmodels.sandbox.tsa.fftarma.ArmaFft.plot4.html#statsmodels.sandbox.tsa.fftarma.ArmaFft.plot4">[docs]</a>    <span class="k">def</span> <span class="nf">plot4</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fig</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">nobs</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="n">nacf</span><span class="o">=</span><span class="mi">20</span><span class="p">,</span> <span class="n">nfreq</span><span class="o">=</span><span class="mi">100</span><span class="p">):</span>
+        <span class="n">rvs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">generate_sample</span><span class="p">(</span><span class="n">nsample</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="n">burnin</span><span class="o">=</span><span class="mi">500</span><span class="p">)</span>
+        <span class="n">acf</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">acf</span><span class="p">(</span><span class="n">nacf</span><span class="p">)[:</span><span class="n">nacf</span><span class="p">]</span>  <span class="c1">#TODO: check return length</span>
+        <span class="n">pacf</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">pacf</span><span class="p">(</span><span class="n">nacf</span><span class="p">)</span>
+        <span class="n">w</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">pi</span><span class="p">,</span> <span class="n">nfreq</span><span class="p">)</span>
+        <span class="n">spdr</span><span class="p">,</span> <span class="n">wr</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">spdroots</span><span class="p">(</span><span class="n">w</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">fig</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="kn">import</span> <span class="nn">matplotlib.pyplot</span> <span class="k">as</span> <span class="nn">plt</span>
+            <span class="n">fig</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">figure</span><span class="p">()</span>
+        <span class="n">ax</span> <span class="o">=</span> <span class="n">fig</span><span class="o">.</span><span class="n">add_subplot</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span><span class="mi">2</span><span class="p">,</span><span class="mi">1</span><span class="p">)</span>
+        <span class="n">ax</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">rvs</span><span class="p">)</span>
+        <span class="n">ax</span><span class="o">.</span><span class="n">set_title</span><span class="p">(</span><span class="s1">&#39;Random Sample </span><span class="se">\n</span><span class="s1">ar=</span><span class="si">%s</span><span class="s1">, ma=</span><span class="si">%s</span><span class="s1">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ar</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">ma</span><span class="p">))</span>
+
+        <span class="n">ax</span> <span class="o">=</span> <span class="n">fig</span><span class="o">.</span><span class="n">add_subplot</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span><span class="mi">2</span><span class="p">,</span><span class="mi">2</span><span class="p">)</span>
+        <span class="n">ax</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">acf</span><span class="p">)</span>
+        <span class="n">ax</span><span class="o">.</span><span class="n">set_title</span><span class="p">(</span><span class="s1">&#39;Autocorrelation </span><span class="se">\n</span><span class="s1">ar=</span><span class="si">%s</span><span class="s1">, ma=</span><span class="si">%r</span><span class="s1">s&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ar</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">ma</span><span class="p">))</span>
+
+        <span class="n">ax</span> <span class="o">=</span> <span class="n">fig</span><span class="o">.</span><span class="n">add_subplot</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span><span class="mi">2</span><span class="p">,</span><span class="mi">3</span><span class="p">)</span>
+        <span class="n">ax</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">wr</span><span class="p">,</span> <span class="n">spdr</span><span class="p">)</span>
+        <span class="n">ax</span><span class="o">.</span><span class="n">set_title</span><span class="p">(</span><span class="s1">&#39;Power Spectrum </span><span class="se">\n</span><span class="s1">ar=</span><span class="si">%s</span><span class="s1">, ma=</span><span class="si">%s</span><span class="s1">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ar</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">ma</span><span class="p">))</span>
+
+        <span class="n">ax</span> <span class="o">=</span> <span class="n">fig</span><span class="o">.</span><span class="n">add_subplot</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span><span class="mi">2</span><span class="p">,</span><span class="mi">4</span><span class="p">)</span>
+        <span class="n">ax</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">pacf</span><span class="p">)</span>
+        <span class="n">ax</span><span class="o">.</span><span class="n">set_title</span><span class="p">(</span><span class="s1">&#39;Partial Autocorrelation </span><span class="se">\n</span><span class="s1">ar=</span><span class="si">%s</span><span class="s1">, ma=</span><span class="si">%s</span><span class="s1">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ar</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">ma</span><span class="p">))</span>
+
+        <span class="k">return</span> <span class="n">fig</span></div></div>
+
+
+
+
+
+
+
+<span class="k">def</span> <span class="nf">spdar1</span><span class="p">(</span><span class="n">ar</span><span class="p">,</span> <span class="n">w</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">ndim</span><span class="p">(</span><span class="n">ar</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="n">rho</span> <span class="o">=</span> <span class="n">ar</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">rho</span> <span class="o">=</span> <span class="o">-</span><span class="n">ar</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+    <span class="k">return</span> <span class="mf">0.5</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">pi</span> <span class="o">/</span><span class="p">(</span><span class="mi">1</span> <span class="o">+</span> <span class="n">rho</span><span class="o">*</span><span class="n">rho</span> <span class="o">-</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">rho</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">cos</span><span class="p">(</span><span class="n">w</span><span class="p">))</span>
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s1">&#39;__main__&#39;</span><span class="p">:</span>
+    <span class="k">def</span> <span class="nf">maxabs</span><span class="p">(</span><span class="n">x</span><span class="p">,</span><span class="n">y</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">x</span><span class="o">-</span><span class="n">y</span><span class="p">))</span>
+    <span class="n">nobs</span> <span class="o">=</span> <span class="mi">200</span>  <span class="c1">#10000</span>
+    <span class="n">ar</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">]</span>
+    <span class="n">ma</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">]</span>
+    <span class="n">ar2</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">nobs</span><span class="p">)</span>
+    <span class="n">ar2</span><span class="p">[:</span><span class="mi">2</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mf">0.9</span><span class="p">]</span>
+
+
+
+    <span class="n">uni</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">nobs</span><span class="p">)</span>
+    <span class="n">uni</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">=</span><span class="mf">1.</span>
+    <span class="c1">#arrep = signal.lfilter(ma, ar, ar2)</span>
+    <span class="c1">#marep = signal.lfilter([1],arrep, uni)</span>
+    <span class="c1"># same faster:</span>
+    <span class="n">arcomb</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">convolve</span><span class="p">(</span><span class="n">ar</span><span class="p">,</span> <span class="n">ar2</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s1">&#39;same&#39;</span><span class="p">)</span>
+    <span class="n">marep</span> <span class="o">=</span> <span class="n">signal</span><span class="o">.</span><span class="n">lfilter</span><span class="p">(</span><span class="n">ma</span><span class="p">,</span><span class="n">arcomb</span><span class="p">,</span> <span class="n">uni</span><span class="p">)</span> <span class="c1">#[len(ma):]</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">marep</span><span class="p">[:</span><span class="mi">10</span><span class="p">])</span>
+    <span class="n">mafr</span> <span class="o">=</span> <span class="n">fft</span><span class="o">.</span><span class="n">fft</span><span class="p">(</span><span class="n">marep</span><span class="p">)</span>
+
+    <span class="n">rvs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="n">size</span><span class="o">=</span><span class="n">nobs</span><span class="p">)</span>
+    <span class="n">datafr</span> <span class="o">=</span> <span class="n">fft</span><span class="o">.</span><span class="n">fft</span><span class="p">(</span><span class="n">rvs</span><span class="p">)</span>
+    <span class="n">y</span> <span class="o">=</span> <span class="n">fft</span><span class="o">.</span><span class="n">ifft</span><span class="p">(</span><span class="n">mafr</span><span class="o">*</span><span class="n">datafr</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">corrcoef</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">c_</span><span class="p">[</span><span class="n">y</span><span class="p">[</span><span class="mi">2</span><span class="p">:],</span> <span class="n">y</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span> <span class="n">y</span><span class="p">[:</span><span class="o">-</span><span class="mi">2</span><span class="p">]],</span><span class="n">rowvar</span><span class="o">=</span><span class="mi">0</span><span class="p">))</span>
+
+    <span class="n">arrep</span> <span class="o">=</span> <span class="n">signal</span><span class="o">.</span><span class="n">lfilter</span><span class="p">([</span><span class="mi">1</span><span class="p">],</span><span class="n">marep</span><span class="p">,</span> <span class="n">uni</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">arrep</span><span class="p">[:</span><span class="mi">20</span><span class="p">])</span>  <span class="c1"># roundtrip to ar</span>
+    <span class="n">arfr</span> <span class="o">=</span> <span class="n">fft</span><span class="o">.</span><span class="n">fft</span><span class="p">(</span><span class="n">arrep</span><span class="p">)</span>
+    <span class="n">yfr</span> <span class="o">=</span> <span class="n">fft</span><span class="o">.</span><span class="n">fft</span><span class="p">(</span><span class="n">y</span><span class="p">)</span>
+    <span class="n">x</span> <span class="o">=</span> <span class="n">fft</span><span class="o">.</span><span class="n">ifft</span><span class="p">(</span><span class="n">arfr</span><span class="o">*</span><span class="n">yfr</span><span class="p">)</span><span class="o">.</span><span class="n">real</span>  <span class="c1">#imag part is e-15</span>
+    <span class="c1"># the next two are equal, roundtrip works</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">x</span><span class="p">[:</span><span class="mi">5</span><span class="p">])</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">rvs</span><span class="p">[:</span><span class="mi">5</span><span class="p">])</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">corrcoef</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">c_</span><span class="p">[</span><span class="n">x</span><span class="p">[</span><span class="mi">2</span><span class="p">:],</span> <span class="n">x</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span> <span class="n">x</span><span class="p">[:</span><span class="o">-</span><span class="mi">2</span><span class="p">]],</span><span class="n">rowvar</span><span class="o">=</span><span class="mi">0</span><span class="p">))</span>
+
+
+    <span class="c1"># ARMA filter using fft with ratio of fft of ma/ar lag polynomial</span>
+    <span class="c1"># seems much faster than using lfilter</span>
+
+    <span class="c1">#padding, note arcomb is already full length</span>
+    <span class="n">arcombp</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">nobs</span><span class="p">)</span>
+    <span class="n">arcombp</span><span class="p">[:</span><span class="nb">len</span><span class="p">(</span><span class="n">arcomb</span><span class="p">)]</span> <span class="o">=</span> <span class="n">arcomb</span>
+    <span class="n">map_</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">nobs</span><span class="p">)</span>    <span class="c1">#rename: map was shadowing builtin</span>
+    <span class="n">map_</span><span class="p">[:</span><span class="nb">len</span><span class="p">(</span><span class="n">ma</span><span class="p">)]</span> <span class="o">=</span> <span class="n">ma</span>
+    <span class="n">ar0fr</span> <span class="o">=</span> <span class="n">fft</span><span class="o">.</span><span class="n">fft</span><span class="p">(</span><span class="n">arcombp</span><span class="p">)</span>
+    <span class="n">ma0fr</span> <span class="o">=</span> <span class="n">fft</span><span class="o">.</span><span class="n">fft</span><span class="p">(</span><span class="n">map_</span><span class="p">)</span>
+    <span class="n">y2</span> <span class="o">=</span> <span class="n">fft</span><span class="o">.</span><span class="n">ifft</span><span class="p">(</span><span class="n">ma0fr</span><span class="o">/</span><span class="n">ar0fr</span><span class="o">*</span><span class="n">datafr</span><span class="p">)</span>
+    <span class="c1">#the next two are (almost) equal in real part, almost zero but different in imag</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">y2</span><span class="p">[:</span><span class="mi">10</span><span class="p">])</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">y</span><span class="p">[:</span><span class="mi">10</span><span class="p">])</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">maxabs</span><span class="p">(</span><span class="n">y</span><span class="p">,</span> <span class="n">y2</span><span class="p">))</span>  <span class="c1"># from chfdiscrete</span>
+    <span class="c1">#1.1282071239631782e-014</span>
+
+    <span class="n">ar</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mf">0.4</span><span class="p">]</span>
+    <span class="n">ma</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mf">0.2</span><span class="p">]</span>
+
+    <span class="n">arma1</span> <span class="o">=</span> <span class="n">ArmaFft</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mf">0.5</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">00</span><span class="p">,</span> <span class="o">-</span><span class="mf">0.7</span><span class="p">,</span> <span class="mf">0.3</span><span class="p">],</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mf">0.8</span><span class="p">],</span> <span class="n">nobs</span><span class="p">)</span>
+
+    <span class="n">nfreq</span> <span class="o">=</span> <span class="n">nobs</span>
+    <span class="n">w</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">pi</span><span class="p">,</span> <span class="n">nfreq</span><span class="p">)</span>
+    <span class="n">w2</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">pi</span><span class="p">,</span> <span class="n">nfreq</span><span class="p">)</span>
+
+    <span class="kn">import</span> <span class="nn">matplotlib.pyplot</span> <span class="k">as</span> <span class="nn">plt</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">close</span><span class="p">(</span><span class="s1">&#39;all&#39;</span><span class="p">)</span>
+
+    <span class="n">plt</span><span class="o">.</span><span class="n">figure</span><span class="p">()</span>
+    <span class="n">spd1</span><span class="p">,</span> <span class="n">w1</span> <span class="o">=</span> <span class="n">arma1</span><span class="o">.</span><span class="n">spd</span><span class="p">(</span><span class="mi">2</span><span class="o">**</span><span class="mi">10</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">spd1</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
+    <span class="n">_</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">spd1</span><span class="p">)</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">title</span><span class="p">(</span><span class="s1">&#39;spd fft complex&#39;</span><span class="p">)</span>
+
+    <span class="n">plt</span><span class="o">.</span><span class="n">figure</span><span class="p">()</span>
+    <span class="n">spd2</span><span class="p">,</span> <span class="n">w2</span> <span class="o">=</span> <span class="n">arma1</span><span class="o">.</span><span class="n">spdshift</span><span class="p">(</span><span class="mi">2</span><span class="o">**</span><span class="mi">10</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">spd2</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
+    <span class="n">_</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">w2</span><span class="p">,</span> <span class="n">spd2</span><span class="p">)</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">title</span><span class="p">(</span><span class="s1">&#39;spd fft shift&#39;</span><span class="p">)</span>
+
+    <span class="n">plt</span><span class="o">.</span><span class="n">figure</span><span class="p">()</span>
+    <span class="n">spd3</span><span class="p">,</span> <span class="n">w3</span> <span class="o">=</span> <span class="n">arma1</span><span class="o">.</span><span class="n">spddirect</span><span class="p">(</span><span class="mi">2</span><span class="o">**</span><span class="mi">10</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">spd3</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
+    <span class="n">_</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">w3</span><span class="p">,</span> <span class="n">spd3</span><span class="p">)</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">title</span><span class="p">(</span><span class="s1">&#39;spd fft direct&#39;</span><span class="p">)</span>
+
+    <span class="n">plt</span><span class="o">.</span><span class="n">figure</span><span class="p">()</span>
+    <span class="n">spd3b</span> <span class="o">=</span> <span class="n">arma1</span><span class="o">.</span><span class="n">_spddirect2</span><span class="p">(</span><span class="mi">2</span><span class="o">**</span><span class="mi">10</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">spd3b</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
+    <span class="n">_</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">spd3b</span><span class="p">)</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">title</span><span class="p">(</span><span class="s1">&#39;spd fft direct mirrored&#39;</span><span class="p">)</span>
+
+    <span class="n">plt</span><span class="o">.</span><span class="n">figure</span><span class="p">()</span>
+    <span class="n">spdr</span><span class="p">,</span> <span class="n">wr</span> <span class="o">=</span> <span class="n">arma1</span><span class="o">.</span><span class="n">spdroots</span><span class="p">(</span><span class="n">w</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">spdr</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">w</span><span class="p">,</span> <span class="n">spdr</span><span class="p">)</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">title</span><span class="p">(</span><span class="s1">&#39;spd from roots&#39;</span><span class="p">)</span>
+
+    <span class="n">plt</span><span class="o">.</span><span class="n">figure</span><span class="p">()</span>
+    <span class="n">spdar1_</span> <span class="o">=</span> <span class="n">spdar1</span><span class="p">(</span><span class="n">arma1</span><span class="o">.</span><span class="n">ar</span><span class="p">,</span> <span class="n">w</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">spdar1_</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
+    <span class="n">_</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">w</span><span class="p">,</span> <span class="n">spdar1_</span><span class="p">)</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">title</span><span class="p">(</span><span class="s1">&#39;spd ar1&#39;</span><span class="p">)</span>
+
+
+    <span class="n">plt</span><span class="o">.</span><span class="n">figure</span><span class="p">()</span>
+    <span class="n">wper</span><span class="p">,</span> <span class="n">spdper</span> <span class="o">=</span> <span class="n">arma1</span><span class="o">.</span><span class="n">periodogram</span><span class="p">(</span><span class="n">nfreq</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">spdper</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
+    <span class="n">_</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">w</span><span class="p">,</span> <span class="n">spdper</span><span class="p">)</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">title</span><span class="p">(</span><span class="s1">&#39;periodogram&#39;</span><span class="p">)</span>
+
+    <span class="n">startup</span> <span class="o">=</span> <span class="mi">1000</span>
+    <span class="n">rvs</span> <span class="o">=</span> <span class="n">arma1</span><span class="o">.</span><span class="n">generate_sample</span><span class="p">(</span><span class="n">startup</span><span class="o">+</span><span class="mi">10000</span><span class="p">)[</span><span class="n">startup</span><span class="p">:]</span>
+    <span class="kn">import</span> <span class="nn">matplotlib.mlab</span> <span class="k">as</span> <span class="nn">mlb</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">figure</span><span class="p">()</span>
+    <span class="n">sdm</span><span class="p">,</span> <span class="n">wm</span> <span class="o">=</span> <span class="n">mlb</span><span class="o">.</span><span class="n">psd</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;sdm.shape&#39;</span><span class="p">,</span> <span class="n">sdm</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
+    <span class="n">sdm</span> <span class="o">=</span> <span class="n">sdm</span><span class="o">.</span><span class="n">ravel</span><span class="p">()</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">wm</span><span class="p">,</span> <span class="n">sdm</span><span class="p">)</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">title</span><span class="p">(</span><span class="s1">&#39;matplotlib&#39;</span><span class="p">)</span>
+
+    <span class="kn">from</span> <span class="nn">nitime.algorithms</span> <span class="k">import</span> <span class="n">LD_AR_est</span>
+    <span class="c1">#yule_AR_est(s, order, Nfreqs)</span>
+    <span class="n">wnt</span><span class="p">,</span> <span class="n">spdnt</span> <span class="o">=</span> <span class="n">LD_AR_est</span><span class="p">(</span><span class="n">rvs</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">512</span><span class="p">)</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">figure</span><span class="p">()</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;spdnt.shape&#39;</span><span class="p">,</span> <span class="n">spdnt</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
+    <span class="n">_</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">spdnt</span><span class="o">.</span><span class="n">ravel</span><span class="p">())</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">spdnt</span><span class="p">[:</span><span class="mi">10</span><span class="p">])</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">title</span><span class="p">(</span><span class="s1">&#39;nitime&#39;</span><span class="p">)</span>
+
+    <span class="n">fig</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">figure</span><span class="p">()</span>
+    <span class="n">arma1</span><span class="o">.</span><span class="n">plot4</span><span class="p">(</span><span class="n">fig</span><span class="p">)</span>
+
+    <span class="c1">#plt.show()</span>
+</pre></div>
+
+
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../../../../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    </div>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer" role="contentinfo">
+        &#169; Copyright 2009-2017, Josef Perktold, Skipper Seabold, Jonathan Taylor, statsmodels-developers.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.7.4.
+    </div>
+  </body>
+</html>

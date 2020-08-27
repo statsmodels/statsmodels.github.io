@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.iolib.table.SimpleTable.extend
+==========================================
+
+.. currentmodule:: statsmodels.iolib.table
+
+.. automethod:: SimpleTable.extend

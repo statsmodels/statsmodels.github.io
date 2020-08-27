@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.tsa.arima\_model.ARIMAResults.f\_test
+=================================================
+
+.. currentmodule:: statsmodels.tsa.arima_model
+
+.. automethod:: ARIMAResults.f_test

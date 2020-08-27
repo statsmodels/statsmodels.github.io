@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.duration.hazard\_regression.PHReg.hessian
+=====================================================
+
+.. currentmodule:: statsmodels.duration.hazard_regression
+
+.. automethod:: PHReg.hessian

@@ -1,0 +1,1842 @@
+Interactions and ANOVA
+========================
+
+
+.. _interactions_anova_notebook:
+
+`Link to Notebook GitHub <https://github.com/statsmodels/statsmodels/blob/master/examples/notebooks/interactions_anova.ipynb>`_
+
+.. raw:: html
+
+   
+   <div class="cell border-box-sizing text_cell rendered">
+   <div class="prompt input_prompt">
+   </div>
+   <div class="inner_cell">
+   <div class="text_cell_render border-box-sizing rendered_html">
+   <p>Note: This script is based heavily on Jonathan Taylor's class notes <a href="http://www.stanford.edu/class/stats191/interactions.html">http://www.stanford.edu/class/stats191/interactions.html</a></p>
+   <p>Download and format data:</p>
+   
+   </div>
+   </div>
+   </div>
+   <div class="cell border-box-sizing code_cell rendered">
+   <div class="input">
+   <div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+   <div class="inner_cell">
+       <div class="input_area">
+   <div class=" highlight hl-ipython3"><pre><span class="kn">from</span> <span class="nn">__future__</span> <span class="k">import</span> <span class="n">print_function</span>
+   <span class="kn">from</span> <span class="nn">statsmodels.compat</span> <span class="k">import</span> <span class="n">urlopen</span>
+   <span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+   <span class="n">np</span><span class="o">.</span><span class="n">set_printoptions</span><span class="p">(</span><span class="n">precision</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span> <span class="n">suppress</span><span class="o">=</span><span class="k">True</span><span class="p">)</span>
+   <span class="kn">import</span> <span class="nn">statsmodels.api</span> <span class="k">as</span> <span class="nn">sm</span>
+   <span class="kn">import</span> <span class="nn">pandas</span> <span class="k">as</span> <span class="nn">pd</span>
+   <span class="n">pd</span><span class="o">.</span><span class="n">set_option</span><span class="p">(</span><span class="s">&quot;display.width&quot;</span><span class="p">,</span> <span class="mi">100</span><span class="p">)</span>
+   <span class="kn">import</span> <span class="nn">matplotlib.pyplot</span> <span class="k">as</span> <span class="nn">plt</span>
+   <span class="kn">from</span> <span class="nn">statsmodels.formula.api</span> <span class="k">import</span> <span class="n">ols</span>
+   <span class="kn">from</span> <span class="nn">statsmodels.graphics.api</span> <span class="k">import</span> <span class="n">interaction_plot</span><span class="p">,</span> <span class="n">abline_plot</span>
+   <span class="kn">from</span> <span class="nn">statsmodels.stats.anova</span> <span class="k">import</span> <span class="n">anova_lm</span>
+   
+   <span class="k">try</span><span class="p">:</span>
+       <span class="n">salary_table</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_csv</span><span class="p">(</span><span class="s">&#39;salary.table&#39;</span><span class="p">)</span>
+   <span class="k">except</span><span class="p">:</span>  <span class="c"># recent pandas can read URL without urlopen</span>
+       <span class="n">url</span> <span class="o">=</span> <span class="s">&#39;http://stats191.stanford.edu/data/salary.table&#39;</span>
+       <span class="n">fh</span> <span class="o">=</span> <span class="n">urlopen</span><span class="p">(</span><span class="n">url</span><span class="p">)</span>
+       <span class="n">salary_table</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_table</span><span class="p">(</span><span class="n">fh</span><span class="p">)</span>
+       <span class="n">salary_table</span><span class="o">.</span><span class="n">to_csv</span><span class="p">(</span><span class="s">&#39;salary.table&#39;</span><span class="p">)</span>
+   
+   <span class="n">E</span> <span class="o">=</span> <span class="n">salary_table</span><span class="o">.</span><span class="n">E</span>
+   <span class="n">M</span> <span class="o">=</span> <span class="n">salary_table</span><span class="o">.</span><span class="n">M</span>
+   <span class="n">X</span> <span class="o">=</span> <span class="n">salary_table</span><span class="o">.</span><span class="n">X</span>
+   <span class="n">S</span> <span class="o">=</span> <span class="n">salary_table</span><span class="o">.</span><span class="n">S</span>
+   </pre></div>
+   
+   </div>
+   </div>
+   </div>
+   
+   </div>
+   <div class="cell border-box-sizing text_cell rendered">
+   <div class="prompt input_prompt">
+   </div>
+   <div class="inner_cell">
+   <div class="text_cell_render border-box-sizing rendered_html">
+   <p>Take a look at the data:</p>
+   
+   </div>
+   </div>
+   </div>
+   <div class="cell border-box-sizing code_cell rendered">
+   <div class="input">
+   <div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+   <div class="inner_cell">
+       <div class="input_area">
+   <div class=" highlight hl-ipython3"><pre><span class="n">plt</span><span class="o">.</span><span class="n">figure</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">6</span><span class="p">,</span><span class="mi">6</span><span class="p">))</span>
+   <span class="n">symbols</span> <span class="o">=</span> <span class="p">[</span><span class="s">&#39;D&#39;</span><span class="p">,</span> <span class="s">&#39;^&#39;</span><span class="p">]</span>
+   <span class="n">colors</span> <span class="o">=</span> <span class="p">[</span><span class="s">&#39;r&#39;</span><span class="p">,</span> <span class="s">&#39;g&#39;</span><span class="p">,</span> <span class="s">&#39;blue&#39;</span><span class="p">]</span>
+   <span class="n">factor_groups</span> <span class="o">=</span> <span class="n">salary_table</span><span class="o">.</span><span class="n">groupby</span><span class="p">([</span><span class="s">&#39;E&#39;</span><span class="p">,</span><span class="s">&#39;M&#39;</span><span class="p">])</span>
+   <span class="k">for</span> <span class="n">values</span><span class="p">,</span> <span class="n">group</span> <span class="ow">in</span> <span class="n">factor_groups</span><span class="p">:</span>
+       <span class="n">i</span><span class="p">,</span><span class="n">j</span> <span class="o">=</span> <span class="n">values</span>
+       <span class="n">plt</span><span class="o">.</span><span class="n">scatter</span><span class="p">(</span><span class="n">group</span><span class="p">[</span><span class="s">&#39;X&#39;</span><span class="p">],</span> <span class="n">group</span><span class="p">[</span><span class="s">&#39;S&#39;</span><span class="p">],</span> <span class="n">marker</span><span class="o">=</span><span class="n">symbols</span><span class="p">[</span><span class="n">j</span><span class="p">],</span> <span class="n">color</span><span class="o">=</span><span class="n">colors</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span>
+                  <span class="n">s</span><span class="o">=</span><span class="mi">144</span><span class="p">)</span>
+   <span class="n">plt</span><span class="o">.</span><span class="n">xlabel</span><span class="p">(</span><span class="s">&#39;Experience&#39;</span><span class="p">);</span>
+   <span class="n">plt</span><span class="o">.</span><span class="n">ylabel</span><span class="p">(</span><span class="s">&#39;Salary&#39;</span><span class="p">);</span>
+   </pre></div>
+   
+   </div>
+   </div>
+   </div>
+   
+   </div>
+   <div class="cell border-box-sizing text_cell rendered">
+   <div class="prompt input_prompt">
+   </div>
+   <div class="inner_cell">
+   <div class="text_cell_render border-box-sizing rendered_html">
+   <p>Fit a linear model:</p>
+   
+   </div>
+   </div>
+   </div>
+   <div class="cell border-box-sizing code_cell rendered">
+   <div class="input">
+   <div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+   <div class="inner_cell">
+       <div class="input_area">
+   <div class=" highlight hl-ipython3"><pre><span class="n">formula</span> <span class="o">=</span> <span class="s">&#39;S ~ C(E) + C(M) + X&#39;</span>
+   <span class="n">lm</span> <span class="o">=</span> <span class="n">ols</span><span class="p">(</span><span class="n">formula</span><span class="p">,</span> <span class="n">salary_table</span><span class="p">)</span><span class="o">.</span><span class="n">fit</span><span class="p">()</span>
+   <span class="nb">print</span><span class="p">(</span><span class="n">lm</span><span class="o">.</span><span class="n">summary</span><span class="p">())</span>
+   </pre></div>
+   
+   </div>
+   </div>
+   </div>
+   
+   <div class="output_wrapper">
+   <div class="output">
+   
+   
+   <div class="output_area"><div class="prompt"></div>
+   
+   
+   
+   </div>
+   
+   </div>
+   </div>
+   
+   </div>
+   <div class="cell border-box-sizing text_cell rendered">
+   <div class="prompt input_prompt">
+   </div>
+   <div class="inner_cell">
+   <div class="text_cell_render border-box-sizing rendered_html">
+   <p>Have a look at the created design matrix:</p>
+   
+   </div>
+   </div>
+   </div>
+   <div class="cell border-box-sizing code_cell rendered">
+   <div class="input">
+   <div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+   <div class="inner_cell">
+       <div class="input_area">
+   <div class=" highlight hl-ipython3"><pre><span class="n">lm</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">exog</span><span class="p">[:</span><span class="mi">5</span><span class="p">]</span>
+   </pre></div>
+   
+   </div>
+   </div>
+   </div>
+   
+   <div class="output_wrapper">
+   <div class="output">
+   
+   
+   <div class="output_area"><div class="prompt"></div>
+   <div class="output_subarea output_stream output_stdout output_text">
+   <pre>                            OLS Regression Results                            
+   ==============================================================================
+   Dep. Variable:                      S   R-squared:                       0.957
+   Model:                            OLS   Adj. R-squared:                  0.953
+   Method:                 Least Squares   F-statistic:                     226.8
+   Date:                Mon, 20 Jul 2015   Prob (F-statistic):           2.23e-27
+   Time:                        17:43:41   Log-Likelihood:                -381.63
+   No. Observations:                  46   AIC:                             773.3
+   Df Residuals:                      41   BIC:                             782.4
+   Df Model:                           4                                         
+   Covariance Type:            nonrobust                                         
+   ==============================================================================
+                    coef    std err          t      P&gt;|t|      [95.0% Conf. Int.]
+   ------------------------------------------------------------------------------
+   Intercept   8035.5976    386.689     20.781      0.000      7254.663  8816.532
+   C(E)[T.2]   3144.0352    361.968      8.686      0.000      2413.025  3875.045
+   C(E)[T.3]   2996.2103    411.753      7.277      0.000      2164.659  3827.762
+   C(M)[T.1]   6883.5310    313.919     21.928      0.000      6249.559  7517.503
+   X            546.1840     30.519     17.896      0.000       484.549   607.819
+   ==============================================================================
+   Omnibus:                        2.293   Durbin-Watson:                   2.237
+   Prob(Omnibus):                  0.318   Jarque-Bera (JB):                1.362
+   Skew:                          -0.077   Prob(JB):                        0.506
+   Kurtosis:                       2.171   Cond. No.                         33.5
+   ==============================================================================
+   
+   Warnings:
+   [1] Standard Errors assume that the covariance matrix of the errors is correctly specified.
+   </pre>
+   </div>
+   </div>
+   
+   </div>
+   </div>
+   
+   </div>
+   <div class="cell border-box-sizing text_cell rendered">
+   <div class="prompt input_prompt">
+   </div>
+   <div class="inner_cell">
+   <div class="text_cell_render border-box-sizing rendered_html">
+   <p>Or since we initially passed in a DataFrame, we have a DataFrame available in</p>
+   
+   </div>
+   </div>
+   </div>
+   <div class="cell border-box-sizing code_cell rendered">
+   <div class="input">
+   <div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+   <div class="inner_cell">
+       <div class="input_area">
+   <div class=" highlight hl-ipython3"><pre><span class="n">lm</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">orig_exog</span><span class="p">[:</span><span class="mi">5</span><span class="p">]</span>
+   </pre></div>
+   
+   </div>
+   </div>
+   </div>
+   
+   <div class="output_wrapper">
+   <div class="output">
+   
+   
+   <div class="output_area"><div class="prompt"></div>
+   
+   </div>
+   
+   </div>
+   </div>
+   
+   </div>
+   <div class="cell border-box-sizing text_cell rendered">
+   <div class="prompt input_prompt">
+   </div>
+   <div class="inner_cell">
+   <div class="text_cell_render border-box-sizing rendered_html">
+   <p>We keep a reference to the original untouched data in</p>
+   
+   </div>
+   </div>
+   </div>
+   <div class="cell border-box-sizing code_cell rendered">
+   <div class="input">
+   <div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+   <div class="inner_cell">
+       <div class="input_area">
+   <div class=" highlight hl-ipython3"><pre><span class="n">lm</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">frame</span><span class="p">[:</span><span class="mi">5</span><span class="p">]</span>
+   </pre></div>
+   
+   </div>
+   </div>
+   </div>
+   
+   <div class="output_wrapper">
+   <div class="output">
+   
+   
+   <div class="output_area"><div class="prompt"></div>
+   
+   </div>
+   
+   </div>
+   </div>
+   
+   </div>
+   <div class="cell border-box-sizing text_cell rendered">
+   <div class="prompt input_prompt">
+   </div>
+   <div class="inner_cell">
+   <div class="text_cell_render border-box-sizing rendered_html">
+   <p>Influence statistics</p>
+   
+   </div>
+   </div>
+   </div>
+   <div class="cell border-box-sizing code_cell rendered">
+   <div class="input">
+   <div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+   <div class="inner_cell">
+       <div class="input_area">
+   <div class=" highlight hl-ipython3"><pre><span class="n">infl</span> <span class="o">=</span> <span class="n">lm</span><span class="o">.</span><span class="n">get_influence</span><span class="p">()</span>
+   <span class="nb">print</span><span class="p">(</span><span class="n">infl</span><span class="o">.</span><span class="n">summary_table</span><span class="p">())</span>
+   </pre></div>
+   
+   </div>
+   </div>
+   </div>
+   
+   <div class="output_wrapper">
+   <div class="output">
+   
+   
+   <div class="output_area"><div class="prompt"></div>
+   
+   </div>
+   
+   </div>
+   </div>
+   
+   </div>
+   <div class="cell border-box-sizing text_cell rendered">
+   <div class="prompt input_prompt">
+   </div>
+   <div class="inner_cell">
+   <div class="text_cell_render border-box-sizing rendered_html">
+   <p>or get a dataframe</p>
+   
+   </div>
+   </div>
+   </div>
+   <div class="cell border-box-sizing code_cell rendered">
+   <div class="input">
+   <div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+   <div class="inner_cell">
+       <div class="input_area">
+   <div class=" highlight hl-ipython3"><pre><span class="n">df_infl</span> <span class="o">=</span> <span class="n">infl</span><span class="o">.</span><span class="n">summary_frame</span><span class="p">()</span>
+   </pre></div>
+   
+   </div>
+   </div>
+   </div>
+   
+   <div class="output_wrapper">
+   <div class="output">
+   
+   
+   <div class="output_area"><div class="prompt"></div>
+   <div class="output_subarea output_stream output_stdout output_text">
+   <pre>==================================================================================================
+          obs      endog     fitted     Cook&apos;s   student.   hat diag    dffits   ext.stud.     dffits
+                              value          d   residual              internal   residual           
+   --------------------------------------------------------------------------------------------------
+            0  13876.000  15465.313      0.104     -1.683      0.155     -0.722     -1.723     -0.739
+            1  11608.000  11577.992      0.000      0.031      0.130      0.012      0.031      0.012
+            2  18701.000  18461.523      0.001      0.247      0.109      0.086      0.244      0.085
+            3  11283.000  11725.817      0.005     -0.458      0.113     -0.163     -0.453     -0.162
+            4  11767.000  11577.992      0.001      0.197      0.130      0.076      0.195      0.075
+            5  20872.000  19155.532      0.092      1.787      0.126      0.678      1.838      0.698
+            6  11772.000  12272.001      0.006     -0.513      0.101     -0.172     -0.509     -0.170
+            7  10535.000   9127.966      0.056      1.457      0.116      0.529      1.478      0.537
+            8  12195.000  12124.176      0.000      0.074      0.123      0.028      0.073      0.027
+            9  12313.000  12818.185      0.005     -0.516      0.091     -0.163     -0.511     -0.161
+           10  14975.000  16557.681      0.084     -1.655      0.134     -0.650     -1.692     -0.664
+           11  21371.000  19701.716      0.078      1.728      0.116      0.624      1.772      0.640
+           12  19800.000  19553.891      0.001      0.252      0.096      0.082      0.249      0.081
+           13  11417.000  10220.334      0.033      1.227      0.098      0.405      1.234      0.408
+           14  20263.000  20100.075      0.001      0.166      0.093      0.053      0.165      0.053
+           15  13231.000  13216.544      0.000      0.015      0.114      0.005      0.015      0.005
+           16  12884.000  13364.369      0.004     -0.488      0.082     -0.146     -0.483     -0.145
+           17  13245.000  13910.553      0.007     -0.674      0.075     -0.192     -0.669     -0.191
+           18  13677.000  13762.728      0.000     -0.089      0.113     -0.032     -0.087     -0.031
+           19  15965.000  17650.049      0.082     -1.747      0.119     -0.642     -1.794     -0.659
+           20  12336.000  11312.702      0.021      1.043      0.087      0.323      1.044      0.323
+           21  21352.000  21192.443      0.001      0.163      0.091      0.052      0.161      0.051
+           22  13839.000  14456.737      0.006     -0.624      0.070     -0.171     -0.619     -0.170
+           23  22884.000  21340.268      0.052      1.579      0.095      0.511      1.610      0.521
+           24  16978.000  18742.417      0.083     -1.822      0.111     -0.644     -1.877     -0.664
+           25  14803.000  15549.105      0.008     -0.751      0.065     -0.199     -0.747     -0.198
+           26  17404.000  19288.601      0.093     -1.944      0.110     -0.684     -2.016     -0.709
+           27  22184.000  22284.811      0.000     -0.103      0.096     -0.034     -0.102     -0.033
+           28  13548.000  12405.070      0.025      1.162      0.083      0.350      1.167      0.352
+           29  14467.000  13497.438      0.018      0.987      0.086      0.304      0.987      0.304
+           30  15942.000  16641.473      0.007     -0.705      0.068     -0.190     -0.701     -0.189
+           31  23174.000  23377.179      0.001     -0.209      0.108     -0.073     -0.207     -0.072
+           32  23780.000  23525.004      0.001      0.260      0.092      0.083      0.257      0.082
+           33  25410.000  24071.188      0.040      1.370      0.096      0.446      1.386      0.451
+           34  14861.000  14043.622      0.014      0.834      0.091      0.263      0.831      0.262
+           35  16882.000  17733.841      0.012     -0.863      0.077     -0.249     -0.860     -0.249
+           36  24170.000  24469.547      0.003     -0.312      0.127     -0.119     -0.309     -0.118
+           37  15990.000  15135.990      0.018      0.878      0.104      0.300      0.876      0.299
+           38  26330.000  25163.556      0.035      1.202      0.109      0.420      1.209      0.422
+           39  17949.000  18826.209      0.017     -0.897      0.093     -0.288     -0.895     -0.287
+           40  25685.000  26108.099      0.008     -0.452      0.169     -0.204     -0.447     -0.202
+           41  27837.000  26802.108      0.039      1.087      0.141      0.440      1.089      0.441
+           42  18838.000  19918.577      0.033     -1.119      0.117     -0.407     -1.123     -0.408
+           43  17483.000  16774.542      0.018      0.743      0.138      0.297      0.739      0.295
+           44  19207.000  20464.761      0.052     -1.313      0.131     -0.511     -1.325     -0.515
+           45  19346.000  18959.278      0.009      0.423      0.208      0.216      0.419      0.214
+   ==================================================================================================
+   </pre>
+   </div>
+   </div>
+   
+   </div>
+   </div>
+   
+   </div>
+   <div class="cell border-box-sizing code_cell rendered">
+   <div class="input">
+   <div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+   <div class="inner_cell">
+       <div class="input_area">
+   <div class=" highlight hl-ipython3"><pre><span class="n">df_infl</span><span class="p">[:</span><span class="mi">5</span><span class="p">]</span>
+   </pre></div>
+   
+   </div>
+   </div>
+   </div>
+   
+   </div>
+   <div class="cell border-box-sizing text_cell rendered">
+   <div class="prompt input_prompt">
+   </div>
+   <div class="inner_cell">
+   <div class="text_cell_render border-box-sizing rendered_html">
+   <p>Now plot the reiduals within the groups separately:</p>
+   
+   </div>
+   </div>
+   </div>
+   <div class="cell border-box-sizing code_cell rendered">
+   <div class="input">
+   <div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+   <div class="inner_cell">
+       <div class="input_area">
+   <div class=" highlight hl-ipython3"><pre><span class="n">resid</span> <span class="o">=</span> <span class="n">lm</span><span class="o">.</span><span class="n">resid</span>
+   <span class="n">plt</span><span class="o">.</span><span class="n">figure</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">6</span><span class="p">,</span><span class="mi">6</span><span class="p">));</span>
+   <span class="k">for</span> <span class="n">values</span><span class="p">,</span> <span class="n">group</span> <span class="ow">in</span> <span class="n">factor_groups</span><span class="p">:</span>
+       <span class="n">i</span><span class="p">,</span><span class="n">j</span> <span class="o">=</span> <span class="n">values</span>
+       <span class="n">group_num</span> <span class="o">=</span> <span class="n">i</span><span class="o">*</span><span class="mi">2</span> <span class="o">+</span> <span class="n">j</span> <span class="o">-</span> <span class="mi">1</span>  <span class="c"># for plotting purposes</span>
+       <span class="n">x</span> <span class="o">=</span> <span class="p">[</span><span class="n">group_num</span><span class="p">]</span> <span class="o">*</span> <span class="nb">len</span><span class="p">(</span><span class="n">group</span><span class="p">)</span>
+       <span class="n">plt</span><span class="o">.</span><span class="n">scatter</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">resid</span><span class="p">[</span><span class="n">group</span><span class="o">.</span><span class="n">index</span><span class="p">],</span> <span class="n">marker</span><span class="o">=</span><span class="n">symbols</span><span class="p">[</span><span class="n">j</span><span class="p">],</span> <span class="n">color</span><span class="o">=</span><span class="n">colors</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span>
+               <span class="n">s</span><span class="o">=</span><span class="mi">144</span><span class="p">,</span> <span class="n">edgecolors</span><span class="o">=</span><span class="s">&#39;black&#39;</span><span class="p">)</span>
+   <span class="n">plt</span><span class="o">.</span><span class="n">xlabel</span><span class="p">(</span><span class="s">&#39;Group&#39;</span><span class="p">);</span>
+   <span class="n">plt</span><span class="o">.</span><span class="n">ylabel</span><span class="p">(</span><span class="s">&#39;Residuals&#39;</span><span class="p">);</span>
+   </pre></div>
+   
+   </div>
+   </div>
+   </div>
+   
+   <div class="output_wrapper">
+   <div class="output">
+   
+   
+   <div class="output_area"><div class="prompt"></div>
+   
+   </div>
+   
+   </div>
+   </div>
+   
+   </div>
+   <div class="cell border-box-sizing text_cell rendered">
+   <div class="prompt input_prompt">
+   </div>
+   <div class="inner_cell">
+   <div class="text_cell_render border-box-sizing rendered_html">
+   <p>Now we will test some interactions using anova or f_test</p>
+   
+   </div>
+   </div>
+   </div>
+   <div class="cell border-box-sizing code_cell rendered">
+   <div class="input">
+   <div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+   <div class="inner_cell">
+       <div class="input_area">
+   <div class=" highlight hl-ipython3"><pre><span class="n">interX_lm</span> <span class="o">=</span> <span class="n">ols</span><span class="p">(</span><span class="s">&quot;S ~ C(E) * X + C(M)&quot;</span><span class="p">,</span> <span class="n">salary_table</span><span class="p">)</span><span class="o">.</span><span class="n">fit</span><span class="p">()</span>
+   <span class="nb">print</span><span class="p">(</span><span class="n">interX_lm</span><span class="o">.</span><span class="n">summary</span><span class="p">())</span>
+   </pre></div>
+   
+   </div>
+   </div>
+   </div>
+   
+   <div class="output_wrapper">
+   <div class="output">
+   
+   
+   <div class="output_area"><div class="prompt"></div>
+   
+   
+   
+   </div>
+   
+   </div>
+   </div>
+   
+   </div>
+   <div class="cell border-box-sizing text_cell rendered">
+   <div class="prompt input_prompt">
+   </div>
+   <div class="inner_cell">
+   <div class="text_cell_render border-box-sizing rendered_html">
+   <p>Do an ANOVA check</p>
+   
+   </div>
+   </div>
+   </div>
+   <div class="cell border-box-sizing code_cell rendered">
+   <div class="input">
+   <div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+   <div class="inner_cell">
+       <div class="input_area">
+   <div class=" highlight hl-ipython3"><pre><span class="kn">from</span> <span class="nn">statsmodels.stats.api</span> <span class="k">import</span> <span class="n">anova_lm</span>
+   
+   <span class="n">table1</span> <span class="o">=</span> <span class="n">anova_lm</span><span class="p">(</span><span class="n">lm</span><span class="p">,</span> <span class="n">interX_lm</span><span class="p">)</span>
+   <span class="nb">print</span><span class="p">(</span><span class="n">table1</span><span class="p">)</span>
+   
+   <span class="n">interM_lm</span> <span class="o">=</span> <span class="n">ols</span><span class="p">(</span><span class="s">&quot;S ~ X + C(E)*C(M)&quot;</span><span class="p">,</span> <span class="n">data</span><span class="o">=</span><span class="n">salary_table</span><span class="p">)</span><span class="o">.</span><span class="n">fit</span><span class="p">()</span>
+   <span class="nb">print</span><span class="p">(</span><span class="n">interM_lm</span><span class="o">.</span><span class="n">summary</span><span class="p">())</span>
+   
+   <span class="n">table2</span> <span class="o">=</span> <span class="n">anova_lm</span><span class="p">(</span><span class="n">lm</span><span class="p">,</span> <span class="n">interM_lm</span><span class="p">)</span>
+   <span class="nb">print</span><span class="p">(</span><span class="n">table2</span><span class="p">)</span>
+   </pre></div>
+   
+   </div>
+   </div>
+   </div>
+   
+   <div class="output_wrapper">
+   <div class="output">
+   
+   
+   <div class="output_area"><div class="prompt"></div>
+   <div class="output_subarea output_stream output_stdout output_text">
+   <pre>                            OLS Regression Results                            
+   ==============================================================================
+   Dep. Variable:                      S   R-squared:                       0.961
+   Model:                            OLS   Adj. R-squared:                  0.955
+   Method:                 Least Squares   F-statistic:                     158.6
+   Date:                Mon, 20 Jul 2015   Prob (F-statistic):           8.23e-26
+   Time:                        17:43:41   Log-Likelihood:                -379.47
+   No. Observations:                  46   AIC:                             772.9
+   Df Residuals:                      39   BIC:                             785.7
+   Df Model:                           6                                         
+   Covariance Type:            nonrobust                                         
+   ===============================================================================
+                     coef    std err          t      P&gt;|t|      [95.0% Conf. Int.]
+   -------------------------------------------------------------------------------
+   Intercept    7256.2800    549.494     13.205      0.000      6144.824  8367.736
+   C(E)[T.2]    4172.5045    674.966      6.182      0.000      2807.256  5537.753
+   C(E)[T.3]    3946.3649    686.693      5.747      0.000      2557.396  5335.333
+   C(M)[T.1]    7102.4539    333.442     21.300      0.000      6428.005  7776.903
+   X             632.2878     53.185     11.888      0.000       524.710   739.865
+   C(E)[T.2]:X  -125.5147     69.863     -1.797      0.080      -266.826    15.796
+   C(E)[T.3]:X  -141.2741     89.281     -1.582      0.122      -321.861    39.313
+   ==============================================================================
+   Omnibus:                        0.432   Durbin-Watson:                   2.179
+   Prob(Omnibus):                  0.806   Jarque-Bera (JB):                0.590
+   Skew:                           0.144   Prob(JB):                        0.744
+   Kurtosis:                       2.526   Cond. No.                         69.7
+   ==============================================================================
+   
+   Warnings:
+   [1] Standard Errors assume that the covariance matrix of the errors is correctly specified.
+   </pre>
+   </div>
+   </div>
+   
+   </div>
+   </div>
+   
+   </div>
+   <div class="cell border-box-sizing text_cell rendered">
+   <div class="prompt input_prompt">
+   </div>
+   <div class="inner_cell">
+   <div class="text_cell_render border-box-sizing rendered_html">
+   <p>The design matrix as a DataFrame</p>
+   
+   </div>
+   </div>
+   </div>
+   <div class="cell border-box-sizing code_cell rendered">
+   <div class="input">
+   <div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+   <div class="inner_cell">
+       <div class="input_area">
+   <div class=" highlight hl-ipython3"><pre><span class="n">interM_lm</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">orig_exog</span><span class="p">[:</span><span class="mi">5</span><span class="p">]</span>
+   </pre></div>
+   
+   </div>
+   </div>
+   </div>
+   
+   <div class="output_wrapper">
+   <div class="output">
+   
+   
+   <div class="output_area"><div class="prompt"></div>
+   <div class="output_subarea output_stream output_stdout output_text">
+   <pre>   df_resid              ssr  df_diff         ss_diff         F    Pr(&gt;F)
+   0        41  43280719.492876        0             NaN       NaN       NaN
+   1        39  39410679.807560        2  3870039.685316  1.914856  0.160964
+                               OLS Regression Results                            
+   ==============================================================================
+   Dep. Variable:                      S   R-squared:                       0.999
+   Model:                            OLS   Adj. R-squared:                  0.999
+   Method:                 Least Squares   F-statistic:                     5517.
+   Date:                Mon, 20 Jul 2015   Prob (F-statistic):           1.67e-55
+   Time:                        17:43:41   Log-Likelihood:                -298.74
+   No. Observations:                  46   AIC:                             611.5
+   Df Residuals:                      39   BIC:                             624.3
+   Df Model:                           6                                         
+   Covariance Type:            nonrobust                                         
+   =======================================================================================
+                             coef    std err          t      P&gt;|t|      [95.0% Conf. Int.]
+   ---------------------------------------------------------------------------------------
+   Intercept            9472.6854     80.344    117.902      0.000      9310.175  9635.196
+   C(E)[T.2]            1381.6706     77.319     17.870      0.000      1225.279  1538.063
+   C(E)[T.3]            1730.7483    105.334     16.431      0.000      1517.690  1943.806
+   C(M)[T.1]            3981.3769    101.175     39.351      0.000      3776.732  4186.022
+   C(E)[T.2]:C(M)[T.1]  4902.5231    131.359     37.322      0.000      4636.825  5168.222
+   C(E)[T.3]:C(M)[T.1]  3066.0351    149.330     20.532      0.000      2763.986  3368.084
+   X                     496.9870      5.566     89.283      0.000       485.728   508.246
+   ==============================================================================
+   Omnibus:                       74.761   Durbin-Watson:                   2.244
+   Prob(Omnibus):                  0.000   Jarque-Bera (JB):             1037.873
+   Skew:                          -4.103   Prob(JB):                    4.25e-226
+   Kurtosis:                      24.776   Cond. No.                         79.0
+   ==============================================================================
+   
+   Warnings:
+   [1] Standard Errors assume that the covariance matrix of the errors is correctly specified.
+      df_resid              ssr  df_diff          ss_diff           F        Pr(&gt;F)
+   0        41  43280719.492876        0              NaN         NaN           NaN
+   1        39   1178167.864864        2  42102551.628012  696.844466  3.025504e-31
+   </pre>
+   </div>
+   </div>
+   
+   </div>
+   </div>
+   
+   </div>
+   <div class="cell border-box-sizing text_cell rendered">
+   <div class="prompt input_prompt">
+   </div>
+   <div class="inner_cell">
+   <div class="text_cell_render border-box-sizing rendered_html">
+   <p>The design matrix as an ndarray</p>
+   
+   </div>
+   </div>
+   </div>
+   <div class="cell border-box-sizing code_cell rendered">
+   <div class="input">
+   <div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+   <div class="inner_cell">
+       <div class="input_area">
+   <div class=" highlight hl-ipython3"><pre><span class="n">interM_lm</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">exog</span>
+   <span class="n">interM_lm</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">exog_names</span>
+   </pre></div>
+   
+   </div>
+   </div>
+   </div>
+   
+   <div class="output_wrapper">
+   <div class="output">
+   
+   
+   <div class="output_area"><div class="prompt"></div>
+   
+   </div>
+   
+   </div>
+   </div>
+   
+   </div>
+   <div class="cell border-box-sizing code_cell rendered">
+   <div class="input">
+   <div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+   <div class="inner_cell">
+       <div class="input_area">
+   <div class=" highlight hl-ipython3"><pre><span class="n">infl</span> <span class="o">=</span> <span class="n">interM_lm</span><span class="o">.</span><span class="n">get_influence</span><span class="p">()</span>
+   <span class="n">resid</span> <span class="o">=</span> <span class="n">infl</span><span class="o">.</span><span class="n">resid_studentized_internal</span>
+   <span class="n">plt</span><span class="o">.</span><span class="n">figure</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">6</span><span class="p">,</span><span class="mi">6</span><span class="p">))</span>
+   <span class="k">for</span> <span class="n">values</span><span class="p">,</span> <span class="n">group</span> <span class="ow">in</span> <span class="n">factor_groups</span><span class="p">:</span>
+       <span class="n">i</span><span class="p">,</span><span class="n">j</span> <span class="o">=</span> <span class="n">values</span>
+       <span class="n">idx</span> <span class="o">=</span> <span class="n">group</span><span class="o">.</span><span class="n">index</span>
+       <span class="n">plt</span><span class="o">.</span><span class="n">scatter</span><span class="p">(</span><span class="n">X</span><span class="p">[</span><span class="n">idx</span><span class="p">],</span> <span class="n">resid</span><span class="p">[</span><span class="n">idx</span><span class="p">],</span> <span class="n">marker</span><span class="o">=</span><span class="n">symbols</span><span class="p">[</span><span class="n">j</span><span class="p">],</span> <span class="n">color</span><span class="o">=</span><span class="n">colors</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span>
+               <span class="n">s</span><span class="o">=</span><span class="mi">144</span><span class="p">,</span> <span class="n">edgecolors</span><span class="o">=</span><span class="s">&#39;black&#39;</span><span class="p">)</span>
+   <span class="n">plt</span><span class="o">.</span><span class="n">xlabel</span><span class="p">(</span><span class="s">&#39;X&#39;</span><span class="p">);</span>
+   <span class="n">plt</span><span class="o">.</span><span class="n">ylabel</span><span class="p">(</span><span class="s">&#39;standardized resids&#39;</span><span class="p">);</span>
+   </pre></div>
+   
+   </div>
+   </div>
+   </div>
+   
+   <div class="output_wrapper">
+   <div class="output">
+   
+   
+   <div class="output_area"><div class="prompt"></div>
+   
+   </div>
+   
+   </div>
+   </div>
+   
+   </div>
+   <div class="cell border-box-sizing text_cell rendered">
+   <div class="prompt input_prompt">
+   </div>
+   <div class="inner_cell">
+   <div class="text_cell_render border-box-sizing rendered_html">
+   <p>Looks like one observation is an outlier.</p>
+   
+   </div>
+   </div>
+   </div>
+   <div class="cell border-box-sizing code_cell rendered">
+   <div class="input">
+   <div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+   <div class="inner_cell">
+       <div class="input_area">
+   <div class=" highlight hl-ipython3"><pre><span class="n">drop_idx</span> <span class="o">=</span> <span class="nb">abs</span><span class="p">(</span><span class="n">resid</span><span class="p">)</span><span class="o">.</span><span class="n">argmax</span><span class="p">()</span>
+   <span class="nb">print</span><span class="p">(</span><span class="n">drop_idx</span><span class="p">)</span>  <span class="c"># zero-based index</span>
+   <span class="n">idx</span> <span class="o">=</span> <span class="n">salary_table</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="n">drop_idx</span><span class="p">)</span>
+   
+   <span class="n">lm32</span> <span class="o">=</span> <span class="n">ols</span><span class="p">(</span><span class="s">&#39;S ~ C(E) + X + C(M)&#39;</span><span class="p">,</span> <span class="n">data</span><span class="o">=</span><span class="n">salary_table</span><span class="p">,</span> <span class="n">subset</span><span class="o">=</span><span class="n">idx</span><span class="p">)</span><span class="o">.</span><span class="n">fit</span><span class="p">()</span>
+   
+   <span class="nb">print</span><span class="p">(</span><span class="n">lm32</span><span class="o">.</span><span class="n">summary</span><span class="p">())</span>
+   <span class="nb">print</span><span class="p">(</span><span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="p">)</span>
+   
+   <span class="n">interX_lm32</span> <span class="o">=</span> <span class="n">ols</span><span class="p">(</span><span class="s">&#39;S ~ C(E) * X + C(M)&#39;</span><span class="p">,</span> <span class="n">data</span><span class="o">=</span><span class="n">salary_table</span><span class="p">,</span> <span class="n">subset</span><span class="o">=</span><span class="n">idx</span><span class="p">)</span><span class="o">.</span><span class="n">fit</span><span class="p">()</span>
+   
+   <span class="nb">print</span><span class="p">(</span><span class="n">interX_lm32</span><span class="o">.</span><span class="n">summary</span><span class="p">())</span>
+   <span class="nb">print</span><span class="p">(</span><span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="p">)</span>
+   
+   
+   <span class="n">table3</span> <span class="o">=</span> <span class="n">anova_lm</span><span class="p">(</span><span class="n">lm32</span><span class="p">,</span> <span class="n">interX_lm32</span><span class="p">)</span>
+   <span class="nb">print</span><span class="p">(</span><span class="n">table3</span><span class="p">)</span>
+   <span class="nb">print</span><span class="p">(</span><span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="p">)</span>
+   
+   
+   <span class="n">interM_lm32</span> <span class="o">=</span> <span class="n">ols</span><span class="p">(</span><span class="s">&#39;S ~ X + C(E) * C(M)&#39;</span><span class="p">,</span> <span class="n">data</span><span class="o">=</span><span class="n">salary_table</span><span class="p">,</span> <span class="n">subset</span><span class="o">=</span><span class="n">idx</span><span class="p">)</span><span class="o">.</span><span class="n">fit</span><span class="p">()</span>
+   
+   <span class="n">table4</span> <span class="o">=</span> <span class="n">anova_lm</span><span class="p">(</span><span class="n">lm32</span><span class="p">,</span> <span class="n">interM_lm32</span><span class="p">)</span>
+   <span class="nb">print</span><span class="p">(</span><span class="n">table4</span><span class="p">)</span>
+   <span class="nb">print</span><span class="p">(</span><span class="s">&#39;</span><span class="se">\n</span><span class="s">&#39;</span><span class="p">)</span>
+   </pre></div>
+   
+   </div>
+   </div>
+   </div>
+   
+   <div class="output_wrapper">
+   <div class="output">
+   
+   
+   <div class="output_area"><div class="prompt"></div>
+   
+   
+   
+   </div>
+   
+   </div>
+   </div>
+   
+   </div>
+   <div class="cell border-box-sizing text_cell rendered">
+   <div class="prompt input_prompt">
+   </div>
+   <div class="inner_cell">
+   <div class="text_cell_render border-box-sizing rendered_html">
+   <p>Replot the residuals</p>
+   
+   </div>
+   </div>
+   </div>
+   <div class="cell border-box-sizing code_cell rendered">
+   <div class="input">
+   <div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+   <div class="inner_cell">
+       <div class="input_area">
+   <div class=" highlight hl-ipython3"><pre><span class="k">try</span><span class="p">:</span>
+       <span class="n">resid</span> <span class="o">=</span> <span class="n">interM_lm32</span><span class="o">.</span><span class="n">get_influence</span><span class="p">()</span><span class="o">.</span><span class="n">summary_frame</span><span class="p">()[</span><span class="s">&#39;standard_resid&#39;</span><span class="p">]</span>
+   <span class="k">except</span><span class="p">:</span>
+       <span class="n">resid</span> <span class="o">=</span> <span class="n">interM_lm32</span><span class="o">.</span><span class="n">get_influence</span><span class="p">()</span><span class="o">.</span><span class="n">summary_frame</span><span class="p">()[</span><span class="s">&#39;standard_resid&#39;</span><span class="p">]</span>
+   
+   <span class="n">plt</span><span class="o">.</span><span class="n">figure</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">6</span><span class="p">,</span><span class="mi">6</span><span class="p">))</span>
+   <span class="k">for</span> <span class="n">values</span><span class="p">,</span> <span class="n">group</span> <span class="ow">in</span> <span class="n">factor_groups</span><span class="p">:</span>
+       <span class="n">i</span><span class="p">,</span><span class="n">j</span> <span class="o">=</span> <span class="n">values</span>
+       <span class="n">idx</span> <span class="o">=</span> <span class="n">group</span><span class="o">.</span><span class="n">index</span>
+       <span class="n">plt</span><span class="o">.</span><span class="n">scatter</span><span class="p">(</span><span class="n">X</span><span class="p">[</span><span class="n">idx</span><span class="p">],</span> <span class="n">resid</span><span class="p">[</span><span class="n">idx</span><span class="p">],</span> <span class="n">marker</span><span class="o">=</span><span class="n">symbols</span><span class="p">[</span><span class="n">j</span><span class="p">],</span> <span class="n">color</span><span class="o">=</span><span class="n">colors</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span>
+               <span class="n">s</span><span class="o">=</span><span class="mi">144</span><span class="p">,</span> <span class="n">edgecolors</span><span class="o">=</span><span class="s">&#39;black&#39;</span><span class="p">)</span>
+   <span class="n">plt</span><span class="o">.</span><span class="n">xlabel</span><span class="p">(</span><span class="s">&#39;X[~[32]]&#39;</span><span class="p">);</span>
+   <span class="n">plt</span><span class="o">.</span><span class="n">ylabel</span><span class="p">(</span><span class="s">&#39;standardized resids&#39;</span><span class="p">);</span>
+   </pre></div>
+   
+   </div>
+   </div>
+   </div>
+   
+   <div class="output_wrapper">
+   <div class="output">
+   
+   
+   <div class="output_area"><div class="prompt"></div>
+   <div class="output_subarea output_stream output_stdout output_text">
+   <pre>32
+                               OLS Regression Results                            
+   ==============================================================================
+   Dep. Variable:                      S   R-squared:                       0.955
+   Model:                            OLS   Adj. R-squared:                  0.950
+   Method:                 Least Squares   F-statistic:                     211.7
+   Date:                Mon, 20 Jul 2015   Prob (F-statistic):           2.45e-26
+   Time:                        17:43:42   Log-Likelihood:                -373.79
+   No. Observations:                  45   AIC:                             757.6
+   Df Residuals:                      40   BIC:                             766.6
+   Df Model:                           4                                         
+   Covariance Type:            nonrobust                                         
+   ==============================================================================
+                    coef    std err          t      P&gt;|t|      [95.0% Conf. Int.]
+   ------------------------------------------------------------------------------
+   Intercept   8044.7518    392.781     20.482      0.000      7250.911  8838.592
+   C(E)[T.2]   3129.5286    370.470      8.447      0.000      2380.780  3878.277
+   C(E)[T.3]   2999.4451    416.712      7.198      0.000      2157.238  3841.652
+   C(M)[T.1]   6866.9856    323.991     21.195      0.000      6212.175  7521.796
+   X            545.7855     30.912     17.656      0.000       483.311   608.260
+   ==============================================================================
+   Omnibus:                        2.511   Durbin-Watson:                   2.265
+   Prob(Omnibus):                  0.285   Jarque-Bera (JB):                1.400
+   Skew:                          -0.044   Prob(JB):                        0.496
+   Kurtosis:                       2.140   Cond. No.                         33.1
+   ==============================================================================
+   
+   Warnings:
+   [1] Standard Errors assume that the covariance matrix of the errors is correctly specified.
+   
+   
+                               OLS Regression Results                            
+   ==============================================================================
+   Dep. Variable:                      S   R-squared:                       0.959
+   Model:                            OLS   Adj. R-squared:                  0.952
+   Method:                 Least Squares   F-statistic:                     147.7
+   Date:                Mon, 20 Jul 2015   Prob (F-statistic):           8.97e-25
+   Time:                        17:43:42   Log-Likelihood:                -371.70
+   No. Observations:                  45   AIC:                             757.4
+   Df Residuals:                      38   BIC:                             770.0
+   Df Model:                           6                                         
+   Covariance Type:            nonrobust                                         
+   ===============================================================================
+                     coef    std err          t      P&gt;|t|      [95.0% Conf. Int.]
+   -------------------------------------------------------------------------------
+   Intercept    7266.0887    558.872     13.001      0.000      6134.711  8397.466
+   C(E)[T.2]    4162.0846    685.728      6.070      0.000      2773.900  5550.269
+   C(E)[T.3]    3940.4359    696.067      5.661      0.000      2531.322  5349.549
+   C(M)[T.1]    7088.6387    345.587     20.512      0.000      6389.035  7788.243
+   X             631.6892     53.950     11.709      0.000       522.473   740.905
+   C(E)[T.2]:X  -125.5009     70.744     -1.774      0.084      -268.714    17.712
+   C(E)[T.3]:X  -139.8410     90.728     -1.541      0.132      -323.511    43.829
+   ==============================================================================
+   Omnibus:                        0.617   Durbin-Watson:                   2.194
+   Prob(Omnibus):                  0.734   Jarque-Bera (JB):                0.728
+   Skew:                           0.162   Prob(JB):                        0.695
+   Kurtosis:                       2.468   Cond. No.                         68.7
+   ==============================================================================
+   
+   Warnings:
+   [1] Standard Errors assume that the covariance matrix of the errors is correctly specified.
+   
+   
+      df_resid              ssr  df_diff         ss_diff         F    Pr(&gt;F)
+   0        40  43209096.482552        0             NaN       NaN       NaN
+   1        38  39374237.269069        2  3834859.213483  1.850508  0.171042
+   
+   
+      df_resid              ssr  df_diff          ss_diff            F        Pr(&gt;F)
+   0        40  43209096.482552        0              NaN          NaN           NaN
+   1        38    171188.119937        2  43037908.362615  4776.734853  2.291239e-46
+   
+   
+   </pre>
+   </div>
+   </div>
+   
+   </div>
+   </div>
+   
+   </div>
+   <div class="cell border-box-sizing text_cell rendered">
+   <div class="prompt input_prompt">
+   </div>
+   <div class="inner_cell">
+   <div class="text_cell_render border-box-sizing rendered_html">
+   <p>Plot the fitted values</p>
+   
+   </div>
+   </div>
+   </div>
+   <div class="cell border-box-sizing code_cell rendered">
+   <div class="input">
+   <div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+   <div class="inner_cell">
+       <div class="input_area">
+   <div class=" highlight hl-ipython3"><pre><span class="n">lm_final</span> <span class="o">=</span> <span class="n">ols</span><span class="p">(</span><span class="s">&#39;S ~ X + C(E)*C(M)&#39;</span><span class="p">,</span> <span class="n">data</span> <span class="o">=</span> <span class="n">salary_table</span><span class="o">.</span><span class="n">drop</span><span class="p">([</span><span class="n">drop_idx</span><span class="p">]))</span><span class="o">.</span><span class="n">fit</span><span class="p">()</span>
+   <span class="n">mf</span> <span class="o">=</span> <span class="n">lm_final</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">orig_exog</span>
+   <span class="n">lstyle</span> <span class="o">=</span> <span class="p">[</span><span class="s">&#39;-&#39;</span><span class="p">,</span><span class="s">&#39;--&#39;</span><span class="p">]</span>
+   
+   <span class="n">plt</span><span class="o">.</span><span class="n">figure</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">6</span><span class="p">,</span><span class="mi">6</span><span class="p">))</span>
+   <span class="k">for</span> <span class="n">values</span><span class="p">,</span> <span class="n">group</span> <span class="ow">in</span> <span class="n">factor_groups</span><span class="p">:</span>
+       <span class="n">i</span><span class="p">,</span><span class="n">j</span> <span class="o">=</span> <span class="n">values</span>
+       <span class="n">idx</span> <span class="o">=</span> <span class="n">group</span><span class="o">.</span><span class="n">index</span>
+       <span class="n">plt</span><span class="o">.</span><span class="n">scatter</span><span class="p">(</span><span class="n">X</span><span class="p">[</span><span class="n">idx</span><span class="p">],</span> <span class="n">S</span><span class="p">[</span><span class="n">idx</span><span class="p">],</span> <span class="n">marker</span><span class="o">=</span><span class="n">symbols</span><span class="p">[</span><span class="n">j</span><span class="p">],</span> <span class="n">color</span><span class="o">=</span><span class="n">colors</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span>
+                   <span class="n">s</span><span class="o">=</span><span class="mi">144</span><span class="p">,</span> <span class="n">edgecolors</span><span class="o">=</span><span class="s">&#39;black&#39;</span><span class="p">)</span>
+       <span class="c"># drop NA because there is no idx 32 in the final model</span>
+       <span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">mf</span><span class="o">.</span><span class="n">X</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span><span class="o">.</span><span class="n">dropna</span><span class="p">(),</span> <span class="n">lm_final</span><span class="o">.</span><span class="n">fittedvalues</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span><span class="o">.</span><span class="n">dropna</span><span class="p">(),</span>
+               <span class="n">ls</span><span class="o">=</span><span class="n">lstyle</span><span class="p">[</span><span class="n">j</span><span class="p">],</span> <span class="n">color</span><span class="o">=</span><span class="n">colors</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span>
+   <span class="n">plt</span><span class="o">.</span><span class="n">xlabel</span><span class="p">(</span><span class="s">&#39;Experience&#39;</span><span class="p">);</span>
+   <span class="n">plt</span><span class="o">.</span><span class="n">ylabel</span><span class="p">(</span><span class="s">&#39;Salary&#39;</span><span class="p">);</span>
+   </pre></div>
+   
+   </div>
+   </div>
+   </div>
+   
+   <div class="output_wrapper">
+   <div class="output">
+   
+   
+   <div class="output_area"><div class="prompt"></div>
+   
+   
+   
+   </div>
+   
+   </div>
+   </div>
+   
+   </div>
+   <div class="cell border-box-sizing text_cell rendered">
+   <div class="prompt input_prompt">
+   </div>
+   <div class="inner_cell">
+   <div class="text_cell_render border-box-sizing rendered_html">
+   <p>From our first look at the data, the difference between Master's and PhD in the management group is different than in the non-management group. This is an interaction between the two qualitative variables management,M and education,E. We can visualize this by first removing the effect of experience, then plotting the means within each of the 6 groups using interaction.plot.</p>
+   
+   </div>
+   </div>
+   </div>
+   <div class="cell border-box-sizing code_cell rendered">
+   <div class="input">
+   <div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+   <div class="inner_cell">
+       <div class="input_area">
+   <div class=" highlight hl-ipython3"><pre><span class="n">U</span> <span class="o">=</span> <span class="n">S</span> <span class="o">-</span> <span class="n">X</span> <span class="o">*</span> <span class="n">interX_lm32</span><span class="o">.</span><span class="n">params</span><span class="p">[</span><span class="s">&#39;X&#39;</span><span class="p">]</span>
+   
+   <span class="n">plt</span><span class="o">.</span><span class="n">figure</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">6</span><span class="p">,</span><span class="mi">6</span><span class="p">))</span>
+   <span class="n">interaction_plot</span><span class="p">(</span><span class="n">E</span><span class="p">,</span> <span class="n">M</span><span class="p">,</span> <span class="n">U</span><span class="p">,</span> <span class="n">colors</span><span class="o">=</span><span class="p">[</span><span class="s">&#39;red&#39;</span><span class="p">,</span><span class="s">&#39;blue&#39;</span><span class="p">],</span> <span class="n">markers</span><span class="o">=</span><span class="p">[</span><span class="s">&#39;^&#39;</span><span class="p">,</span><span class="s">&#39;D&#39;</span><span class="p">],</span>
+           <span class="n">markersize</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span> <span class="n">ax</span><span class="o">=</span><span class="n">plt</span><span class="o">.</span><span class="n">gca</span><span class="p">())</span>
+   </pre></div>
+   
+   </div>
+   </div>
+   </div>
+   
+   <div class="output_wrapper">
+   <div class="output">
+   
+   
+   <div class="output_area"><div class="prompt"></div>
+   
+   
+   
+   </div>
+   
+   </div>
+   </div>
+   
+   </div>
+   <div class="cell border-box-sizing text_cell rendered">
+   <div class="prompt input_prompt">
+   </div>
+   <div class="inner_cell">
+   <div class="text_cell_render border-box-sizing rendered_html">
+   <h2 id="Minority-Employment-Data">Minority Employment Data<a class="anchor-link" href="#Minority-Employment-Data">&#182;</a></h2>
+   </div>
+   </div>
+   </div>
+   <div class="cell border-box-sizing code_cell rendered">
+   <div class="input">
+   <div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+   <div class="inner_cell">
+       <div class="input_area">
+   <div class=" highlight hl-ipython3"><pre><span class="k">try</span><span class="p">:</span>
+       <span class="n">minority_table</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_table</span><span class="p">(</span><span class="s">&#39;minority.table&#39;</span><span class="p">)</span>
+   <span class="k">except</span><span class="p">:</span>  <span class="c"># don&#39;t have data already</span>
+       <span class="n">url</span> <span class="o">=</span> <span class="s">&#39;http://stats191.stanford.edu/data/minority.table&#39;</span>
+       <span class="n">minority_table</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_table</span><span class="p">(</span><span class="n">url</span><span class="p">)</span>
+   
+   <span class="n">factor_group</span> <span class="o">=</span> <span class="n">minority_table</span><span class="o">.</span><span class="n">groupby</span><span class="p">([</span><span class="s">&#39;ETHN&#39;</span><span class="p">])</span>
+   
+   <span class="n">fig</span><span class="p">,</span> <span class="n">ax</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">subplots</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">6</span><span class="p">,</span><span class="mi">6</span><span class="p">))</span>
+   <span class="n">colors</span> <span class="o">=</span> <span class="p">[</span><span class="s">&#39;purple&#39;</span><span class="p">,</span> <span class="s">&#39;green&#39;</span><span class="p">]</span>
+   <span class="n">markers</span> <span class="o">=</span> <span class="p">[</span><span class="s">&#39;o&#39;</span><span class="p">,</span> <span class="s">&#39;v&#39;</span><span class="p">]</span>
+   <span class="k">for</span> <span class="n">factor</span><span class="p">,</span> <span class="n">group</span> <span class="ow">in</span> <span class="n">factor_group</span><span class="p">:</span>
+       <span class="n">ax</span><span class="o">.</span><span class="n">scatter</span><span class="p">(</span><span class="n">group</span><span class="p">[</span><span class="s">&#39;TEST&#39;</span><span class="p">],</span> <span class="n">group</span><span class="p">[</span><span class="s">&#39;JPERF&#39;</span><span class="p">],</span> <span class="n">color</span><span class="o">=</span><span class="n">colors</span><span class="p">[</span><span class="n">factor</span><span class="p">],</span>
+                   <span class="n">marker</span><span class="o">=</span><span class="n">markers</span><span class="p">[</span><span class="n">factor</span><span class="p">],</span> <span class="n">s</span><span class="o">=</span><span class="mi">12</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span>
+   <span class="n">ax</span><span class="o">.</span><span class="n">set_xlabel</span><span class="p">(</span><span class="s">&#39;TEST&#39;</span><span class="p">);</span>
+   <span class="n">ax</span><span class="o">.</span><span class="n">set_ylabel</span><span class="p">(</span><span class="s">&#39;JPERF&#39;</span><span class="p">);</span>
+   </pre></div>
+   
+   </div>
+   </div>
+   </div>
+   
+   <div class="output_wrapper">
+   <div class="output">
+   
+   
+   <div class="output_area"><div class="prompt"></div>
+   
+   </div>
+   
+   <div class="output_area"><div class="prompt"></div>
+   
+   
+   
+   </div>
+   
+   </div>
+   </div>
+   
+   </div>
+   <div class="cell border-box-sizing code_cell rendered">
+   <div class="input">
+   <div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+   <div class="inner_cell">
+       <div class="input_area">
+   <div class=" highlight hl-ipython3"><pre><span class="n">min_lm</span> <span class="o">=</span> <span class="n">ols</span><span class="p">(</span><span class="s">&#39;JPERF ~ TEST&#39;</span><span class="p">,</span> <span class="n">data</span><span class="o">=</span><span class="n">minority_table</span><span class="p">)</span><span class="o">.</span><span class="n">fit</span><span class="p">()</span>
+   <span class="nb">print</span><span class="p">(</span><span class="n">min_lm</span><span class="o">.</span><span class="n">summary</span><span class="p">())</span>
+   </pre></div>
+   
+   </div>
+   </div>
+   </div>
+   
+   <div class="output_wrapper">
+   <div class="output">
+   
+   
+   <div class="output_area"><div class="prompt"></div>
+   
+   </div>
+   
+   </div>
+   </div>
+   
+   </div>
+   <div class="cell border-box-sizing code_cell rendered">
+   <div class="input">
+   <div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+   <div class="inner_cell">
+       <div class="input_area">
+   <div class=" highlight hl-ipython3"><pre><span class="n">fig</span><span class="p">,</span> <span class="n">ax</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">subplots</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">6</span><span class="p">,</span><span class="mi">6</span><span class="p">));</span>
+   <span class="k">for</span> <span class="n">factor</span><span class="p">,</span> <span class="n">group</span> <span class="ow">in</span> <span class="n">factor_group</span><span class="p">:</span>
+       <span class="n">ax</span><span class="o">.</span><span class="n">scatter</span><span class="p">(</span><span class="n">group</span><span class="p">[</span><span class="s">&#39;TEST&#39;</span><span class="p">],</span> <span class="n">group</span><span class="p">[</span><span class="s">&#39;JPERF&#39;</span><span class="p">],</span> <span class="n">color</span><span class="o">=</span><span class="n">colors</span><span class="p">[</span><span class="n">factor</span><span class="p">],</span>
+                   <span class="n">marker</span><span class="o">=</span><span class="n">markers</span><span class="p">[</span><span class="n">factor</span><span class="p">],</span> <span class="n">s</span><span class="o">=</span><span class="mi">12</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span>
+   
+   <span class="n">ax</span><span class="o">.</span><span class="n">set_xlabel</span><span class="p">(</span><span class="s">&#39;TEST&#39;</span><span class="p">)</span>
+   <span class="n">ax</span><span class="o">.</span><span class="n">set_ylabel</span><span class="p">(</span><span class="s">&#39;JPERF&#39;</span><span class="p">)</span>
+   <span class="n">fig</span> <span class="o">=</span> <span class="n">abline_plot</span><span class="p">(</span><span class="n">model_results</span> <span class="o">=</span> <span class="n">min_lm</span><span class="p">,</span> <span class="n">ax</span><span class="o">=</span><span class="n">ax</span><span class="p">)</span>
+   </pre></div>
+   
+   </div>
+   </div>
+   </div>
+   
+   <div class="output_wrapper">
+   <div class="output">
+   
+   
+   <div class="output_area"><div class="prompt"></div>
+   
+   </div>
+   
+   <div class="output_area"><div class="prompt"></div>
+   
+   
+   
+   </div>
+   
+   </div>
+   </div>
+   
+   </div>
+   <div class="cell border-box-sizing code_cell rendered">
+   <div class="input">
+   <div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+   <div class="inner_cell">
+       <div class="input_area">
+   <div class=" highlight hl-ipython3"><pre><span class="n">min_lm2</span> <span class="o">=</span> <span class="n">ols</span><span class="p">(</span><span class="s">&#39;JPERF ~ TEST + TEST:ETHN&#39;</span><span class="p">,</span>
+           <span class="n">data</span><span class="o">=</span><span class="n">minority_table</span><span class="p">)</span><span class="o">.</span><span class="n">fit</span><span class="p">()</span>
+   
+   <span class="nb">print</span><span class="p">(</span><span class="n">min_lm2</span><span class="o">.</span><span class="n">summary</span><span class="p">())</span>
+   </pre></div>
+   
+   </div>
+   </div>
+   </div>
+   
+   <div class="output_wrapper">
+   <div class="output">
+   
+   
+   <div class="output_area"><div class="prompt"></div>
+   
+   </div>
+   
+   </div>
+   </div>
+   
+   </div>
+   <div class="cell border-box-sizing code_cell rendered">
+   <div class="input">
+   <div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+   <div class="inner_cell">
+       <div class="input_area">
+   <div class=" highlight hl-ipython3"><pre><span class="n">fig</span><span class="p">,</span> <span class="n">ax</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">subplots</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">6</span><span class="p">,</span><span class="mi">6</span><span class="p">));</span>
+   <span class="k">for</span> <span class="n">factor</span><span class="p">,</span> <span class="n">group</span> <span class="ow">in</span> <span class="n">factor_group</span><span class="p">:</span>
+       <span class="n">ax</span><span class="o">.</span><span class="n">scatter</span><span class="p">(</span><span class="n">group</span><span class="p">[</span><span class="s">&#39;TEST&#39;</span><span class="p">],</span> <span class="n">group</span><span class="p">[</span><span class="s">&#39;JPERF&#39;</span><span class="p">],</span> <span class="n">color</span><span class="o">=</span><span class="n">colors</span><span class="p">[</span><span class="n">factor</span><span class="p">],</span>
+                   <span class="n">marker</span><span class="o">=</span><span class="n">markers</span><span class="p">[</span><span class="n">factor</span><span class="p">],</span> <span class="n">s</span><span class="o">=</span><span class="mi">12</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span>
+   
+   <span class="n">fig</span> <span class="o">=</span> <span class="n">abline_plot</span><span class="p">(</span><span class="n">intercept</span> <span class="o">=</span> <span class="n">min_lm2</span><span class="o">.</span><span class="n">params</span><span class="p">[</span><span class="s">&#39;Intercept&#39;</span><span class="p">],</span>
+                    <span class="n">slope</span> <span class="o">=</span> <span class="n">min_lm2</span><span class="o">.</span><span class="n">params</span><span class="p">[</span><span class="s">&#39;TEST&#39;</span><span class="p">],</span> <span class="n">ax</span><span class="o">=</span><span class="n">ax</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="s">&#39;purple&#39;</span><span class="p">);</span>
+   <span class="n">fig</span> <span class="o">=</span> <span class="n">abline_plot</span><span class="p">(</span><span class="n">intercept</span> <span class="o">=</span> <span class="n">min_lm2</span><span class="o">.</span><span class="n">params</span><span class="p">[</span><span class="s">&#39;Intercept&#39;</span><span class="p">],</span>
+           <span class="n">slope</span> <span class="o">=</span> <span class="n">min_lm2</span><span class="o">.</span><span class="n">params</span><span class="p">[</span><span class="s">&#39;TEST&#39;</span><span class="p">]</span> <span class="o">+</span> <span class="n">min_lm2</span><span class="o">.</span><span class="n">params</span><span class="p">[</span><span class="s">&#39;TEST:ETHN&#39;</span><span class="p">],</span>
+           <span class="n">ax</span><span class="o">=</span><span class="n">ax</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="s">&#39;green&#39;</span><span class="p">);</span>
+   </pre></div>
+   
+   </div>
+   </div>
+   </div>
+   
+   <div class="output_wrapper">
+   <div class="output">
+   
+   
+   <div class="output_area"><div class="prompt"></div>
+   
+   </div>
+   
+   <div class="output_area"><div class="prompt"></div>
+   
+   
+   
+   </div>
+   
+   </div>
+   </div>
+   
+   </div>
+   <div class="cell border-box-sizing code_cell rendered">
+   <div class="input">
+   <div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+   <div class="inner_cell">
+       <div class="input_area">
+   <div class=" highlight hl-ipython3"><pre><span class="n">min_lm3</span> <span class="o">=</span> <span class="n">ols</span><span class="p">(</span><span class="s">&#39;JPERF ~ TEST + ETHN&#39;</span><span class="p">,</span> <span class="n">data</span> <span class="o">=</span> <span class="n">minority_table</span><span class="p">)</span><span class="o">.</span><span class="n">fit</span><span class="p">()</span>
+   <span class="nb">print</span><span class="p">(</span><span class="n">min_lm3</span><span class="o">.</span><span class="n">summary</span><span class="p">())</span>
+   </pre></div>
+   
+   </div>
+   </div>
+   </div>
+   
+   <div class="output_wrapper">
+   <div class="output">
+   
+   
+   <div class="output_area"><div class="prompt"></div>
+   
+   </div>
+   
+   </div>
+   </div>
+   
+   </div>
+   <div class="cell border-box-sizing code_cell rendered">
+   <div class="input">
+   <div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+   <div class="inner_cell">
+       <div class="input_area">
+   <div class=" highlight hl-ipython3"><pre><span class="n">fig</span><span class="p">,</span> <span class="n">ax</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">subplots</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">6</span><span class="p">,</span><span class="mi">6</span><span class="p">));</span>
+   <span class="k">for</span> <span class="n">factor</span><span class="p">,</span> <span class="n">group</span> <span class="ow">in</span> <span class="n">factor_group</span><span class="p">:</span>
+       <span class="n">ax</span><span class="o">.</span><span class="n">scatter</span><span class="p">(</span><span class="n">group</span><span class="p">[</span><span class="s">&#39;TEST&#39;</span><span class="p">],</span> <span class="n">group</span><span class="p">[</span><span class="s">&#39;JPERF&#39;</span><span class="p">],</span> <span class="n">color</span><span class="o">=</span><span class="n">colors</span><span class="p">[</span><span class="n">factor</span><span class="p">],</span>
+                   <span class="n">marker</span><span class="o">=</span><span class="n">markers</span><span class="p">[</span><span class="n">factor</span><span class="p">],</span> <span class="n">s</span><span class="o">=</span><span class="mi">12</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span>
+   
+   <span class="n">fig</span> <span class="o">=</span> <span class="n">abline_plot</span><span class="p">(</span><span class="n">intercept</span> <span class="o">=</span> <span class="n">min_lm3</span><span class="o">.</span><span class="n">params</span><span class="p">[</span><span class="s">&#39;Intercept&#39;</span><span class="p">],</span>
+                    <span class="n">slope</span> <span class="o">=</span> <span class="n">min_lm3</span><span class="o">.</span><span class="n">params</span><span class="p">[</span><span class="s">&#39;TEST&#39;</span><span class="p">],</span> <span class="n">ax</span><span class="o">=</span><span class="n">ax</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="s">&#39;purple&#39;</span><span class="p">);</span>
+   <span class="n">fig</span> <span class="o">=</span> <span class="n">abline_plot</span><span class="p">(</span><span class="n">intercept</span> <span class="o">=</span> <span class="n">min_lm3</span><span class="o">.</span><span class="n">params</span><span class="p">[</span><span class="s">&#39;Intercept&#39;</span><span class="p">]</span> <span class="o">+</span> <span class="n">min_lm3</span><span class="o">.</span><span class="n">params</span><span class="p">[</span><span class="s">&#39;ETHN&#39;</span><span class="p">],</span>
+           <span class="n">slope</span> <span class="o">=</span> <span class="n">min_lm3</span><span class="o">.</span><span class="n">params</span><span class="p">[</span><span class="s">&#39;TEST&#39;</span><span class="p">],</span> <span class="n">ax</span><span class="o">=</span><span class="n">ax</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="s">&#39;green&#39;</span><span class="p">);</span>
+   </pre></div>
+   
+   </div>
+   </div>
+   </div>
+   
+   <div class="output_wrapper">
+   <div class="output">
+   
+   
+   <div class="output_area"><div class="prompt"></div>
+   
+   </div>
+   
+   <div class="output_area"><div class="prompt"></div>
+   
+   
+   
+   </div>
+   
+   </div>
+   </div>
+   
+   </div>
+   <div class="cell border-box-sizing code_cell rendered">
+   <div class="input">
+   <div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+   <div class="inner_cell">
+       <div class="input_area">
+   <div class=" highlight hl-ipython3"><pre><span class="n">min_lm4</span> <span class="o">=</span> <span class="n">ols</span><span class="p">(</span><span class="s">&#39;JPERF ~ TEST * ETHN&#39;</span><span class="p">,</span> <span class="n">data</span> <span class="o">=</span> <span class="n">minority_table</span><span class="p">)</span><span class="o">.</span><span class="n">fit</span><span class="p">()</span>
+   <span class="nb">print</span><span class="p">(</span><span class="n">min_lm4</span><span class="o">.</span><span class="n">summary</span><span class="p">())</span>
+   </pre></div>
+   
+   </div>
+   </div>
+   </div>
+   
+   <div class="output_wrapper">
+   <div class="output">
+   
+   
+   <div class="output_area"><div class="prompt"></div>
+   
+   </div>
+   
+   </div>
+   </div>
+   
+   </div>
+   <div class="cell border-box-sizing code_cell rendered">
+   <div class="input">
+   <div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+   <div class="inner_cell">
+       <div class="input_area">
+   <div class=" highlight hl-ipython3"><pre><span class="n">fig</span><span class="p">,</span> <span class="n">ax</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">subplots</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">8</span><span class="p">,</span><span class="mi">6</span><span class="p">));</span>
+   <span class="k">for</span> <span class="n">factor</span><span class="p">,</span> <span class="n">group</span> <span class="ow">in</span> <span class="n">factor_group</span><span class="p">:</span>
+       <span class="n">ax</span><span class="o">.</span><span class="n">scatter</span><span class="p">(</span><span class="n">group</span><span class="p">[</span><span class="s">&#39;TEST&#39;</span><span class="p">],</span> <span class="n">group</span><span class="p">[</span><span class="s">&#39;JPERF&#39;</span><span class="p">],</span> <span class="n">color</span><span class="o">=</span><span class="n">colors</span><span class="p">[</span><span class="n">factor</span><span class="p">],</span>
+                   <span class="n">marker</span><span class="o">=</span><span class="n">markers</span><span class="p">[</span><span class="n">factor</span><span class="p">],</span> <span class="n">s</span><span class="o">=</span><span class="mi">12</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span>
+   
+   <span class="n">fig</span> <span class="o">=</span> <span class="n">abline_plot</span><span class="p">(</span><span class="n">intercept</span> <span class="o">=</span> <span class="n">min_lm4</span><span class="o">.</span><span class="n">params</span><span class="p">[</span><span class="s">&#39;Intercept&#39;</span><span class="p">],</span>
+                    <span class="n">slope</span> <span class="o">=</span> <span class="n">min_lm4</span><span class="o">.</span><span class="n">params</span><span class="p">[</span><span class="s">&#39;TEST&#39;</span><span class="p">],</span> <span class="n">ax</span><span class="o">=</span><span class="n">ax</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="s">&#39;purple&#39;</span><span class="p">);</span>
+   <span class="n">fig</span> <span class="o">=</span> <span class="n">abline_plot</span><span class="p">(</span><span class="n">intercept</span> <span class="o">=</span> <span class="n">min_lm4</span><span class="o">.</span><span class="n">params</span><span class="p">[</span><span class="s">&#39;Intercept&#39;</span><span class="p">]</span> <span class="o">+</span> <span class="n">min_lm4</span><span class="o">.</span><span class="n">params</span><span class="p">[</span><span class="s">&#39;ETHN&#39;</span><span class="p">],</span>
+           <span class="n">slope</span> <span class="o">=</span> <span class="n">min_lm4</span><span class="o">.</span><span class="n">params</span><span class="p">[</span><span class="s">&#39;TEST&#39;</span><span class="p">]</span> <span class="o">+</span> <span class="n">min_lm4</span><span class="o">.</span><span class="n">params</span><span class="p">[</span><span class="s">&#39;TEST:ETHN&#39;</span><span class="p">],</span>
+           <span class="n">ax</span><span class="o">=</span><span class="n">ax</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="s">&#39;green&#39;</span><span class="p">);</span>
+   </pre></div>
+   
+   </div>
+   </div>
+   </div>
+   
+   <div class="output_wrapper">
+   <div class="output">
+   
+   
+   <div class="output_area"><div class="prompt"></div>
+   
+   </div>
+   
+   <div class="output_area"><div class="prompt"></div>
+   
+   
+   
+   </div>
+   
+   </div>
+   </div>
+   
+   </div>
+   <div class="cell border-box-sizing code_cell rendered">
+   <div class="input">
+   <div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+   <div class="inner_cell">
+       <div class="input_area">
+   <div class=" highlight hl-ipython3"><pre><span class="c"># is there any effect of ETHN on slope or intercept?</span>
+   <span class="n">table5</span> <span class="o">=</span> <span class="n">anova_lm</span><span class="p">(</span><span class="n">min_lm</span><span class="p">,</span> <span class="n">min_lm4</span><span class="p">)</span>
+   <span class="nb">print</span><span class="p">(</span><span class="n">table5</span><span class="p">)</span>
+   </pre></div>
+   
+   </div>
+   </div>
+   </div>
+   
+   <div class="output_wrapper">
+   <div class="output">
+   
+   
+   <div class="output_area"><div class="prompt"></div>
+   
+   </div>
+   
+   </div>
+   </div>
+   
+   </div>
+   <div class="cell border-box-sizing code_cell rendered">
+   <div class="input">
+   <div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+   <div class="inner_cell">
+       <div class="input_area">
+   <div class=" highlight hl-ipython3"><pre><span class="c"># is there any effect of ETHN on intercept</span>
+   <span class="n">table6</span> <span class="o">=</span> <span class="n">anova_lm</span><span class="p">(</span><span class="n">min_lm</span><span class="p">,</span> <span class="n">min_lm3</span><span class="p">)</span>
+   <span class="nb">print</span><span class="p">(</span><span class="n">table6</span><span class="p">)</span>
+   </pre></div>
+   
+   </div>
+   </div>
+   </div>
+   
+   <div class="output_wrapper">
+   <div class="output">
+   
+   
+   <div class="output_area"><div class="prompt"></div>
+   
+   </div>
+   
+   </div>
+   </div>
+   
+   </div>
+   <div class="cell border-box-sizing code_cell rendered">
+   <div class="input">
+   <div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+   <div class="inner_cell">
+       <div class="input_area">
+   <div class=" highlight hl-ipython3"><pre><span class="c"># is there any effect of ETHN on slope</span>
+   <span class="n">table7</span> <span class="o">=</span> <span class="n">anova_lm</span><span class="p">(</span><span class="n">min_lm</span><span class="p">,</span> <span class="n">min_lm2</span><span class="p">)</span>
+   <span class="nb">print</span><span class="p">(</span><span class="n">table7</span><span class="p">)</span>
+   </pre></div>
+   
+   </div>
+   </div>
+   </div>
+   
+   <div class="output_wrapper">
+   <div class="output">
+   
+   
+   <div class="output_area"><div class="prompt"></div>
+   
+   </div>
+   
+   </div>
+   </div>
+   
+   </div>
+   <div class="cell border-box-sizing code_cell rendered">
+   <div class="input">
+   <div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+   <div class="inner_cell">
+       <div class="input_area">
+   <div class=" highlight hl-ipython3"><pre><span class="c"># is it just the slope or both?</span>
+   <span class="n">table8</span> <span class="o">=</span> <span class="n">anova_lm</span><span class="p">(</span><span class="n">min_lm2</span><span class="p">,</span> <span class="n">min_lm4</span><span class="p">)</span>
+   <span class="nb">print</span><span class="p">(</span><span class="n">table8</span><span class="p">)</span>
+   </pre></div>
+   
+   </div>
+   </div>
+   </div>
+   
+   <div class="output_wrapper">
+   <div class="output">
+   
+   
+   <div class="output_area"><div class="prompt"></div>
+   
+   </div>
+   
+   </div>
+   </div>
+   
+   </div>
+   <div class="cell border-box-sizing text_cell rendered">
+   <div class="prompt input_prompt">
+   </div>
+   <div class="inner_cell">
+   <div class="text_cell_render border-box-sizing rendered_html">
+   <h2 id="One-way-ANOVA">One-way ANOVA<a class="anchor-link" href="#One-way-ANOVA">&#182;</a></h2>
+   </div>
+   </div>
+   </div>
+   <div class="cell border-box-sizing code_cell rendered">
+   <div class="input">
+   <div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+   <div class="inner_cell">
+       <div class="input_area">
+   <div class=" highlight hl-ipython3"><pre><span class="k">try</span><span class="p">:</span>
+       <span class="n">rehab_table</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_csv</span><span class="p">(</span><span class="s">&#39;rehab.table&#39;</span><span class="p">)</span>
+   <span class="k">except</span><span class="p">:</span>
+       <span class="n">url</span> <span class="o">=</span> <span class="s">&#39;http://stats191.stanford.edu/data/rehab.csv&#39;</span>
+       <span class="n">rehab_table</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_table</span><span class="p">(</span><span class="n">url</span><span class="p">,</span> <span class="n">delimiter</span><span class="o">=</span><span class="s">&quot;,&quot;</span><span class="p">)</span>
+       <span class="n">rehab_table</span><span class="o">.</span><span class="n">to_csv</span><span class="p">(</span><span class="s">&#39;rehab.table&#39;</span><span class="p">)</span>
+   
+   <span class="n">fig</span><span class="p">,</span> <span class="n">ax</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">subplots</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">8</span><span class="p">,</span><span class="mi">6</span><span class="p">))</span>
+   <span class="n">fig</span> <span class="o">=</span> <span class="n">rehab_table</span><span class="o">.</span><span class="n">boxplot</span><span class="p">(</span><span class="s">&#39;Time&#39;</span><span class="p">,</span> <span class="s">&#39;Fitness&#39;</span><span class="p">,</span> <span class="n">ax</span><span class="o">=</span><span class="n">ax</span><span class="p">,</span> <span class="n">grid</span><span class="o">=</span><span class="k">False</span><span class="p">)</span>
+   </pre></div>
+   
+   </div>
+   </div>
+   </div>
+   
+   <div class="output_wrapper">
+   <div class="output">
+   
+   
+   <div class="output_area"><div class="prompt"></div>
+   
+   
+   
+   </div>
+   
+   </div>
+   </div>
+   
+   </div>
+   <div class="cell border-box-sizing code_cell rendered">
+   <div class="input">
+   <div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+   <div class="inner_cell">
+       <div class="input_area">
+   <div class=" highlight hl-ipython3"><pre><span class="n">rehab_lm</span> <span class="o">=</span> <span class="n">ols</span><span class="p">(</span><span class="s">&#39;Time ~ C(Fitness)&#39;</span><span class="p">,</span> <span class="n">data</span><span class="o">=</span><span class="n">rehab_table</span><span class="p">)</span><span class="o">.</span><span class="n">fit</span><span class="p">()</span>
+   <span class="n">table9</span> <span class="o">=</span> <span class="n">anova_lm</span><span class="p">(</span><span class="n">rehab_lm</span><span class="p">)</span>
+   <span class="nb">print</span><span class="p">(</span><span class="n">table9</span><span class="p">)</span>
+   
+   <span class="nb">print</span><span class="p">(</span><span class="n">rehab_lm</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">orig_exog</span><span class="p">)</span>
+   </pre></div>
+   
+   </div>
+   </div>
+   </div>
+   
+   <div class="output_wrapper">
+   <div class="output">
+   
+   
+   <div class="output_area"><div class="prompt"></div>
+   <div class="output_subarea output_stream output_stdout output_text">
+   <pre>            df  sum_sq     mean_sq          F    PR(&gt;F)
+   C(Fitness)   2     672  336.000000  16.961538  0.000041
+   Residual    21     416   19.809524        NaN       NaN
+       Intercept  C(Fitness)[T.2]  C(Fitness)[T.3]
+   0           1                0                0
+   1           1                0                0
+   2           1                0                0
+   3           1                0                0
+   4           1                0                0
+   5           1                0                0
+   6           1                0                0
+   7           1                0                0
+   8           1                1                0
+   9           1                1                0
+   10          1                1                0
+   11          1                1                0
+   12          1                1                0
+   13          1                1                0
+   14          1                1                0
+   15          1                1                0
+   16          1                1                0
+   17          1                1                0
+   18          1                0                1
+   19          1                0                1
+   20          1                0                1
+   21          1                0                1
+   22          1                0                1
+   23          1                0                1
+   </pre>
+   </div>
+   </div>
+   
+   </div>
+   </div>
+   
+   </div>
+   <div class="cell border-box-sizing code_cell rendered">
+   <div class="input">
+   <div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+   <div class="inner_cell">
+       <div class="input_area">
+   <div class=" highlight hl-ipython3"><pre><span class="nb">print</span><span class="p">(</span><span class="n">rehab_lm</span><span class="o">.</span><span class="n">summary</span><span class="p">())</span>
+   </pre></div>
+   
+   </div>
+   </div>
+   </div>
+   
+   <div class="output_wrapper">
+   <div class="output">
+   
+   
+   <div class="output_area"><div class="prompt"></div>
+   <div class="output_subarea output_stream output_stdout output_text">
+   <pre>                            OLS Regression Results                            
+   ==============================================================================
+   Dep. Variable:                   Time   R-squared:                       0.618
+   Model:                            OLS   Adj. R-squared:                  0.581
+   Method:                 Least Squares   F-statistic:                     16.96
+   Date:                Mon, 20 Jul 2015   Prob (F-statistic):           4.13e-05
+   Time:                        17:43:46   Log-Likelihood:                -68.286
+   No. Observations:                  24   AIC:                             142.6
+   Df Residuals:                      21   BIC:                             146.1
+   Df Model:                           2                                         
+   Covariance Type:            nonrobust                                         
+   ===================================================================================
+                         coef    std err          t      P&gt;|t|      [95.0% Conf. Int.]
+   -----------------------------------------------------------------------------------
+   Intercept          38.0000      1.574     24.149      0.000        34.728    41.272
+   C(Fitness)[T.2]    -6.0000      2.111     -2.842      0.010       -10.390    -1.610
+   C(Fitness)[T.3]   -14.0000      2.404     -5.824      0.000       -18.999    -9.001
+   ==============================================================================
+   Omnibus:                        0.163   Durbin-Watson:                   2.209
+   Prob(Omnibus):                  0.922   Jarque-Bera (JB):                0.211
+   Skew:                          -0.163   Prob(JB):                        0.900
+   Kurtosis:                       2.675   Cond. No.                         3.80
+   ==============================================================================
+   
+   Warnings:
+   [1] Standard Errors assume that the covariance matrix of the errors is correctly specified.
+   </pre>
+   </div>
+   </div>
+   
+   </div>
+   </div>
+   
+   </div>
+   <div class="cell border-box-sizing text_cell rendered">
+   <div class="prompt input_prompt">
+   </div>
+   <div class="inner_cell">
+   <div class="text_cell_render border-box-sizing rendered_html">
+   <h2 id="Two-way-ANOVA">Two-way ANOVA<a class="anchor-link" href="#Two-way-ANOVA">&#182;</a></h2>
+   </div>
+   </div>
+   </div>
+   <div class="cell border-box-sizing code_cell rendered">
+   <div class="input">
+   <div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+   <div class="inner_cell">
+       <div class="input_area">
+   <div class=" highlight hl-ipython3"><pre><span class="k">try</span><span class="p">:</span>
+       <span class="n">kidney_table</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_table</span><span class="p">(</span><span class="s">&#39;./kidney.table&#39;</span><span class="p">)</span>
+   <span class="k">except</span><span class="p">:</span>
+       <span class="n">url</span> <span class="o">=</span> <span class="s">&#39;http://stats191.stanford.edu/data/kidney.table&#39;</span>
+       <span class="n">kidney_table</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_table</span><span class="p">(</span><span class="n">url</span><span class="p">,</span> <span class="n">delimiter</span><span class="o">=</span><span class="s">&quot; *&quot;</span><span class="p">)</span>
+   </pre></div>
+   
+   </div>
+   </div>
+   </div>
+   
+   <div class="output_wrapper">
+   <div class="output">
+   
+   
+   <div class="output_area"><div class="prompt"></div>
+   <div class="output_subarea output_stream output_stderr output_text">
+   <pre>/Users/tom.augspurger/Envs/py3/lib/python3.4/site-packages/pandas/io/parsers.py:648: ParserWarning: Falling back to the &apos;python&apos; engine because the &apos;c&apos; engine does not support regex separators; you can avoid this warning by specifying engine=&apos;python&apos;.
+     ParserWarning)
+   </pre>
+   </div>
+   </div>
+   
+   </div>
+   </div>
+   
+   </div>
+   <div class="cell border-box-sizing text_cell rendered">
+   <div class="prompt input_prompt">
+   </div>
+   <div class="inner_cell">
+   <div class="text_cell_render border-box-sizing rendered_html">
+   <p>Explore the dataset</p>
+   
+   </div>
+   </div>
+   </div>
+   <div class="cell border-box-sizing code_cell rendered">
+   <div class="input">
+   <div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+   <div class="inner_cell">
+       <div class="input_area">
+   <div class=" highlight hl-ipython3"><pre><span class="n">kidney_table</span><span class="o">.</span><span class="n">groupby</span><span class="p">([</span><span class="s">&#39;Weight&#39;</span><span class="p">,</span> <span class="s">&#39;Duration&#39;</span><span class="p">])</span><span class="o">.</span><span class="n">size</span><span class="p">()</span>
+   </pre></div>
+   
+   </div>
+   </div>
+   </div>
+   
+   <div class="output_wrapper">
+   <div class="output">
+   
+   
+   <div class="output_area"><div class="prompt"></div>
+   
+   </div>
+   
+   </div>
+   </div>
+   
+   </div>
+   <div class="cell border-box-sizing text_cell rendered">
+   <div class="prompt input_prompt">
+   </div>
+   <div class="inner_cell">
+   <div class="text_cell_render border-box-sizing rendered_html">
+   <p>Balanced panel</p>
+   
+   </div>
+   </div>
+   </div>
+   <div class="cell border-box-sizing code_cell rendered">
+   <div class="input">
+   <div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+   <div class="inner_cell">
+       <div class="input_area">
+   <div class=" highlight hl-ipython3"><pre><span class="n">kt</span> <span class="o">=</span> <span class="n">kidney_table</span>
+   <span class="n">plt</span><span class="o">.</span><span class="n">figure</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">8</span><span class="p">,</span><span class="mi">6</span><span class="p">))</span>
+   <span class="n">fig</span> <span class="o">=</span> <span class="n">interaction_plot</span><span class="p">(</span><span class="n">kt</span><span class="p">[</span><span class="s">&#39;Weight&#39;</span><span class="p">],</span> <span class="n">kt</span><span class="p">[</span><span class="s">&#39;Duration&#39;</span><span class="p">],</span> <span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">kt</span><span class="p">[</span><span class="s">&#39;Days&#39;</span><span class="p">]</span><span class="o">+</span><span class="mi">1</span><span class="p">),</span>
+           <span class="n">colors</span><span class="o">=</span><span class="p">[</span><span class="s">&#39;red&#39;</span><span class="p">,</span> <span class="s">&#39;blue&#39;</span><span class="p">],</span> <span class="n">markers</span><span class="o">=</span><span class="p">[</span><span class="s">&#39;D&#39;</span><span class="p">,</span><span class="s">&#39;^&#39;</span><span class="p">],</span> <span class="n">ms</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span> <span class="n">ax</span><span class="o">=</span><span class="n">plt</span><span class="o">.</span><span class="n">gca</span><span class="p">())</span>
+   </pre></div>
+   
+   </div>
+   </div>
+   </div>
+   
+   <div class="output_wrapper">
+   <div class="output">
+   
+   
+   <div class="output_area"><div class="prompt"></div>
+   
+   
+   
+   </div>
+   
+   </div>
+   </div>
+   
+   </div>
+   <div class="cell border-box-sizing text_cell rendered">
+   <div class="prompt input_prompt">
+   </div>
+   <div class="inner_cell">
+   <div class="text_cell_render border-box-sizing rendered_html">
+   <p>You have things available in the calling namespace available in the formula evaluation namespace</p>
+   
+   </div>
+   </div>
+   </div>
+   <div class="cell border-box-sizing code_cell rendered">
+   <div class="input">
+   <div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+   <div class="inner_cell">
+       <div class="input_area">
+   <div class=" highlight hl-ipython3"><pre><span class="n">kidney_lm</span> <span class="o">=</span> <span class="n">ols</span><span class="p">(</span><span class="s">&#39;np.log(Days+1) ~ C(Duration) * C(Weight)&#39;</span><span class="p">,</span> <span class="n">data</span><span class="o">=</span><span class="n">kt</span><span class="p">)</span><span class="o">.</span><span class="n">fit</span><span class="p">()</span>
+   
+   <span class="n">table10</span> <span class="o">=</span> <span class="n">anova_lm</span><span class="p">(</span><span class="n">kidney_lm</span><span class="p">)</span>
+   
+   <span class="nb">print</span><span class="p">(</span><span class="n">anova_lm</span><span class="p">(</span><span class="n">ols</span><span class="p">(</span><span class="s">&#39;np.log(Days+1) ~ C(Duration) + C(Weight)&#39;</span><span class="p">,</span>
+                   <span class="n">data</span><span class="o">=</span><span class="n">kt</span><span class="p">)</span><span class="o">.</span><span class="n">fit</span><span class="p">(),</span> <span class="n">kidney_lm</span><span class="p">))</span>
+   <span class="nb">print</span><span class="p">(</span><span class="n">anova_lm</span><span class="p">(</span><span class="n">ols</span><span class="p">(</span><span class="s">&#39;np.log(Days+1) ~ C(Duration)&#39;</span><span class="p">,</span> <span class="n">data</span><span class="o">=</span><span class="n">kt</span><span class="p">)</span><span class="o">.</span><span class="n">fit</span><span class="p">(),</span>
+                  <span class="n">ols</span><span class="p">(</span><span class="s">&#39;np.log(Days+1) ~ C(Duration) + C(Weight, Sum)&#39;</span><span class="p">,</span>
+                      <span class="n">data</span><span class="o">=</span><span class="n">kt</span><span class="p">)</span><span class="o">.</span><span class="n">fit</span><span class="p">()))</span>
+   <span class="nb">print</span><span class="p">(</span><span class="n">anova_lm</span><span class="p">(</span><span class="n">ols</span><span class="p">(</span><span class="s">&#39;np.log(Days+1) ~ C(Weight)&#39;</span><span class="p">,</span> <span class="n">data</span><span class="o">=</span><span class="n">kt</span><span class="p">)</span><span class="o">.</span><span class="n">fit</span><span class="p">(),</span>
+                  <span class="n">ols</span><span class="p">(</span><span class="s">&#39;np.log(Days+1) ~ C(Duration) + C(Weight, Sum)&#39;</span><span class="p">,</span>
+                      <span class="n">data</span><span class="o">=</span><span class="n">kt</span><span class="p">)</span><span class="o">.</span><span class="n">fit</span><span class="p">()))</span>
+   </pre></div>
+   
+   </div>
+   </div>
+   </div>
+   
+   <div class="output_wrapper">
+   <div class="output">
+   
+   
+   <div class="output_area"><div class="prompt"></div>
+   <div class="output_subarea output_stream output_stdout output_text">
+   <pre>   df_resid        ssr  df_diff   ss_diff        F    Pr(&gt;F)
+   0        56  29.624856        0       NaN      NaN       NaN
+   1        54  28.989198        2  0.635658  0.59204  0.556748
+      df_resid        ssr  df_diff    ss_diff          F    Pr(&gt;F)
+   0        58  46.596147        0        NaN        NaN       NaN
+   1        56  29.624856        2  16.971291  16.040454  0.000003
+      df_resid        ssr  df_diff   ss_diff         F   Pr(&gt;F)
+   0        57  31.964549        0       NaN       NaN      NaN
+   1        56  29.624856        1  2.339693  4.422732  0.03997
+   </pre>
+   </div>
+   </div>
+   
+   </div>
+   </div>
+   
+   </div>
+   <div class="cell border-box-sizing text_cell rendered">
+   <div class="prompt input_prompt">
+   </div>
+   <div class="inner_cell">
+   <div class="text_cell_render border-box-sizing rendered_html">
+   <h2 id="Sum-of-squares">Sum of squares<a class="anchor-link" href="#Sum-of-squares">&#182;</a></h2><p>Illustrates the use of different types of sums of squares (I,II,II)
+    and how the Sum contrast can be used to produce the same output between
+    the 3.</p>
+   <p>Types I and II are equivalent under a balanced design.</p>
+   <p>Don't use Type III with non-orthogonal contrast - ie., Treatment</p>
+   
+   </div>
+   </div>
+   </div>
+   <div class="cell border-box-sizing code_cell rendered">
+   <div class="input">
+   <div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+   <div class="inner_cell">
+       <div class="input_area">
+   <div class=" highlight hl-ipython3"><pre><span class="n">sum_lm</span> <span class="o">=</span> <span class="n">ols</span><span class="p">(</span><span class="s">&#39;np.log(Days+1) ~ C(Duration, Sum) * C(Weight, Sum)&#39;</span><span class="p">,</span>
+               <span class="n">data</span><span class="o">=</span><span class="n">kt</span><span class="p">)</span><span class="o">.</span><span class="n">fit</span><span class="p">()</span>
+   
+   <span class="nb">print</span><span class="p">(</span><span class="n">anova_lm</span><span class="p">(</span><span class="n">sum_lm</span><span class="p">))</span>
+   <span class="nb">print</span><span class="p">(</span><span class="n">anova_lm</span><span class="p">(</span><span class="n">sum_lm</span><span class="p">,</span> <span class="n">typ</span><span class="o">=</span><span class="mi">2</span><span class="p">))</span>
+   <span class="nb">print</span><span class="p">(</span><span class="n">anova_lm</span><span class="p">(</span><span class="n">sum_lm</span><span class="p">,</span> <span class="n">typ</span><span class="o">=</span><span class="mi">3</span><span class="p">))</span>
+   </pre></div>
+   
+   </div>
+   </div>
+   </div>
+   
+   <div class="output_wrapper">
+   <div class="output">
+   
+   
+   <div class="output_area"><div class="prompt"></div>
+   <div class="output_subarea output_stream output_stdout output_text">
+   <pre>                                 df     sum_sq   mean_sq          F    PR(&gt;F)
+   C(Duration, Sum)                  1   2.339693  2.339693   4.358293  0.041562
+   C(Weight, Sum)                    2  16.971291  8.485645  15.806745  0.000004
+   C(Duration, Sum):C(Weight, Sum)   2   0.635658  0.317829   0.592040  0.556748
+   Residual                         54  28.989198  0.536837        NaN       NaN
+                                       sum_sq  df          F    PR(&gt;F)
+   C(Duration, Sum)                  2.339693   1   4.358293  0.041562
+   C(Weight, Sum)                   16.971291   2  15.806745  0.000004
+   C(Duration, Sum):C(Weight, Sum)   0.635658   2   0.592040  0.556748
+   Residual                         28.989198  54        NaN       NaN
+                                        sum_sq  df           F        PR(&gt;F)
+   Intercept                        156.301830   1  291.153237  2.077589e-23
+   C(Duration, Sum)                   2.339693   1    4.358293  4.156170e-02
+   C(Weight, Sum)                    16.971291   2   15.806745  3.944502e-06
+   C(Duration, Sum):C(Weight, Sum)    0.635658   2    0.592040  5.567479e-01
+   Residual                          28.989198  54         NaN           NaN
+   </pre>
+   </div>
+   </div>
+   
+   </div>
+   </div>
+   
+   </div>
+   <div class="cell border-box-sizing code_cell rendered">
+   <div class="input">
+   <div class="prompt input_prompt">In&nbsp;[&nbsp;]:</div>
+   <div class="inner_cell">
+       <div class="input_area">
+   <div class=" highlight hl-ipython3"><pre><span class="n">nosum_lm</span> <span class="o">=</span> <span class="n">ols</span><span class="p">(</span><span class="s">&#39;np.log(Days+1) ~ C(Duration, Treatment) * C(Weight, Treatment)&#39;</span><span class="p">,</span>
+               <span class="n">data</span><span class="o">=</span><span class="n">kt</span><span class="p">)</span><span class="o">.</span><span class="n">fit</span><span class="p">()</span>
+   <span class="nb">print</span><span class="p">(</span><span class="n">anova_lm</span><span class="p">(</span><span class="n">nosum_lm</span><span class="p">))</span>
+   <span class="nb">print</span><span class="p">(</span><span class="n">anova_lm</span><span class="p">(</span><span class="n">nosum_lm</span><span class="p">,</span> <span class="n">typ</span><span class="o">=</span><span class="mi">2</span><span class="p">))</span>
+   <span class="nb">print</span><span class="p">(</span><span class="n">anova_lm</span><span class="p">(</span><span class="n">nosum_lm</span><span class="p">,</span> <span class="n">typ</span><span class="o">=</span><span class="mi">3</span><span class="p">))</span>
+   </pre></div>
+   
+   </div>
+   </div>
+   </div>
+   
+   <div class="output_wrapper">
+   <div class="output">
+   
+   
+   <div class="output_area"><div class="prompt"></div>
+   <div class="output_subarea output_stream output_stdout output_text">
+   <pre>                                             df     sum_sq   mean_sq          F    PR(&gt;F)
+   C(Duration, Treatment)                        1   2.339693  2.339693   4.358293  0.041562
+   C(Weight, Treatment)                          2  16.971291  8.485645  15.806745  0.000004
+   C(Duration, Treatment):C(Weight, Treatment)   2   0.635658  0.317829   0.592040  0.556748
+   Residual                                     54  28.989198  0.536837        NaN       NaN
+                                                   sum_sq  df          F    PR(&gt;F)
+   C(Duration, Treatment)                        2.339693   1   4.358293  0.041562
+   C(Weight, Treatment)                         16.971291   2  15.806745  0.000004
+   C(Duration, Treatment):C(Weight, Treatment)   0.635658   2   0.592040  0.556748
+   Residual                                     28.989198  54        NaN       NaN
+                                                   sum_sq  df          F    PR(&gt;F)
+   Intercept                                    10.427596   1  19.424139  0.000050
+   C(Duration, Treatment)                        0.054293   1   0.101134  0.751699
+   C(Weight, Treatment)                         11.703387   2  10.900317  0.000106
+   C(Duration, Treatment):C(Weight, Treatment)   0.635658   2   0.592040  0.556748
+   Residual                                     28.989198  54        NaN       NaN
+   </pre>
+   </div>
+   </div>
+   
+   </div>
+   </div>
+   
+   </div>
+
+   <script src="https://c328740.ssl.cf1.rackcdn.com/mathjax/latest/MathJax.js?config=TeX-AMS_HTML"type="text/javascript"></script>
+   <script type="text/javascript">
+   init_mathjax = function() {
+       if (window.MathJax) {
+           // MathJax loaded
+           MathJax.Hub.Config({
+               tex2jax: {
+               // I'm not sure about the \( and \[ below. It messes with the
+               // prompt, and I think it's an issue with the template. -SS
+                   inlineMath: [ ['$','$'], ["\\(","\\)"] ],
+                   displayMath: [ ['$$','$$'], ["\\[","\\]"] ]
+               },
+               displayAlign: 'left', // Change this to 'center' to center equations.
+               "HTML-CSS": {
+                   styles: {'.MathJax_Display': {"margin": 0}}
+               }
+           });
+           MathJax.Hub.Queue(["Typeset",MathJax.Hub]);
+       }
+   }
+   init_mathjax();
+
+   // since we have to load this in a ..raw:: directive we will add the css
+   // after the fact
+   function loadcssfile(filename){
+       var fileref=document.createElement("link")
+       fileref.setAttribute("rel", "stylesheet")
+       fileref.setAttribute("type", "text/css")
+       fileref.setAttribute("href", filename)
+
+       document.getElementsByTagName("head")[0].appendChild(fileref)
+   }
+   // loadcssfile({{pathto("_static/nbviewer.pygments.css", 1) }})
+   // loadcssfile({{pathto("_static/nbviewer.min.css", 1) }})
+   loadcssfile("../../../_static/nbviewer.pygments.css")
+   loadcssfile("../../../_static/ipython.min.css")
+   </script>

@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.discrete.discrete\_model.CountResults.remove\_data
+==============================================================
+
+.. currentmodule:: statsmodels.discrete.discrete_model
+
+.. automethod:: CountResults.remove_data

@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.regression.recursive\_ls.RecursiveLSResults.plot\_recursive\_coefficient
+====================================================================================
+
+.. currentmodule:: statsmodels.regression.recursive_ls
+
+.. automethod:: RecursiveLSResults.plot_recursive_coefficient

@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.sandbox.regression.gmm.IVGMMResults.wald\_test
+==========================================================
+
+.. currentmodule:: statsmodels.sandbox.regression.gmm
+
+.. automethod:: IVGMMResults.wald_test

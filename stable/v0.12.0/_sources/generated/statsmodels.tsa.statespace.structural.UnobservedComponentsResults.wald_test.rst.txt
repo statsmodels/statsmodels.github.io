@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.tsa.statespace.structural.UnobservedComponentsResults.wald\_test
+============================================================================
+
+.. currentmodule:: statsmodels.tsa.statespace.structural
+
+.. automethod:: UnobservedComponentsResults.wald_test

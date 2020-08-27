@@ -1,0 +1,348 @@
+{
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# GEE score tests\n",
+    "\n",
+    "This notebook uses simulation to demonstrate robust GEE score tests.  These tests can be used in a GEE analysis to compare nested hypotheses about the mean structure.  The tests are robust to miss-specification of the working correlation model, and to certain forms of misspecification of the variance structure (e.g. as captured by the scale parameter in a quasi-Poisson analysis).\n",
+    "\n",
+    "The data are simulated as clusters, where there is dependence within but not between clusters.  The cluster-wise dependence is induced using a copula approach.  The data marginally follow a negative binomial (gamma/Poisson) mixture.\n",
+    "\n",
+    "The level and power of the tests are considered below to assess the performance of the tests."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 1,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import pandas as pd\n",
+    "import numpy as np\n",
+    "from scipy.stats.distributions import norm, poisson\n",
+    "import statsmodels.api as sm\n",
+    "import matplotlib.pyplot as plt"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "The function defined in the following cell uses a copula approach to simulate correlated random values that marginally follow a negative binomial distribution.  The input parameter `u` is an array of values in (0, 1).  The elements of `u` must be marginally uniformly distributed on (0, 1).  Correlation in `u` will induce correlations in the returned negative binomial values.  The array parameter `mu` gives the marginal means, and the scalar parameter `scale` defines the mean/variance relationship (the variance is `scale` times the mean).  The lengths of `u` and `mu` must be the same."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 2,
+   "metadata": {
+    "lines_to_next_cell": 1
+   },
+   "outputs": [],
+   "source": [
+    "def negbinom(u, mu, scale):\n",
+    "    p = (scale - 1) / scale\n",
+    "    r = mu * (1 - p) / p\n",
+    "    x = np.random.gamma(r, p / (1 - p), len(u))\n",
+    "    return poisson.ppf(u, mu=x)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Below are some parameters that govern the data used in the simulation."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 3,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Sample size\n",
+    "n = 1000\n",
+    "\n",
+    "# Number of covariates (including intercept) in the alternative hypothesis model\n",
+    "p = 5\n",
+    "\n",
+    "# Cluster size\n",
+    "m = 10\n",
+    "\n",
+    "# Intraclass correlation (controls strength of clustering)\n",
+    "r = 0.5\n",
+    "\n",
+    "# Group indicators\n",
+    "grp = np.kron(np.arange(n/m), np.ones(m))"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "The simulation uses a fixed design matrix."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 4,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Build a design matrix for the alternative (more complex) model\n",
+    "x = np.random.normal(size=(n, p))\n",
+    "x[:, 0] = 1"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "The null design matrix is nested in the alternative design matrix.  It has rank two less than the alternative design matrix."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 5,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "x0 = x[:, 0:3]"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "The GEE score test is robust to dependence and overdispersion.  Here we set the overdispersion parameter.  The variance of the negative binomial distribution for each observation is equal to `scale` times its mean value."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 6,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Scale parameter for negative binomial distribution\n",
+    "scale = 10"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "In the next cell, we set up the mean structures for the null and alternative models"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 7,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# The coefficients used to define the linear predictors\n",
+    "coeff = [[4, 0.4, -0.2], [4, 0.4, -0.2, 0, -0.04]]\n",
+    "\n",
+    "# The linear predictors\n",
+    "lp = [np.dot(x0, coeff[0]), np.dot(x, coeff[1])]\n",
+    "\n",
+    "# The mean values\n",
+    "mu = [np.exp(lp[0]), np.exp(lp[1])]"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Below is a function that carries out the simulation."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 8,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# hyp = 0 is the null hypothesis, hyp = 1 is the alternative hypothesis.\n",
+    "# cov_struct is a statsmodels covariance structure\n",
+    "def dosim(hyp, cov_struct=None, mcrep=500):\n",
+    "    \n",
+    "    # Storage for the simulation results\n",
+    "    scales = [[], []]\n",
+    "    \n",
+    "    # P-values from the score test\n",
+    "    pv = []\n",
+    "    \n",
+    "    # Monte Carlo loop\n",
+    "    for k in range(mcrep):\n",
+    "\n",
+    "        # Generate random \"probability points\" u  that are uniformly \n",
+    "        # distributed, and correlated within clusters\n",
+    "        z = np.random.normal(size=n)\n",
+    "        u = np.random.normal(size=n//m)\n",
+    "        u = np.kron(u, np.ones(m))\n",
+    "        z = r*z +np.sqrt(1-r**2)*u\n",
+    "        u = norm.cdf(z)\n",
+    "\n",
+    "        # Generate the observed responses\n",
+    "        y = negbinom(u, mu=mu[hyp], scale=scale)\n",
+    "\n",
+    "        # Fit the null model\n",
+    "        m0 = sm.GEE(y, x0, groups=grp, cov_struct=cov_struct, family=sm.families.Poisson())\n",
+    "        r0 = m0.fit(scale='X2')\n",
+    "        scales[0].append(r0.scale)\n",
+    "        \n",
+    "        # Fit the alternative model\n",
+    "        m1 = sm.GEE(y, x, groups=grp, cov_struct=cov_struct, family=sm.families.Poisson())\n",
+    "        r1 = m1.fit(scale='X2')\n",
+    "        scales[1].append(r1.scale)\n",
+    "        \n",
+    "        # Carry out the score test\n",
+    "        st = m1.compare_score_test(r0)\n",
+    "        pv.append(st[\"p-value\"])\n",
+    "\n",
+    "    pv = np.asarray(pv)\n",
+    "    rslt = [np.mean(pv), np.mean(pv < 0.1)]\n",
+    "    \n",
+    "    return rslt, scales"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Run the simulation using the independence working covariance structure.  We expect the mean to be around 0 under the null hypothesis, and much lower under the alternative hypothesis.  Similarly, we expect that under the null hypothesis, around 10% of the p-values are less than 0.1, and a much greater fraction of the p-values are less than 0.1 under the alternative hypothesis."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 9,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "        Mean  Prop(p<0.1)\n",
+      "H0  0.493299        0.096\n",
+      "H1  0.062386        0.844\n"
+     ]
+    }
+   ],
+   "source": [
+    "rslt, scales = [], []\n",
+    "\n",
+    "for hyp in 0, 1:\n",
+    "    s, t = dosim(hyp, sm.cov_struct.Independence())\n",
+    "    rslt.append(s)\n",
+    "    scales.append(t)\n",
+    "    \n",
+    "rslt = pd.DataFrame(rslt, index=[\"H0\", \"H1\"], columns=[\"Mean\", \"Prop(p<0.1)\"])\n",
+    "\n",
+    "print(rslt)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Next we check to make sure that the scale parameter estimates are reasonable. We are assessing the robustness of the GEE score test to dependence and overdispersion, so here we are confirming that the overdispersion is present as expected."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 10,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "Text(0, 0.5, 'Estimated scale')"
+      ]
+     },
+     "execution_count": 10,
+     "metadata": {},
+     "output_type": "execute_result"
+    },
+    {
+     "data": {
+      "image/png": "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\n",
+      "text/plain": [
+       "<Figure size 432x288 with 1 Axes>"
+      ]
+     },
+     "metadata": {
+      "needs_background": "light"
+     },
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "_ = plt.boxplot([scales[0][0], scales[0][1], scales[1][0], scales[1][1]])\n",
+    "plt.ylabel(\"Estimated scale\")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Next we conduct the same analysis using an exchangeable working correlation model.  Note that this will be slower than the example above using independent working correlation, so we use fewer Monte Carlo repetitions."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 11,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "        Mean  Prop(p<0.1)\n",
+      "H0  0.488020         0.10\n",
+      "H1  0.047375         0.86\n"
+     ]
+    }
+   ],
+   "source": [
+    "rslt, scales = [], []\n",
+    "\n",
+    "for hyp in 0, 1:\n",
+    "    s, t = dosim(hyp, sm.cov_struct.Exchangeable(), mcrep=100)\n",
+    "    rslt.append(s)\n",
+    "    scales.append(t)\n",
+    "    \n",
+    "rslt = pd.DataFrame(rslt, index=[\"H0\", \"H1\"], columns=[\"Mean\", \"Prop(p<0.1)\"])\n",
+    "\n",
+    "print(rslt)"
+   ]
+  }
+ ],
+ "metadata": {
+  "jupytext": {
+   "cell_metadata_filter": "-all",
+   "main_language": "python",
+   "notebook_metadata_filter": "-all"
+  },
+  "kernelspec": {
+   "display_name": "Python 3",
+   "language": "python",
+   "name": "python3"
+  },
+  "language_info": {
+   "codemirror_mode": {
+    "name": "ipython",
+    "version": 3
+   },
+   "file_extension": ".py",
+   "mimetype": "text/x-python",
+   "name": "python",
+   "nbconvert_exporter": "python",
+   "pygments_lexer": "ipython3",
+   "version": "3.7.6"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 2
+}

@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.discrete.count\_model.ZeroInflatedGeneralizedPoissonResults.cov\_params
+===================================================================================
+
+.. currentmodule:: statsmodels.discrete.count_model
+
+.. automethod:: ZeroInflatedGeneralizedPoissonResults.cov_params

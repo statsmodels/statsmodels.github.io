@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.tsa.statespace.mlemodel.MLEModel.observed\_information\_matrix
+==========================================================================
+
+.. currentmodule:: statsmodels.tsa.statespace.mlemodel
+
+.. automethod:: MLEModel.observed_information_matrix

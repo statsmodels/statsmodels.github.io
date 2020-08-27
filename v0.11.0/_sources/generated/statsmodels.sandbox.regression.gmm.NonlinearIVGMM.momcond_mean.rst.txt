@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.sandbox.regression.gmm.NonlinearIVGMM.momcond\_mean
+===============================================================
+
+.. currentmodule:: statsmodels.sandbox.regression.gmm
+
+.. automethod:: NonlinearIVGMM.momcond_mean

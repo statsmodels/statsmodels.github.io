@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.base.model.GenericLikelihoodModel.from\_formula
+===========================================================
+
+.. currentmodule:: statsmodels.base.model
+
+.. automethod:: GenericLikelihoodModel.from_formula

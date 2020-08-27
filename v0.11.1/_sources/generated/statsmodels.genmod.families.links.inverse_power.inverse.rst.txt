@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.genmod.families.links.inverse\_power.inverse
+========================================================
+
+.. currentmodule:: statsmodels.genmod.families.links
+
+.. automethod:: inverse_power.inverse

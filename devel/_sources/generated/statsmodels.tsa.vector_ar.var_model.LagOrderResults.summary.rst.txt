@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.tsa.vector\_ar.var\_model.LagOrderResults.summary
+=============================================================
+
+.. currentmodule:: statsmodels.tsa.vector_ar.var_model
+
+.. automethod:: LagOrderResults.summary

@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.genmod.families.links.cauchy.deriv2
+===============================================
+
+.. currentmodule:: statsmodels.genmod.families.links
+
+.. automethod:: cauchy.deriv2

@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.base.model.GenericLikelihoodModel.score
+===================================================
+
+.. currentmodule:: statsmodels.base.model
+
+.. automethod:: GenericLikelihoodModel.score

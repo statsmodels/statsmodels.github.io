@@ -1,0 +1,260 @@
+
+
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta charset="utf-8" />
+    <title>statsmodels.sandbox.regression.try_catdata &#8212; statsmodels v0.10.0 documentation</title>
+    <link rel="stylesheet" href="../../../../_static/nature.css" type="text/css" />
+    <link rel="stylesheet" href="../../../../_static/pygments.css" type="text/css" />
+    <link rel="stylesheet" type="text/css" href="../../../../_static/graphviz.css" />
+    <script type="text/javascript" id="documentation_options" data-url_root="../../../../" src="../../../../_static/documentation_options.js"></script>
+    <script type="text/javascript" src="../../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../../_static/doctools.js"></script>
+    <script type="text/javascript" src="../../../../_static/language_data.js"></script>
+    <script async="async" type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/latest.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="shortcut icon" href="../../../../_static/statsmodels_hybi_favico.ico"/>
+    <link rel="author" title="About these documents" href="../../../../about.html" />
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" />
+<link rel="stylesheet" href="../../../../_static/examples.css" type="text/css" />
+<link rel="stylesheet" href="../../../../_static/facebox.css" type="text/css" />
+<script type="text/javascript" src="../../../../_static/scripts.js">
+</script>
+<script type="text/javascript" src="../../../../_static/facebox.js">
+</script>
+<script type="text/javascript">
+$.facebox.settings.closeImage = "../../../../_static/closelabel.png"
+$.facebox.settings.loadingImage = "../../../../_static/loading.gif"
+</script>
+
+<script>
+$(document).ready(function() {
+  $.getJSON("../../../../../versions.json", function(versions) {
+    var dropdown = document.createElement("div");
+    dropdown.className = "dropdown";
+    var button = document.createElement("button");
+    button.className = "dropbtn";
+    button.innerHTML = "Other Versions";
+    var content = document.createElement("div");
+    content.className = "dropdown-content";
+    dropdown.appendChild(button);
+    dropdown.appendChild(content);
+    $(".header").prepend(dropdown);
+    for (var i = 0; i < versions.length; i++) {
+      if (versions[i].substring(0, 1) == "v") {
+        versions[i] = [versions[i], versions[i].substring(1)];
+      } else {
+        versions[i] = [versions[i], versions[i]];
+      };
+    };
+    for (var i = 0; i < versions.length; i++) {
+      var a = document.createElement("a");
+      a.innerHTML = versions[i][1];
+      a.href = "../../../../../" + versions[i][0] + "/index.html";
+      a.title = versions[i][1];
+      $(".dropdown-content").append(a);
+    };
+  });
+});
+</script>
+
+
+  </head><body>
+<div class="headerwrap">
+    <div class = "header">
+        
+        <a href = "../../../../index.html">
+<img src="../../../../_static/statsmodels_hybi_banner.png" alt="Logo"
+    style="padding-left: 15px"/></a>
+        
+    </div>
+</div>
+
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+<li><a href ="../../../../install.html">Install</a></li> &nbsp;|&nbsp;
+<li><a href="https://groups.google.com/forum/?hl=en#!forum/pystatsmodels">Support</a></li> &nbsp;|&nbsp;
+<li><a href="https://github.com/statsmodels/statsmodels/issues">Bugs</a></li> &nbsp;|&nbsp;
+<li><a href="../../../../dev/index.html">Develop</a></li> &nbsp;|&nbsp;
+<li><a href="../../../../examples/index.html">Examples</a></li> &nbsp;|&nbsp;
+<li><a href="../../../../faq.html">FAQ</a></li> &nbsp;|&nbsp;
+
+          <li class="nav-item nav-item-1"><a href="../../../index.html" accesskey="U">Module code</a> |</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+
+
+
+
+  <h1>Source code for statsmodels.sandbox.regression.try_catdata</h1><div class="highlight"><pre>
+<span></span><span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">Working with categorical data</span>
+<span class="sd">=============================</span>
+
+<span class="sd">use of dummy variables, group statistics, within and between statistics</span>
+<span class="sd">examples for efficient matrix algebra</span>
+
+<span class="sd">dummy versions require that the number of unique groups or categories is not too large</span>
+<span class="sd">group statistics with scipy.ndimage can handle large number of observations and groups</span>
+<span class="sd">scipy.ndimage stats is missing count</span>
+
+<span class="sd">new: np.bincount can also be used for calculating values per label</span>
+<span class="sd">&#39;&#39;&#39;</span>
+<span class="kn">from</span> <span class="nn">statsmodels.compat.python</span> <span class="k">import</span> <span class="n">lrange</span>
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+
+<span class="kn">from</span> <span class="nn">scipy</span> <span class="k">import</span> <span class="n">ndimage</span>
+
+<span class="c1">#problem: ndimage does not allow axis argument,</span>
+<span class="c1">#   calculates mean or var corresponding to axis=None in np.mean, np.var</span>
+<span class="c1">#   useless for multivariate application</span>
+
+<div class="viewcode-block" id="labelmeanfilter"><a class="viewcode-back" href="../../../../generated/statsmodels.sandbox.regression.try_catdata.labelmeanfilter.html#statsmodels.sandbox.regression.try_catdata.labelmeanfilter">[docs]</a><span class="k">def</span> <span class="nf">labelmeanfilter</span><span class="p">(</span><span class="n">y</span><span class="p">,</span> <span class="n">x</span><span class="p">):</span>
+    <span class="c1"># requires integer labels</span>
+    <span class="c1"># from mailing list scipy-user 2009-02-11</span>
+    <span class="n">labelsunique</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">y</span><span class="p">)</span><span class="o">+</span><span class="mi">1</span><span class="p">)</span>
+    <span class="n">labelmeans</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">ndimage</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">labels</span><span class="o">=</span><span class="n">y</span><span class="p">,</span> <span class="n">index</span><span class="o">=</span><span class="n">labelsunique</span><span class="p">))</span>
+    <span class="c1"># returns label means for each original observation</span>
+    <span class="k">return</span> <span class="n">labelmeans</span><span class="p">[</span><span class="n">y</span><span class="p">]</span></div>
+
+<span class="c1">#groupcount: i.e. number of observation by group/label</span>
+<span class="c1">#np.array(ndimage.histogram(yrvs[:,0],0,10,1,labels=yrvs[:,0],index=np.unique(yrvs[:,0])))</span>
+
+<div class="viewcode-block" id="labelmeanfilter_nd"><a class="viewcode-back" href="../../../../generated/statsmodels.sandbox.regression.try_catdata.labelmeanfilter_nd.html#statsmodels.sandbox.regression.try_catdata.labelmeanfilter_nd">[docs]</a><span class="k">def</span> <span class="nf">labelmeanfilter_nd</span><span class="p">(</span><span class="n">y</span><span class="p">,</span> <span class="n">x</span><span class="p">):</span>
+    <span class="c1"># requires integer labels</span>
+    <span class="c1"># from mailing list scipy-user 2009-02-11</span>
+    <span class="c1"># adjusted for 2d x with column variables</span>
+
+    <span class="n">labelsunique</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">y</span><span class="p">)</span><span class="o">+</span><span class="mi">1</span><span class="p">)</span>
+    <span class="n">labmeansdata</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">labmeans</span> <span class="o">=</span> <span class="p">[]</span>
+
+    <span class="k">for</span> <span class="n">xx</span> <span class="ow">in</span> <span class="n">x</span><span class="o">.</span><span class="n">T</span><span class="p">:</span>
+        <span class="n">labelmeans</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">ndimage</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">xx</span><span class="p">,</span> <span class="n">labels</span><span class="o">=</span><span class="n">y</span><span class="p">,</span> <span class="n">index</span><span class="o">=</span><span class="n">labelsunique</span><span class="p">))</span>
+        <span class="n">labmeansdata</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">labelmeans</span><span class="p">[</span><span class="n">y</span><span class="p">])</span>
+        <span class="n">labmeans</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">labelmeans</span><span class="p">)</span>
+    <span class="c1"># group count:</span>
+    <span class="n">labelcount</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">ndimage</span><span class="o">.</span><span class="n">histogram</span><span class="p">(</span><span class="n">y</span><span class="p">,</span> <span class="n">labelsunique</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">labelsunique</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span>
+                        <span class="mi">1</span><span class="p">,</span> <span class="n">labels</span><span class="o">=</span><span class="n">y</span><span class="p">,</span> <span class="n">index</span><span class="o">=</span><span class="n">labelsunique</span><span class="p">))</span>
+
+    <span class="c1"># returns array of lable/group counts and of label/group means</span>
+    <span class="c1">#         and label/group means for each original observation</span>
+    <span class="k">return</span> <span class="n">labelcount</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">labmeans</span><span class="p">),</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">labmeansdata</span><span class="p">)</span><span class="o">.</span><span class="n">T</span></div>
+
+<div class="viewcode-block" id="labelmeanfilter_str"><a class="viewcode-back" href="../../../../generated/statsmodels.sandbox.regression.try_catdata.labelmeanfilter_str.html#statsmodels.sandbox.regression.try_catdata.labelmeanfilter_str">[docs]</a><span class="k">def</span> <span class="nf">labelmeanfilter_str</span><span class="p">(</span><span class="n">ys</span><span class="p">,</span> <span class="n">x</span><span class="p">):</span>
+    <span class="c1"># works also for string labels in ys, but requires 1D</span>
+    <span class="c1"># from mailing list scipy-user 2009-02-11</span>
+    <span class="n">unil</span><span class="p">,</span> <span class="n">unilinv</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">unique</span><span class="p">(</span><span class="n">ys</span><span class="p">,</span> <span class="n">return_index</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">return_inverse</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">labelmeans</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">ndimage</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">labels</span><span class="o">=</span><span class="n">unilinv</span><span class="p">,</span> <span class="n">index</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">unil</span><span class="p">)</span><span class="o">+</span><span class="mi">1</span><span class="p">)))</span>
+    <span class="n">arr3</span> <span class="o">=</span> <span class="n">labelmeans</span><span class="p">[</span><span class="n">unilinv</span><span class="p">]</span>
+    <span class="k">return</span> <span class="n">arr3</span></div>
+
+<div class="viewcode-block" id="groupstatsbin"><a class="viewcode-back" href="../../../../generated/statsmodels.sandbox.regression.try_catdata.groupstatsbin.html#statsmodels.sandbox.regression.try_catdata.groupstatsbin">[docs]</a><span class="k">def</span> <span class="nf">groupstatsbin</span><span class="p">(</span><span class="n">factors</span><span class="p">,</span> <span class="n">values</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;uses np.bincount, assumes factors/labels are integers</span>
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="n">n</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">factors</span><span class="p">)</span>
+    <span class="n">ix</span><span class="p">,</span><span class="n">rind</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">unique</span><span class="p">(</span><span class="n">factors</span><span class="p">,</span> <span class="n">return_inverse</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+    <span class="n">gcount</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">bincount</span><span class="p">(</span><span class="n">rind</span><span class="p">)</span>
+    <span class="n">gmean</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">bincount</span><span class="p">(</span><span class="n">rind</span><span class="p">,</span> <span class="n">weights</span><span class="o">=</span><span class="n">values</span><span class="p">)</span><span class="o">/</span> <span class="p">(</span><span class="mf">1.0</span><span class="o">*</span><span class="n">gcount</span><span class="p">)</span>
+    <span class="n">meanarr</span> <span class="o">=</span> <span class="n">gmean</span><span class="p">[</span><span class="n">rind</span><span class="p">]</span>
+    <span class="n">withinvar</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">bincount</span><span class="p">(</span><span class="n">rind</span><span class="p">,</span> <span class="n">weights</span><span class="o">=</span><span class="p">(</span><span class="n">values</span><span class="o">-</span><span class="n">meanarr</span><span class="p">)</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="mf">1.0</span><span class="o">*</span><span class="n">gcount</span><span class="p">)</span>
+    <span class="n">withinvararr</span> <span class="o">=</span> <span class="n">withinvar</span><span class="p">[</span><span class="n">rind</span><span class="p">]</span>
+    <span class="k">return</span> <span class="n">gcount</span><span class="p">,</span> <span class="n">gmean</span> <span class="p">,</span> <span class="n">meanarr</span><span class="p">,</span> <span class="n">withinvar</span><span class="p">,</span> <span class="n">withinvararr</span></div>
+
+
+<div class="viewcode-block" id="convertlabels"><a class="viewcode-back" href="../../../../generated/statsmodels.sandbox.regression.try_catdata.convertlabels.html#statsmodels.sandbox.regression.try_catdata.convertlabels">[docs]</a><span class="k">def</span> <span class="nf">convertlabels</span><span class="p">(</span><span class="n">ys</span><span class="p">,</span> <span class="n">indices</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;convert labels based on multiple variables or string labels to unique</span>
+<span class="sd">    index labels 0,1,2,...,nk-1 where nk is the number of distinct labels</span>
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="k">if</span> <span class="n">indices</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">ylabel</span> <span class="o">=</span> <span class="n">ys</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">indices</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">idx</span><span class="o">.</span><span class="n">size</span> <span class="o">&gt;</span> <span class="mi">1</span> <span class="ow">and</span> <span class="n">ys</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
+            <span class="n">ylabel</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="s1">&#39;@</span><span class="si">%s</span><span class="s1">@&#39;</span> <span class="o">%</span> <span class="n">ii</span><span class="p">[:</span><span class="mi">2</span><span class="p">]</span><span class="o">.</span><span class="n">tostring</span><span class="p">()</span> <span class="k">for</span> <span class="n">ii</span> <span class="ow">in</span> <span class="n">ys</span><span class="p">])[:,</span><span class="n">np</span><span class="o">.</span><span class="n">newaxis</span><span class="p">]</span>
+            <span class="c1">#alternative</span>
+    <span class="c1">##        if ys[:,idx].dtype.kind == &#39;S&#39;:</span>
+    <span class="c1">##            ylabel = nd.array([&#39; &#39;.join(ii[:2]) for ii in ys])[:,np.newaxis]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># there might be a problem here</span>
+            <span class="n">ylabel</span> <span class="o">=</span> <span class="n">ys</span>
+
+    <span class="n">unil</span><span class="p">,</span> <span class="n">unilinv</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">unique</span><span class="p">(</span><span class="n">ylabel</span><span class="p">,</span> <span class="n">return_index</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">return_inverse</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">unilinv</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">unil</span><span class="p">)),</span> <span class="n">unil</span></div>
+
+<div class="viewcode-block" id="groupsstats_1d"><a class="viewcode-back" href="../../../../generated/statsmodels.sandbox.regression.try_catdata.groupsstats_1d.html#statsmodels.sandbox.regression.try_catdata.groupsstats_1d">[docs]</a><span class="k">def</span> <span class="nf">groupsstats_1d</span><span class="p">(</span><span class="n">y</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">labelsunique</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;use ndimage to get fast mean and variance&#39;&#39;&#39;</span>
+    <span class="n">labelmeans</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">ndimage</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">labels</span><span class="o">=</span><span class="n">y</span><span class="p">,</span> <span class="n">index</span><span class="o">=</span><span class="n">labelsunique</span><span class="p">))</span>
+    <span class="n">labelvars</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">ndimage</span><span class="o">.</span><span class="n">var</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">labels</span><span class="o">=</span><span class="n">y</span><span class="p">,</span> <span class="n">index</span><span class="o">=</span><span class="n">labelsunique</span><span class="p">))</span>
+    <span class="k">return</span> <span class="n">labelmeans</span><span class="p">,</span> <span class="n">labelvars</span></div>
+
+<div class="viewcode-block" id="cat2dummy"><a class="viewcode-back" href="../../../../generated/statsmodels.sandbox.regression.try_catdata.cat2dummy.html#statsmodels.sandbox.regression.try_catdata.cat2dummy">[docs]</a><span class="k">def</span> <span class="nf">cat2dummy</span><span class="p">(</span><span class="n">y</span><span class="p">,</span> <span class="n">nonseq</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">nonseq</span> <span class="ow">or</span> <span class="p">(</span><span class="n">y</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">2</span> <span class="ow">and</span> <span class="n">y</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">):</span>
+        <span class="n">ycat</span><span class="p">,</span> <span class="n">uniques</span><span class="p">,</span> <span class="n">unitransl</span> <span class="o">=</span>  <span class="n">convertlabels</span><span class="p">(</span><span class="n">y</span><span class="p">,</span> <span class="n">lrange</span><span class="p">(</span><span class="n">y</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]))</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">ycat</span> <span class="o">=</span> <span class="n">y</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        <span class="n">ymin</span> <span class="o">=</span> <span class="n">y</span><span class="o">.</span><span class="n">min</span><span class="p">()</span>
+        <span class="n">uniques</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">ymin</span><span class="p">,</span><span class="n">y</span><span class="o">.</span><span class="n">max</span><span class="p">()</span><span class="o">+</span><span class="mi">1</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">ycat</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="n">ycat</span> <span class="o">=</span> <span class="n">ycat</span><span class="p">[:,</span><span class="n">np</span><span class="o">.</span><span class="n">newaxis</span><span class="p">]</span>
+    <span class="c1"># this builds matrix nobs*ncat</span>
+    <span class="n">dummy</span> <span class="o">=</span> <span class="p">(</span><span class="n">ycat</span> <span class="o">==</span> <span class="n">uniques</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">int</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">dummy</span></div>
+
+<div class="viewcode-block" id="groupsstats_dummy"><a class="viewcode-back" href="../../../../generated/statsmodels.sandbox.regression.try_catdata.groupsstats_dummy.html#statsmodels.sandbox.regression.try_catdata.groupsstats_dummy">[docs]</a><span class="k">def</span> <span class="nf">groupsstats_dummy</span><span class="p">(</span><span class="n">y</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">nonseq</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">x</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="c1"># use groupsstats_1d</span>
+        <span class="n">x</span> <span class="o">=</span> <span class="n">x</span><span class="p">[:,</span><span class="n">np</span><span class="o">.</span><span class="n">newaxis</span><span class="p">]</span>
+    <span class="n">dummy</span> <span class="o">=</span> <span class="n">cat2dummy</span><span class="p">(</span><span class="n">y</span><span class="p">,</span> <span class="n">nonseq</span><span class="o">=</span><span class="n">nonseq</span><span class="p">)</span>
+    <span class="n">countgr</span> <span class="o">=</span> <span class="n">dummy</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+    <span class="n">meangr</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">x</span><span class="o">.</span><span class="n">T</span><span class="p">,</span><span class="n">dummy</span><span class="p">)</span><span class="o">/</span><span class="n">countgr</span>
+    <span class="n">meandata</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">dummy</span><span class="p">,</span><span class="n">meangr</span><span class="o">.</span><span class="n">T</span><span class="p">)</span> <span class="c1"># category/group means as array in shape of x</span>
+    <span class="n">xdevmeangr</span> <span class="o">=</span> <span class="n">x</span> <span class="o">-</span> <span class="n">meandata</span>  <span class="c1"># deviation from category/group mean</span>
+    <span class="n">vargr</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">((</span><span class="n">xdevmeangr</span> <span class="o">*</span> <span class="n">xdevmeangr</span><span class="p">)</span><span class="o">.</span><span class="n">T</span><span class="p">,</span> <span class="n">dummy</span><span class="p">)</span> <span class="o">/</span> <span class="n">countgr</span>
+    <span class="k">return</span> <span class="n">meangr</span><span class="p">,</span> <span class="n">vargr</span><span class="p">,</span> <span class="n">xdevmeangr</span><span class="p">,</span> <span class="n">countgr</span></div>
+</pre></div>
+
+
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../../../../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" />
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer" role="contentinfo">
+        &#169; Copyright 2009-2018, Josef Perktold, Skipper Seabold, Jonathan Taylor, statsmodels-developers.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 2.1.2.
+    </div>
+  </body>
+</html>

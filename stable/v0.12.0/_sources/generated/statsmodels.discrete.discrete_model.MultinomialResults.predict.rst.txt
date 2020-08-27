@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.discrete.discrete\_model.MultinomialResults.predict
+===============================================================
+
+.. currentmodule:: statsmodels.discrete.discrete_model
+
+.. automethod:: MultinomialResults.predict

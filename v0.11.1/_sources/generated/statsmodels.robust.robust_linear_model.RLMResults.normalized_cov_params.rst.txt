@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.robust.robust\_linear\_model.RLMResults.normalized\_cov\_params
+===========================================================================
+
+.. currentmodule:: statsmodels.robust.robust_linear_model
+
+.. automethod:: RLMResults.normalized_cov_params

@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.genmod.families.family.Gamma.resid\_dev
+===================================================
+
+.. currentmodule:: statsmodels.genmod.families.family
+
+.. automethod:: Gamma.resid_dev

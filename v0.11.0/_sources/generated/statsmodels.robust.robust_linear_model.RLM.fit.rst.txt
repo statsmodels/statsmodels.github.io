@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.robust.robust\_linear\_model.RLM.fit
+================================================
+
+.. currentmodule:: statsmodels.robust.robust_linear_model
+
+.. automethod:: RLM.fit

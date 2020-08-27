@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.discrete.discrete\_model.Probit.from\_formula
+=========================================================
+
+.. currentmodule:: statsmodels.discrete.discrete_model
+
+.. automethod:: Probit.from_formula

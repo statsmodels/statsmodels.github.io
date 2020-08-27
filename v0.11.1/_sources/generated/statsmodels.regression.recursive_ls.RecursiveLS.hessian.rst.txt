@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.regression.recursive\_ls.RecursiveLS.hessian
+========================================================
+
+.. currentmodule:: statsmodels.regression.recursive_ls
+
+.. automethod:: RecursiveLS.hessian

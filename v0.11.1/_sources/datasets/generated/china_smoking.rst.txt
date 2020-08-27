@@ -1,0 +1,34 @@
+Smoking and lung cancer in eight cities in China.
+=================================================
+
+Description
+-----------
+
+This is a series of 8 2x2 contingency tables showing the co-occurrence
+of lung cancer and smoking in 8 Chinese cities.
+
+
+Notes
+-----
+::
+
+    Number of Observations - 8
+    Number of Variables - 3
+    Variable name definitions::
+
+        city_name - name of the city
+        smoking - yes or no, according to a person's smoking behavior
+        lung_cancer - yes or no, according to a person's lung cancer status
+
+
+Source
+------
+
+Transcribed from Z. Liu, Smoking and Lung Cancer Incidence in China,
+Intern. J. Epidemiol., 21:197-201, (1992).
+
+
+Copyright
+---------
+
+Intern. J. Epidemiol. (1992)

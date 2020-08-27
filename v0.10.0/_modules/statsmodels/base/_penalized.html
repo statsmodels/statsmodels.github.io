@@ -1,0 +1,363 @@
+
+
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta charset="utf-8" />
+    <title>statsmodels.base._penalized &#8212; statsmodels v0.10.0 documentation</title>
+    <link rel="stylesheet" href="../../../_static/nature.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css" />
+    <script type="text/javascript" id="documentation_options" data-url_root="../../../" src="../../../_static/documentation_options.js"></script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <script type="text/javascript" src="../../../_static/language_data.js"></script>
+    <script async="async" type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/latest.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="shortcut icon" href="../../../_static/statsmodels_hybi_favico.ico"/>
+    <link rel="author" title="About these documents" href="../../../about.html" />
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+<link rel="stylesheet" href="../../../_static/examples.css" type="text/css" />
+<link rel="stylesheet" href="../../../_static/facebox.css" type="text/css" />
+<script type="text/javascript" src="../../../_static/scripts.js">
+</script>
+<script type="text/javascript" src="../../../_static/facebox.js">
+</script>
+<script type="text/javascript">
+$.facebox.settings.closeImage = "../../../_static/closelabel.png"
+$.facebox.settings.loadingImage = "../../../_static/loading.gif"
+</script>
+
+<script>
+$(document).ready(function() {
+  $.getJSON("../../../../versions.json", function(versions) {
+    var dropdown = document.createElement("div");
+    dropdown.className = "dropdown";
+    var button = document.createElement("button");
+    button.className = "dropbtn";
+    button.innerHTML = "Other Versions";
+    var content = document.createElement("div");
+    content.className = "dropdown-content";
+    dropdown.appendChild(button);
+    dropdown.appendChild(content);
+    $(".header").prepend(dropdown);
+    for (var i = 0; i < versions.length; i++) {
+      if (versions[i].substring(0, 1) == "v") {
+        versions[i] = [versions[i], versions[i].substring(1)];
+      } else {
+        versions[i] = [versions[i], versions[i]];
+      };
+    };
+    for (var i = 0; i < versions.length; i++) {
+      var a = document.createElement("a");
+      a.innerHTML = versions[i][1];
+      a.href = "../../../../" + versions[i][0] + "/index.html";
+      a.title = versions[i][1];
+      $(".dropdown-content").append(a);
+    };
+  });
+});
+</script>
+
+
+  </head><body>
+<div class="headerwrap">
+    <div class = "header">
+        
+        <a href = "../../../index.html">
+<img src="../../../_static/statsmodels_hybi_banner.png" alt="Logo"
+    style="padding-left: 15px"/></a>
+        
+    </div>
+</div>
+
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+<li><a href ="../../../install.html">Install</a></li> &nbsp;|&nbsp;
+<li><a href="https://groups.google.com/forum/?hl=en#!forum/pystatsmodels">Support</a></li> &nbsp;|&nbsp;
+<li><a href="https://github.com/statsmodels/statsmodels/issues">Bugs</a></li> &nbsp;|&nbsp;
+<li><a href="../../../dev/index.html">Develop</a></li> &nbsp;|&nbsp;
+<li><a href="../../../examples/index.html">Examples</a></li> &nbsp;|&nbsp;
+<li><a href="../../../faq.html">FAQ</a></li> &nbsp;|&nbsp;
+
+          <li class="nav-item nav-item-1"><a href="../../index.html" accesskey="U">Module code</a> |</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+
+
+
+
+  <h1>Source code for statsmodels.base._penalized</h1><div class="highlight"><pre>
+<span></span><span class="c1"># -*- coding: utf-8 -*-</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Created on Sun May 10 08:23:48 2015</span>
+
+<span class="sd">Author: Josef Perktold</span>
+<span class="sd">License: BSD-3</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+<span class="kn">from</span> <span class="nn">._penalties</span> <span class="k">import</span> <span class="n">NonePenalty</span>
+<span class="kn">from</span> <span class="nn">statsmodels.tools.numdiff</span> <span class="k">import</span> <span class="n">approx_fprime_cs</span><span class="p">,</span> <span class="n">approx_fprime</span>
+
+
+<span class="k">class</span> <span class="nc">PenalizedMixin</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Mixin class for Maximum Penalized Likelihood</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    args and kwds for the model super class</span>
+<span class="sd">    penal : None or instance of Penalized function class</span>
+<span class="sd">        If penal is None, then NonePenalty is used.</span>
+<span class="sd">    pen_weight : float or None</span>
+<span class="sd">        factor for weighting the penalization term.</span>
+<span class="sd">        If None, then pen_weight is set to nobs.</span>
+
+
+<span class="sd">    TODO: missing **kwds or explicit keywords</span>
+
+<span class="sd">    TODO: do we adjust the inherited docstrings?</span>
+<span class="sd">    We would need templating to add the penalization parameters</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwds</span><span class="p">):</span>
+
+        <span class="c1"># pop extra kwds before calling super</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">penal</span> <span class="o">=</span> <span class="n">kwds</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s1">&#39;penal&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">pen_weight</span> <span class="o">=</span>  <span class="n">kwds</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s1">&#39;pen_weight&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+
+        <span class="nb">super</span><span class="p">(</span><span class="n">PenalizedMixin</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwds</span><span class="p">)</span>
+
+        <span class="c1"># TODO: define pen_weight as average pen_weight? i.e. per observation</span>
+        <span class="c1"># I would have prefered len(self.endog) * kwds.get(&#39;pen_weight&#39;, 1)</span>
+        <span class="c1"># or use pen_weight_factor in signature</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">pen_weight</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">pen_weight</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">endog</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">penal</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="c1"># unpenalized by default</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">penal</span> <span class="o">=</span> <span class="n">NonePenalty</span><span class="p">()</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">pen_weight</span> <span class="o">=</span> <span class="mi">0</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_init_keys</span><span class="o">.</span><span class="n">extend</span><span class="p">([</span><span class="s1">&#39;penal&#39;</span><span class="p">,</span> <span class="s1">&#39;pen_weight&#39;</span><span class="p">])</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_null_drop_keys</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s1">&#39;_null_drop_keys&#39;</span><span class="p">,</span> <span class="p">[])</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_null_drop_keys</span><span class="o">.</span><span class="n">extend</span><span class="p">([</span><span class="s1">&#39;penal&#39;</span><span class="p">])</span>
+
+    <span class="k">def</span> <span class="nf">_handle_scale</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">scale</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwds</span><span class="p">):</span>
+
+        <span class="k">if</span> <span class="n">scale</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="c1"># special handling for GLM</span>
+            <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s1">&#39;scaletype&#39;</span><span class="p">):</span>
+                <span class="n">mu</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">predict</span><span class="p">(</span><span class="n">params</span><span class="p">)</span>
+                <span class="n">scale</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">estimate_scale</span><span class="p">(</span><span class="n">mu</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">scale</span> <span class="o">=</span> <span class="mi">1</span>
+
+        <span class="k">return</span> <span class="n">scale</span>
+
+    <span class="k">def</span> <span class="nf">loglike</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">pen_weight</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwds</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Log-likelihodo of model at params</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">pen_weight</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">pen_weight</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">pen_weight</span>
+
+        <span class="n">llf</span> <span class="o">=</span> <span class="nb">super</span><span class="p">(</span><span class="n">PenalizedMixin</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">loglike</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="o">**</span><span class="n">kwds</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">pen_weight</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">scale</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_handle_scale</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="o">**</span><span class="n">kwds</span><span class="p">)</span>
+            <span class="n">llf</span> <span class="o">-=</span> <span class="mi">1</span><span class="o">/</span><span class="n">scale</span> <span class="o">*</span> <span class="n">pen_weight</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">penal</span><span class="o">.</span><span class="n">func</span><span class="p">(</span><span class="n">params</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">llf</span>
+
+    <span class="k">def</span> <span class="nf">loglikeobs</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">pen_weight</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwds</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Log-likelihood of model observations at params</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">pen_weight</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">pen_weight</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">pen_weight</span>
+
+        <span class="n">llf</span> <span class="o">=</span> <span class="nb">super</span><span class="p">(</span><span class="n">PenalizedMixin</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">loglikeobs</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="o">**</span><span class="n">kwds</span><span class="p">)</span>
+        <span class="n">nobs_llf</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">llf</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+
+        <span class="k">if</span> <span class="n">pen_weight</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">scale</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_handle_scale</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="o">**</span><span class="n">kwds</span><span class="p">)</span>
+            <span class="n">llf</span> <span class="o">-=</span> <span class="mi">1</span><span class="o">/</span><span class="n">scale</span> <span class="o">*</span> <span class="n">pen_weight</span> <span class="o">/</span> <span class="n">nobs_llf</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">penal</span><span class="o">.</span><span class="n">func</span><span class="p">(</span><span class="n">params</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">llf</span>
+
+    <span class="k">def</span> <span class="nf">score_numdiff</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">pen_weight</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s1">&#39;fd&#39;</span><span class="p">,</span> <span class="o">**</span><span class="n">kwds</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;score based on finite difference derivative</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">pen_weight</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">pen_weight</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">pen_weight</span>
+
+        <span class="n">loglike</span> <span class="o">=</span> <span class="k">lambda</span> <span class="n">p</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">loglike</span><span class="p">(</span><span class="n">p</span><span class="p">,</span> <span class="n">pen_weight</span><span class="o">=</span><span class="n">pen_weight</span><span class="p">,</span> <span class="o">**</span><span class="n">kwds</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">method</span> <span class="o">==</span> <span class="s1">&#39;cs&#39;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">approx_fprime_cs</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="n">loglike</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">method</span> <span class="o">==</span> <span class="s1">&#39;fd&#39;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">approx_fprime</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="n">loglike</span><span class="p">,</span> <span class="n">centered</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;method not recognized, should be &quot;fd&quot; or &quot;cs&quot;&#39;</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">score</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">pen_weight</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwds</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Gradient of model at params</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">pen_weight</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">pen_weight</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">pen_weight</span>
+
+        <span class="n">sc</span> <span class="o">=</span> <span class="nb">super</span><span class="p">(</span><span class="n">PenalizedMixin</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">score</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="o">**</span><span class="n">kwds</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">pen_weight</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">scale</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_handle_scale</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="o">**</span><span class="n">kwds</span><span class="p">)</span>
+            <span class="n">sc</span> <span class="o">-=</span> <span class="mi">1</span><span class="o">/</span><span class="n">scale</span> <span class="o">*</span> <span class="n">pen_weight</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">penal</span><span class="o">.</span><span class="n">deriv</span><span class="p">(</span><span class="n">params</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">sc</span>
+
+    <span class="k">def</span> <span class="nf">score_obs</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">pen_weight</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwds</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Gradient of model observations at params</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">pen_weight</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">pen_weight</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">pen_weight</span>
+
+        <span class="n">sc</span> <span class="o">=</span> <span class="nb">super</span><span class="p">(</span><span class="n">PenalizedMixin</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">score_obs</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="o">**</span><span class="n">kwds</span><span class="p">)</span>
+        <span class="n">nobs_sc</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">sc</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+        <span class="k">if</span> <span class="n">pen_weight</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">scale</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_handle_scale</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="o">**</span><span class="n">kwds</span><span class="p">)</span>
+            <span class="n">sc</span> <span class="o">-=</span> <span class="mi">1</span><span class="o">/</span><span class="n">scale</span> <span class="o">*</span> <span class="n">pen_weight</span> <span class="o">/</span> <span class="n">nobs_sc</span>  <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">penal</span><span class="o">.</span><span class="n">deriv</span><span class="p">(</span><span class="n">params</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">sc</span>
+
+    <span class="k">def</span> <span class="nf">hessian_numdiff</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">pen_weight</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwds</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;hessian based on finite difference derivative</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">pen_weight</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">pen_weight</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">pen_weight</span>
+        <span class="n">loglike</span> <span class="o">=</span> <span class="k">lambda</span> <span class="n">p</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">loglike</span><span class="p">(</span><span class="n">p</span><span class="p">,</span> <span class="n">pen_weight</span><span class="o">=</span><span class="n">pen_weight</span><span class="p">,</span> <span class="o">**</span><span class="n">kwds</span><span class="p">)</span>
+
+        <span class="kn">from</span> <span class="nn">statsmodels.tools.numdiff</span> <span class="k">import</span> <span class="n">approx_hess</span>
+        <span class="k">return</span> <span class="n">approx_hess</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="n">loglike</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">hessian</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">pen_weight</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwds</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Hessian of model at params</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">pen_weight</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">pen_weight</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">pen_weight</span>
+
+        <span class="n">hess</span> <span class="o">=</span> <span class="nb">super</span><span class="p">(</span><span class="n">PenalizedMixin</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">hessian</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="o">**</span><span class="n">kwds</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">pen_weight</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">scale</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_handle_scale</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="o">**</span><span class="n">kwds</span><span class="p">)</span>
+            <span class="n">h</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">penal</span><span class="o">.</span><span class="n">deriv2</span><span class="p">(</span><span class="n">params</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">h</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="n">hess</span> <span class="o">-=</span> <span class="mi">1</span><span class="o">/</span><span class="n">scale</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">diag</span><span class="p">(</span><span class="n">pen_weight</span> <span class="o">*</span> <span class="n">h</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">hess</span> <span class="o">-=</span> <span class="mi">1</span><span class="o">/</span><span class="n">scale</span> <span class="o">*</span> <span class="n">pen_weight</span> <span class="o">*</span> <span class="n">h</span>
+
+        <span class="k">return</span> <span class="n">hess</span>
+
+    <span class="k">def</span> <span class="nf">fit</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">trim</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwds</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;minimize negative penalized log-likelihood</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        method : None or str</span>
+<span class="sd">            Method specifies the scipy optimizer as in nonlinear MLE models.</span>
+<span class="sd">        trim : Boolean or float</span>
+<span class="sd">            Default is False or None, which uses no trimming.</span>
+<span class="sd">            If trim is True or a float, then small parameters are set to zero.</span>
+<span class="sd">            If True, then a default threshold is used. If trim is a float, then</span>
+<span class="sd">            it will be used as threshold.</span>
+<span class="sd">            The default threshold is currently 1e-4, but it will change in</span>
+<span class="sd">            future and become penalty function dependent.</span>
+<span class="sd">        kwds : extra keyword arguments</span>
+<span class="sd">            This keyword arguments are treated in the same way as in the</span>
+<span class="sd">            fit method of the underlying model class.</span>
+<span class="sd">            Specifically, additional optimizer keywords and cov_type related</span>
+<span class="sd">            keywords can be added.</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># If method is None, then we choose a default method ourselves</span>
+
+        <span class="c1"># TODO: temporary hack, need extra fit kwds</span>
+        <span class="c1"># we need to rule out fit methods in a model that will not work with</span>
+        <span class="c1"># penalization</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s1">&#39;family&#39;</span><span class="p">):</span>  <span class="c1"># assume this identifies GLM</span>
+            <span class="n">kwds</span><span class="o">.</span><span class="n">update</span><span class="p">({</span><span class="s1">&#39;max_start_irls&#39;</span> <span class="p">:</span> <span class="mi">0</span><span class="p">})</span>
+
+        <span class="c1"># currently we use `bfgs` by default</span>
+        <span class="k">if</span> <span class="n">method</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">method</span> <span class="o">=</span> <span class="s1">&#39;bfgs&#39;</span>
+
+        <span class="k">if</span> <span class="n">trim</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">trim</span> <span class="o">=</span> <span class="kc">False</span>
+
+        <span class="n">res</span> <span class="o">=</span> <span class="nb">super</span><span class="p">(</span><span class="n">PenalizedMixin</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">method</span><span class="o">=</span><span class="n">method</span><span class="p">,</span> <span class="o">**</span><span class="n">kwds</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">trim</span> <span class="ow">is</span> <span class="kc">False</span><span class="p">:</span>
+            <span class="c1"># note boolean check for &quot;is False&quot;, not &quot;False_like&quot;</span>
+            <span class="k">return</span> <span class="n">res</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">trim</span> <span class="ow">is</span> <span class="kc">True</span><span class="p">:</span>
+                <span class="n">trim</span> <span class="o">=</span> <span class="mf">1e-4</span>  <span class="c1"># trim threshold</span>
+            <span class="c1"># TODO: make it penal function dependent</span>
+            <span class="c1"># temporary standin, only checked for Poisson and GLM,</span>
+            <span class="c1"># and is computationally inefficient</span>
+            <span class="n">drop_index</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nonzero</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">res</span><span class="o">.</span><span class="n">params</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">trim</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="n">keep_index</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nonzero</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">res</span><span class="o">.</span><span class="n">params</span><span class="p">)</span> <span class="o">&gt;</span> <span class="n">trim</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+
+            <span class="k">if</span> <span class="n">drop_index</span><span class="o">.</span><span class="n">any</span><span class="p">():</span>
+                <span class="c1"># TODO: do we need to add results attributes?</span>
+                <span class="n">res_aux</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_fit_zeros</span><span class="p">(</span><span class="n">keep_index</span><span class="p">,</span> <span class="o">**</span><span class="n">kwds</span><span class="p">)</span>
+                <span class="k">return</span> <span class="n">res_aux</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">res</span>
+</pre></div>
+
+
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../../../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" />
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer" role="contentinfo">
+        &#169; Copyright 2009-2018, Josef Perktold, Skipper Seabold, Jonathan Taylor, statsmodels-developers.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 2.1.2.
+    </div>
+  </body>
+</html>

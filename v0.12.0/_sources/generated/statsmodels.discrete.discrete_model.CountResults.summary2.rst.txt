@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.discrete.discrete\_model.CountResults.summary2
+==========================================================
+
+.. currentmodule:: statsmodels.discrete.discrete_model
+
+.. automethod:: CountResults.summary2

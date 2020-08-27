@@ -1,0 +1,748 @@
+
+
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta charset="utf-8" />
+    <title>statsmodels.base.optimizer &#8212; statsmodels v0.10.1 documentation</title>
+    <link rel="stylesheet" href="../../../_static/nature.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css" />
+    <script type="text/javascript" id="documentation_options" data-url_root="../../../" src="../../../_static/documentation_options.js"></script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <script type="text/javascript" src="../../../_static/language_data.js"></script>
+    <script async="async" type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/latest.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="shortcut icon" href="../../../_static/statsmodels_hybi_favico.ico"/>
+    <link rel="author" title="About these documents" href="../../../about.html" />
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+<link rel="stylesheet" href="../../../_static/examples.css" type="text/css" />
+<link rel="stylesheet" href="../../../_static/facebox.css" type="text/css" />
+<script type="text/javascript" src="../../../_static/scripts.js">
+</script>
+<script type="text/javascript" src="../../../_static/facebox.js">
+</script>
+<script type="text/javascript">
+$.facebox.settings.closeImage = "../../../_static/closelabel.png"
+$.facebox.settings.loadingImage = "../../../_static/loading.gif"
+</script>
+
+<script>
+$(document).ready(function() {
+  $.getJSON("../../../../versions.json", function(versions) {
+    var dropdown = document.createElement("div");
+    dropdown.className = "dropdown";
+    var button = document.createElement("button");
+    button.className = "dropbtn";
+    button.innerHTML = "Other Versions";
+    var content = document.createElement("div");
+    content.className = "dropdown-content";
+    dropdown.appendChild(button);
+    dropdown.appendChild(content);
+    $(".header").prepend(dropdown);
+    for (var i = 0; i < versions.length; i++) {
+      if (versions[i].substring(0, 1) == "v") {
+        versions[i] = [versions[i], versions[i].substring(1)];
+      } else {
+        versions[i] = [versions[i], versions[i]];
+      };
+    };
+    for (var i = 0; i < versions.length; i++) {
+      var a = document.createElement("a");
+      a.innerHTML = versions[i][1];
+      a.href = "../../../../" + versions[i][0] + "/index.html";
+      a.title = versions[i][1];
+      $(".dropdown-content").append(a);
+    };
+  });
+});
+</script>
+
+
+  </head><body>
+<div class="headerwrap">
+    <div class = "header">
+        
+        <a href = "../../../index.html">
+<img src="../../../_static/statsmodels_hybi_banner.png" alt="Logo"
+    style="padding-left: 15px"/></a>
+        
+    </div>
+</div>
+
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+<li><a href ="../../../install.html">Install</a></li> &nbsp;|&nbsp;
+<li><a href="https://groups.google.com/forum/?hl=en#!forum/pystatsmodels">Support</a></li> &nbsp;|&nbsp;
+<li><a href="https://github.com/statsmodels/statsmodels/issues">Bugs</a></li> &nbsp;|&nbsp;
+<li><a href="../../../dev/index.html">Develop</a></li> &nbsp;|&nbsp;
+<li><a href="../../../examples/index.html">Examples</a></li> &nbsp;|&nbsp;
+<li><a href="../../../faq.html">FAQ</a></li> &nbsp;|&nbsp;
+
+          <li class="nav-item nav-item-1"><a href="../../index.html" accesskey="U">Module code</a> |</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+
+
+
+
+  <h1>Source code for statsmodels.base.optimizer</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Functions that are general enough to use for any model fitting. The idea is</span>
+<span class="sd">to untie these from LikelihoodModel so that they may be re-used generally.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="kn">from</span> <span class="nn">__future__</span> <span class="k">import</span> <span class="n">print_function</span>
+
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+<span class="kn">from</span> <span class="nn">scipy</span> <span class="k">import</span> <span class="n">optimize</span>
+
+
+<span class="k">def</span> <span class="nf">_check_method</span><span class="p">(</span><span class="n">method</span><span class="p">,</span> <span class="n">methods</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">method</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">methods</span><span class="p">:</span>
+        <span class="n">message</span> <span class="o">=</span> <span class="s2">&quot;Unknown fit method </span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">method</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">message</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="Optimizer"><a class="viewcode-back" href="../../../generated/statsmodels.base.optimizer.Optimizer.html#statsmodels.base.optimizer.Optimizer">[docs]</a><span class="k">class</span> <span class="nc">Optimizer</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">_fit</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">objective</span><span class="p">,</span> <span class="n">gradient</span><span class="p">,</span> <span class="n">start_params</span><span class="p">,</span> <span class="n">fargs</span><span class="p">,</span> <span class="n">kwargs</span><span class="p">,</span>
+             <span class="n">hessian</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s1">&#39;newton&#39;</span><span class="p">,</span> <span class="n">maxiter</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="n">full_output</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+             <span class="n">disp</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">callback</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">retall</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Fit function for any model with an objective function.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        start_params : array-like, optional</span>
+<span class="sd">            Initial guess of the solution for the loglikelihood maximization.</span>
+<span class="sd">            The default is an array of zeros.</span>
+<span class="sd">        method : str {&#39;newton&#39;,&#39;nm&#39;,&#39;bfgs&#39;,&#39;powell&#39;,&#39;cg&#39;,&#39;ncg&#39;,&#39;basinhopping&#39;,</span>
+<span class="sd">            &#39;minimize&#39;}</span>
+<span class="sd">            Method can be &#39;newton&#39; for Newton-Raphson, &#39;nm&#39; for Nelder-Mead,</span>
+<span class="sd">            &#39;bfgs&#39; for Broyden-Fletcher-Goldfarb-Shanno, &#39;powell&#39; for modified</span>
+<span class="sd">            Powell&#39;s method, &#39;cg&#39; for conjugate gradient, &#39;ncg&#39; for Newton-</span>
+<span class="sd">            conjugate gradient, &#39;basinhopping&#39; for global basin-hopping</span>
+<span class="sd">            solver, if available or a generic &#39;minimize&#39; which is a wrapper for</span>
+<span class="sd">            scipy.optimize.minimize. `method` determines which solver from</span>
+<span class="sd">            scipy.optimize is used. The explicit arguments in `fit` are passed</span>
+<span class="sd">            to the solver, with the exception of the basin-hopping solver. Each</span>
+<span class="sd">            solver has several optional arguments that are not the same across</span>
+<span class="sd">            solvers. See the notes section below (or scipy.optimize) for the</span>
+<span class="sd">            available arguments and for the list of explicit arguments that the</span>
+<span class="sd">            basin-hopping solver supports..</span>
+<span class="sd">        maxiter : int</span>
+<span class="sd">            The maximum number of iterations to perform.</span>
+<span class="sd">        full_output : bool</span>
+<span class="sd">            Set to True to have all available output in the Results object&#39;s</span>
+<span class="sd">            mle_retvals attribute. The output is dependent on the solver.</span>
+<span class="sd">            See LikelihoodModelResults notes section for more information.</span>
+<span class="sd">        disp : bool</span>
+<span class="sd">            Set to True to print convergence messages.</span>
+<span class="sd">        fargs : tuple</span>
+<span class="sd">            Extra arguments passed to the likelihood function, i.e.,</span>
+<span class="sd">            loglike(x,*args)</span>
+<span class="sd">        callback : callable callback(xk)</span>
+<span class="sd">            Called after each iteration, as callback(xk), where xk is the</span>
+<span class="sd">            current parameter vector.</span>
+<span class="sd">        retall : bool</span>
+<span class="sd">            Set to True to return list of solutions at each iteration.</span>
+<span class="sd">            Available in Results object&#39;s mle_retvals attribute.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        xopt : array</span>
+<span class="sd">            The solution to the objective function</span>
+<span class="sd">        retvals : dict, None</span>
+<span class="sd">            If `full_output` is True then this is a dictionary which holds</span>
+<span class="sd">            information returned from the solver used. If it is False, this is</span>
+<span class="sd">            None.</span>
+<span class="sd">        optim_settings : dict</span>
+<span class="sd">            A dictionary that contains the parameters passed to the solver.</span>
+
+<span class="sd">        Notes</span>
+<span class="sd">        -----</span>
+<span class="sd">        The &#39;basinhopping&#39; solver ignores `maxiter`, `retall`, `full_output`</span>
+<span class="sd">        explicit arguments.</span>
+
+<span class="sd">        Optional arguments for the solvers (available in Results.mle_settings)::</span>
+
+<span class="sd">            &#39;newton&#39;</span>
+<span class="sd">                tol : float</span>
+<span class="sd">                    Relative error in params acceptable for convergence.</span>
+<span class="sd">            &#39;nm&#39; -- Nelder Mead</span>
+<span class="sd">                xtol : float</span>
+<span class="sd">                    Relative error in params acceptable for convergence</span>
+<span class="sd">                ftol : float</span>
+<span class="sd">                    Relative error in loglike(params) acceptable for</span>
+<span class="sd">                    convergence</span>
+<span class="sd">                maxfun : int</span>
+<span class="sd">                    Maximum number of function evaluations to make.</span>
+<span class="sd">            &#39;bfgs&#39;</span>
+<span class="sd">                gtol : float</span>
+<span class="sd">                    Stop when norm of gradient is less than gtol.</span>
+<span class="sd">                norm : float</span>
+<span class="sd">                    Order of norm (np.Inf is max, -np.Inf is min)</span>
+<span class="sd">                epsilon</span>
+<span class="sd">                    If fprime is approximated, use this value for the step</span>
+<span class="sd">                    size. Only relevant if LikelihoodModel.score is None.</span>
+<span class="sd">            &#39;lbfgs&#39;</span>
+<span class="sd">                m : int</span>
+<span class="sd">                    The maximum number of variable metric corrections used to</span>
+<span class="sd">                    define the limited memory matrix. (The limited memory BFGS</span>
+<span class="sd">                    method does not store the full hessian but uses this many</span>
+<span class="sd">                    terms in an approximation to it.)</span>
+<span class="sd">                pgtol : float</span>
+<span class="sd">                    The iteration will stop when</span>
+<span class="sd">                    ``max{|proj g_i | i = 1, ..., n} &lt;= pgtol`` where pg_i is</span>
+<span class="sd">                    the i-th component of the projected gradient.</span>
+<span class="sd">                factr : float</span>
+<span class="sd">                    The iteration stops when</span>
+<span class="sd">                    ``(f^k - f^{k+1})/max{|f^k|,|f^{k+1}|,1} &lt;= factr * eps``,</span>
+<span class="sd">                    where eps is the machine precision, which is automatically</span>
+<span class="sd">                    generated by the code. Typical values for factr are: 1e12</span>
+<span class="sd">                    for low accuracy; 1e7 for moderate accuracy; 10.0 for</span>
+<span class="sd">                    extremely high accuracy. See Notes for relationship to</span>
+<span class="sd">                    ftol, which is exposed (instead of factr) by the</span>
+<span class="sd">                    scipy.optimize.minimize interface to L-BFGS-B.</span>
+<span class="sd">                maxfun : int</span>
+<span class="sd">                    Maximum number of iterations.</span>
+<span class="sd">                epsilon : float</span>
+<span class="sd">                    Step size used when approx_grad is True, for numerically</span>
+<span class="sd">                    calculating the gradient</span>
+<span class="sd">                approx_grad : bool</span>
+<span class="sd">                    Whether to approximate the gradient numerically (in which</span>
+<span class="sd">                    case func returns only the function value).</span>
+<span class="sd">            &#39;cg&#39;</span>
+<span class="sd">                gtol : float</span>
+<span class="sd">                    Stop when norm of gradient is less than gtol.</span>
+<span class="sd">                norm : float</span>
+<span class="sd">                    Order of norm (np.Inf is max, -np.Inf is min)</span>
+<span class="sd">                epsilon : float</span>
+<span class="sd">                    If fprime is approximated, use this value for the step</span>
+<span class="sd">                    size. Can be scalar or vector.  Only relevant if</span>
+<span class="sd">                    Likelihoodmodel.score is None.</span>
+<span class="sd">            &#39;ncg&#39;</span>
+<span class="sd">                fhess_p : callable f&#39;(x,*args)</span>
+<span class="sd">                    Function which computes the Hessian of f times an arbitrary</span>
+<span class="sd">                    vector, p.  Should only be supplied if</span>
+<span class="sd">                    LikelihoodModel.hessian is None.</span>
+<span class="sd">                avextol : float</span>
+<span class="sd">                    Stop when the average relative error in the minimizer</span>
+<span class="sd">                    falls below this amount.</span>
+<span class="sd">                epsilon : float or ndarray</span>
+<span class="sd">                    If fhess is approximated, use this value for the step size.</span>
+<span class="sd">                    Only relevant if Likelihoodmodel.hessian is None.</span>
+<span class="sd">            &#39;powell&#39;</span>
+<span class="sd">                xtol : float</span>
+<span class="sd">                    Line-search error tolerance</span>
+<span class="sd">                ftol : float</span>
+<span class="sd">                    Relative error in loglike(params) for acceptable for</span>
+<span class="sd">                    convergence.</span>
+<span class="sd">                maxfun : int</span>
+<span class="sd">                    Maximum number of function evaluations to make.</span>
+<span class="sd">                start_direc : ndarray</span>
+<span class="sd">                    Initial direction set.</span>
+<span class="sd">            &#39;basinhopping&#39;</span>
+<span class="sd">                niter : integer</span>
+<span class="sd">                    The number of basin hopping iterations.</span>
+<span class="sd">                niter_success : integer</span>
+<span class="sd">                    Stop the run if the global minimum candidate remains the</span>
+<span class="sd">                    same for this number of iterations.</span>
+<span class="sd">                T : float</span>
+<span class="sd">                    The &quot;temperature&quot; parameter for the accept or reject</span>
+<span class="sd">                    criterion. Higher &quot;temperatures&quot; mean that larger jumps</span>
+<span class="sd">                    in function value will be accepted. For best results</span>
+<span class="sd">                    `T` should be comparable to the separation (in function</span>
+<span class="sd">                    value) between local minima.</span>
+<span class="sd">                stepsize : float</span>
+<span class="sd">                    Initial step size for use in the random displacement.</span>
+<span class="sd">                interval : integer</span>
+<span class="sd">                    The interval for how often to update the `stepsize`.</span>
+<span class="sd">                minimizer : dict</span>
+<span class="sd">                    Extra keyword arguments to be passed to the minimizer</span>
+<span class="sd">                    `scipy.optimize.minimize()`, for example &#39;method&#39; - the</span>
+<span class="sd">                    minimization method (e.g. &#39;L-BFGS-B&#39;), or &#39;tol&#39; - the</span>
+<span class="sd">                    tolerance for termination. Other arguments are mapped from</span>
+<span class="sd">                    explicit argument of `fit`:</span>
+<span class="sd">                    - `args` &lt;- `fargs`</span>
+<span class="sd">                    - `jac` &lt;- `score`</span>
+<span class="sd">                    - `hess` &lt;- `hess`</span>
+<span class="sd">            &#39;minimize&#39;</span>
+<span class="sd">                min_method : str, optional</span>
+<span class="sd">                    Name of minimization method to use.</span>
+<span class="sd">                    Any method specific arguments can be passed directly.</span>
+<span class="sd">                    For a list of methods and their arguments, see</span>
+<span class="sd">                    documentation of `scipy.optimize.minimize`.</span>
+<span class="sd">                    If no method is specified, then BFGS is used.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1">#TODO: generalize the regularization stuff</span>
+        <span class="c1"># Extract kwargs specific to fit_regularized calling fit</span>
+        <span class="n">extra_fit_funcs</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s1">&#39;extra_fit_funcs&#39;</span><span class="p">,</span> <span class="nb">dict</span><span class="p">())</span>
+
+        <span class="n">methods</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;newton&#39;</span><span class="p">,</span> <span class="s1">&#39;nm&#39;</span><span class="p">,</span> <span class="s1">&#39;bfgs&#39;</span><span class="p">,</span> <span class="s1">&#39;lbfgs&#39;</span><span class="p">,</span> <span class="s1">&#39;powell&#39;</span><span class="p">,</span> <span class="s1">&#39;cg&#39;</span><span class="p">,</span> <span class="s1">&#39;ncg&#39;</span><span class="p">,</span>
+                <span class="s1">&#39;basinhopping&#39;</span><span class="p">,</span> <span class="s1">&#39;minimize&#39;</span><span class="p">]</span>
+        <span class="n">methods</span> <span class="o">+=</span> <span class="n">extra_fit_funcs</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span>
+        <span class="n">method</span> <span class="o">=</span> <span class="n">method</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+        <span class="n">_check_method</span><span class="p">(</span><span class="n">method</span><span class="p">,</span> <span class="n">methods</span><span class="p">)</span>
+
+        <span class="n">fit_funcs</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s1">&#39;newton&#39;</span><span class="p">:</span> <span class="n">_fit_newton</span><span class="p">,</span>
+            <span class="s1">&#39;nm&#39;</span><span class="p">:</span> <span class="n">_fit_nm</span><span class="p">,</span>  <span class="c1"># Nelder-Mead</span>
+            <span class="s1">&#39;bfgs&#39;</span><span class="p">:</span> <span class="n">_fit_bfgs</span><span class="p">,</span>
+            <span class="s1">&#39;lbfgs&#39;</span><span class="p">:</span> <span class="n">_fit_lbfgs</span><span class="p">,</span>
+            <span class="s1">&#39;cg&#39;</span><span class="p">:</span> <span class="n">_fit_cg</span><span class="p">,</span>
+            <span class="s1">&#39;ncg&#39;</span><span class="p">:</span> <span class="n">_fit_ncg</span><span class="p">,</span>
+            <span class="s1">&#39;powell&#39;</span><span class="p">:</span> <span class="n">_fit_powell</span><span class="p">,</span>
+            <span class="s1">&#39;basinhopping&#39;</span><span class="p">:</span> <span class="n">_fit_basinhopping</span><span class="p">,</span>
+            <span class="s1">&#39;minimize&#39;</span><span class="p">:</span> <span class="n">_fit_minimize</span> <span class="c1"># wrapper for scipy.optimize.minimize</span>
+        <span class="p">}</span>
+
+        <span class="c1">#NOTE: fit_regularized checks the methods for these but it should be</span>
+        <span class="c1">#      moved up probably</span>
+        <span class="k">if</span> <span class="n">extra_fit_funcs</span><span class="p">:</span>
+            <span class="n">fit_funcs</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">extra_fit_funcs</span><span class="p">)</span>
+
+        <span class="n">func</span> <span class="o">=</span> <span class="n">fit_funcs</span><span class="p">[</span><span class="n">method</span><span class="p">]</span>
+        <span class="n">xopt</span><span class="p">,</span> <span class="n">retvals</span> <span class="o">=</span> <span class="n">func</span><span class="p">(</span><span class="n">objective</span><span class="p">,</span> <span class="n">gradient</span><span class="p">,</span> <span class="n">start_params</span><span class="p">,</span> <span class="n">fargs</span><span class="p">,</span> <span class="n">kwargs</span><span class="p">,</span>
+                            <span class="n">disp</span><span class="o">=</span><span class="n">disp</span><span class="p">,</span> <span class="n">maxiter</span><span class="o">=</span><span class="n">maxiter</span><span class="p">,</span> <span class="n">callback</span><span class="o">=</span><span class="n">callback</span><span class="p">,</span>
+                            <span class="n">retall</span><span class="o">=</span><span class="n">retall</span><span class="p">,</span> <span class="n">full_output</span><span class="o">=</span><span class="n">full_output</span><span class="p">,</span>
+                            <span class="n">hess</span><span class="o">=</span><span class="n">hessian</span><span class="p">)</span>
+
+        <span class="n">optim_settings</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;optimizer&#39;</span><span class="p">:</span> <span class="n">method</span><span class="p">,</span> <span class="s1">&#39;start_params&#39;</span><span class="p">:</span> <span class="n">start_params</span><span class="p">,</span>
+                        <span class="s1">&#39;maxiter&#39;</span><span class="p">:</span> <span class="n">maxiter</span><span class="p">,</span> <span class="s1">&#39;full_output&#39;</span><span class="p">:</span> <span class="n">full_output</span><span class="p">,</span>
+                        <span class="s1">&#39;disp&#39;</span><span class="p">:</span> <span class="n">disp</span><span class="p">,</span> <span class="s1">&#39;fargs&#39;</span><span class="p">:</span> <span class="n">fargs</span><span class="p">,</span> <span class="s1">&#39;callback&#39;</span><span class="p">:</span> <span class="n">callback</span><span class="p">,</span>
+                        <span class="s1">&#39;retall&#39;</span><span class="p">:</span> <span class="n">retall</span><span class="p">}</span>
+        <span class="n">optim_settings</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="c1"># set as attributes or return?</span>
+        <span class="k">return</span> <span class="n">xopt</span><span class="p">,</span> <span class="n">retvals</span><span class="p">,</span> <span class="n">optim_settings</span>
+
+    <span class="k">def</span> <span class="nf">_fit_constrained</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        TODO: how to add constraints?</span>
+
+<span class="sd">        Something like</span>
+<span class="sd">        sm.add_constraint(Model, func)</span>
+
+<span class="sd">        or</span>
+
+<span class="sd">        model_instance.add_constraint(func)</span>
+<span class="sd">        model_instance.add_constraint(&quot;x1 + x2 = 2&quot;)</span>
+<span class="sd">        result = model_instance.fit()</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span>
+
+    <span class="k">def</span> <span class="nf">_fit_regularized</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">):</span>
+        <span class="c1"># TODO: code won&#39;t necessarily be general here. 3 options.</span>
+        <span class="c1"># 1) setup for scipy.optimize.fmin_sqlsqp</span>
+        <span class="c1"># 2) setup for cvxopt</span>
+        <span class="c1"># 3) setup for openopt</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span></div>
+
+
+<span class="c1">########################################</span>
+<span class="c1"># Helper functions to fit</span>
+
+
+<span class="k">def</span> <span class="nf">_fit_minimize</span><span class="p">(</span><span class="n">f</span><span class="p">,</span> <span class="n">score</span><span class="p">,</span> <span class="n">start_params</span><span class="p">,</span> <span class="n">fargs</span><span class="p">,</span> <span class="n">kwargs</span><span class="p">,</span> <span class="n">disp</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+                        <span class="n">maxiter</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="n">callback</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">retall</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+                        <span class="n">full_output</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">hess</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="n">kwargs</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s1">&#39;min_method&#39;</span><span class="p">,</span> <span class="s1">&#39;BFGS&#39;</span><span class="p">)</span>
+
+    <span class="c1"># prepare options dict for minimize</span>
+    <span class="n">filter_opts</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;extra_fit_funcs&#39;</span><span class="p">,</span> <span class="s1">&#39;niter&#39;</span><span class="p">,</span> <span class="s1">&#39;min_method&#39;</span><span class="p">,</span> <span class="s1">&#39;tol&#39;</span><span class="p">]</span>
+    <span class="n">options</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">((</span><span class="n">k</span><span class="p">,</span><span class="n">v</span><span class="p">)</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span><span class="n">v</span> <span class="ow">in</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">k</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">filter_opts</span><span class="p">)</span>
+    <span class="n">options</span><span class="p">[</span><span class="s1">&#39;disp&#39;</span><span class="p">]</span>    <span class="o">=</span> <span class="n">disp</span>
+    <span class="n">options</span><span class="p">[</span><span class="s1">&#39;maxiter&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">maxiter</span>
+
+    <span class="c1"># Use Hessian/Jacobian only if they&#39;re required by the method</span>
+    <span class="n">no_hess</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;Nelder-Mead&#39;</span><span class="p">,</span> <span class="s1">&#39;Powell&#39;</span><span class="p">,</span> <span class="s1">&#39;CG&#39;</span><span class="p">,</span> <span class="s1">&#39;BFGS&#39;</span><span class="p">,</span> <span class="s1">&#39;COBYLA&#39;</span><span class="p">,</span> <span class="s1">&#39;SLSQP&#39;</span><span class="p">]</span>
+    <span class="n">no_jac</span>  <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;Nelder-Mead&#39;</span><span class="p">,</span> <span class="s1">&#39;Powell&#39;</span><span class="p">,</span> <span class="s1">&#39;COBYLA&#39;</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">kwargs</span><span class="p">[</span><span class="s1">&#39;min_method&#39;</span><span class="p">]</span> <span class="ow">in</span> <span class="n">no_hess</span><span class="p">:</span> <span class="n">hess</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="k">if</span> <span class="n">kwargs</span><span class="p">[</span><span class="s1">&#39;min_method&#39;</span><span class="p">]</span> <span class="ow">in</span> <span class="n">no_jac</span><span class="p">:</span> <span class="n">score</span> <span class="o">=</span> <span class="kc">None</span>
+
+    <span class="n">res</span> <span class="o">=</span> <span class="n">optimize</span><span class="o">.</span><span class="n">minimize</span><span class="p">(</span><span class="n">f</span><span class="p">,</span> <span class="n">start_params</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="n">fargs</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="n">kwargs</span><span class="p">[</span><span class="s1">&#39;min_method&#39;</span><span class="p">],</span>
+                            <span class="n">jac</span><span class="o">=</span><span class="n">score</span><span class="p">,</span> <span class="n">hess</span><span class="o">=</span><span class="n">hess</span><span class="p">,</span> <span class="n">callback</span><span class="o">=</span><span class="n">callback</span><span class="p">,</span> <span class="n">options</span><span class="o">=</span><span class="n">options</span><span class="p">)</span>
+
+    <span class="n">xopt</span>    <span class="o">=</span> <span class="n">res</span><span class="o">.</span><span class="n">x</span>
+    <span class="n">retvals</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="k">if</span> <span class="n">full_output</span><span class="p">:</span>
+        <span class="n">nit</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">res</span><span class="p">,</span> <span class="s1">&#39;nit&#39;</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span><span class="p">)</span> <span class="c1"># scipy 0.14 compat</span>
+        <span class="n">retvals</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;fopt&#39;</span><span class="p">:</span> <span class="n">res</span><span class="o">.</span><span class="n">fun</span><span class="p">,</span> <span class="s1">&#39;iterations&#39;</span><span class="p">:</span> <span class="n">nit</span><span class="p">,</span>
+                   <span class="s1">&#39;fcalls&#39;</span><span class="p">:</span> <span class="n">res</span><span class="o">.</span><span class="n">nfev</span><span class="p">,</span> <span class="s1">&#39;warnflag&#39;</span><span class="p">:</span> <span class="n">res</span><span class="o">.</span><span class="n">status</span><span class="p">,</span>
+                   <span class="s1">&#39;converged&#39;</span><span class="p">:</span> <span class="n">res</span><span class="o">.</span><span class="n">success</span><span class="p">}</span>
+        <span class="k">if</span> <span class="n">retall</span><span class="p">:</span>
+            <span class="n">retvals</span><span class="o">.</span><span class="n">update</span><span class="p">({</span><span class="s1">&#39;allvecs&#39;</span><span class="p">:</span> <span class="n">res</span><span class="o">.</span><span class="n">values</span><span class="p">()})</span>
+
+    <span class="k">return</span> <span class="n">xopt</span><span class="p">,</span> <span class="n">retvals</span>
+
+
+<div class="viewcode-block" id="_fit_newton"><a class="viewcode-back" href="../../../generated/statsmodels.base.optimizer._fit_newton.html#statsmodels.base.optimizer._fit_newton">[docs]</a><span class="k">def</span> <span class="nf">_fit_newton</span><span class="p">(</span><span class="n">f</span><span class="p">,</span> <span class="n">score</span><span class="p">,</span> <span class="n">start_params</span><span class="p">,</span> <span class="n">fargs</span><span class="p">,</span> <span class="n">kwargs</span><span class="p">,</span> <span class="n">disp</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+                    <span class="n">maxiter</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="n">callback</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">retall</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+                    <span class="n">full_output</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">hess</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">ridge_factor</span><span class="o">=</span><span class="mf">1e-10</span><span class="p">):</span>
+    <span class="n">tol</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s1">&#39;tol&#39;</span><span class="p">,</span> <span class="mf">1e-8</span><span class="p">)</span>
+    <span class="n">iterations</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">oldparams</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span>
+    <span class="n">newparams</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">start_params</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">retall</span><span class="p">:</span>
+        <span class="n">history</span> <span class="o">=</span> <span class="p">[</span><span class="n">oldparams</span><span class="p">,</span> <span class="n">newparams</span><span class="p">]</span>
+    <span class="k">while</span> <span class="p">(</span><span class="n">iterations</span> <span class="o">&lt;</span> <span class="n">maxiter</span> <span class="ow">and</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">newparams</span> <span class="o">-</span>
+            <span class="n">oldparams</span><span class="p">)</span> <span class="o">&gt;</span> <span class="n">tol</span><span class="p">)):</span>
+        <span class="n">H</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">hess</span><span class="p">(</span><span class="n">newparams</span><span class="p">))</span>
+        <span class="c1"># regularize Hessian, not clear what ridge factor should be</span>
+        <span class="c1"># keyword option with absolute default 1e-10, see #1847</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">ridge_factor</span> <span class="o">==</span> <span class="mi">0</span><span class="p">):</span>
+            <span class="n">H</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">diag_indices</span><span class="p">(</span><span class="n">H</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])]</span> <span class="o">+=</span> <span class="n">ridge_factor</span>
+        <span class="n">oldparams</span> <span class="o">=</span> <span class="n">newparams</span>
+        <span class="n">newparams</span> <span class="o">=</span> <span class="n">oldparams</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">inv</span><span class="p">(</span><span class="n">H</span><span class="p">),</span>
+                <span class="n">score</span><span class="p">(</span><span class="n">oldparams</span><span class="p">))</span>
+        <span class="k">if</span> <span class="n">retall</span><span class="p">:</span>
+            <span class="n">history</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">newparams</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">callback</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">callback</span><span class="p">(</span><span class="n">newparams</span><span class="p">)</span>
+        <span class="n">iterations</span> <span class="o">+=</span> <span class="mi">1</span>
+    <span class="n">fval</span> <span class="o">=</span> <span class="n">f</span><span class="p">(</span><span class="n">newparams</span><span class="p">,</span> <span class="o">*</span><span class="n">fargs</span><span class="p">)</span>  <span class="c1"># this is the negative likelihood</span>
+    <span class="k">if</span> <span class="n">iterations</span> <span class="o">==</span> <span class="n">maxiter</span><span class="p">:</span>
+        <span class="n">warnflag</span> <span class="o">=</span> <span class="mi">1</span>
+        <span class="k">if</span> <span class="n">disp</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Warning: Maximum number of iterations has been &quot;</span>
+                   <span class="s2">&quot;exceeded.&quot;</span><span class="p">)</span>
+            <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;         Current function value: </span><span class="si">%f</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">fval</span><span class="p">)</span>
+            <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;         Iterations: </span><span class="si">%d</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">iterations</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">warnflag</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">if</span> <span class="n">disp</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Optimization terminated successfully.&quot;</span><span class="p">)</span>
+            <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;         Current function value: </span><span class="si">%f</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">fval</span><span class="p">)</span>
+            <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;         Iterations </span><span class="si">%d</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">iterations</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">full_output</span><span class="p">:</span>
+        <span class="p">(</span><span class="n">xopt</span><span class="p">,</span> <span class="n">fopt</span><span class="p">,</span> <span class="n">niter</span><span class="p">,</span>
+         <span class="n">gopt</span><span class="p">,</span> <span class="n">hopt</span><span class="p">)</span> <span class="o">=</span> <span class="p">(</span><span class="n">newparams</span><span class="p">,</span> <span class="n">f</span><span class="p">(</span><span class="n">newparams</span><span class="p">,</span> <span class="o">*</span><span class="n">fargs</span><span class="p">),</span>
+                        <span class="n">iterations</span><span class="p">,</span> <span class="n">score</span><span class="p">(</span><span class="n">newparams</span><span class="p">),</span>
+                        <span class="n">hess</span><span class="p">(</span><span class="n">newparams</span><span class="p">))</span>
+        <span class="n">converged</span> <span class="o">=</span> <span class="ow">not</span> <span class="n">warnflag</span>
+        <span class="n">retvals</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;fopt&#39;</span><span class="p">:</span> <span class="n">fopt</span><span class="p">,</span> <span class="s1">&#39;iterations&#39;</span><span class="p">:</span> <span class="n">niter</span><span class="p">,</span> <span class="s1">&#39;score&#39;</span><span class="p">:</span> <span class="n">gopt</span><span class="p">,</span>
+                   <span class="s1">&#39;Hessian&#39;</span><span class="p">:</span> <span class="n">hopt</span><span class="p">,</span> <span class="s1">&#39;warnflag&#39;</span><span class="p">:</span> <span class="n">warnflag</span><span class="p">,</span>
+                   <span class="s1">&#39;converged&#39;</span><span class="p">:</span> <span class="n">converged</span><span class="p">}</span>
+        <span class="k">if</span> <span class="n">retall</span><span class="p">:</span>
+            <span class="n">retvals</span><span class="o">.</span><span class="n">update</span><span class="p">({</span><span class="s1">&#39;allvecs&#39;</span><span class="p">:</span> <span class="n">history</span><span class="p">})</span>
+
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">xopt</span> <span class="o">=</span> <span class="n">newparams</span>
+        <span class="n">retvals</span> <span class="o">=</span> <span class="kc">None</span>
+
+    <span class="k">return</span> <span class="n">xopt</span><span class="p">,</span> <span class="n">retvals</span></div>
+
+
+<div class="viewcode-block" id="_fit_bfgs"><a class="viewcode-back" href="../../../generated/statsmodels.base.optimizer._fit_bfgs.html#statsmodels.base.optimizer._fit_bfgs">[docs]</a><span class="k">def</span> <span class="nf">_fit_bfgs</span><span class="p">(</span><span class="n">f</span><span class="p">,</span> <span class="n">score</span><span class="p">,</span> <span class="n">start_params</span><span class="p">,</span> <span class="n">fargs</span><span class="p">,</span> <span class="n">kwargs</span><span class="p">,</span> <span class="n">disp</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+                    <span class="n">maxiter</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="n">callback</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">retall</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+                    <span class="n">full_output</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">hess</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="n">gtol</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s1">&#39;gtol&#39;</span><span class="p">,</span> <span class="mf">1.0000000000000001e-05</span><span class="p">)</span>
+    <span class="n">norm</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s1">&#39;norm&#39;</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">Inf</span><span class="p">)</span>
+    <span class="n">epsilon</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s1">&#39;epsilon&#39;</span><span class="p">,</span> <span class="mf">1.4901161193847656e-08</span><span class="p">)</span>
+    <span class="n">retvals</span> <span class="o">=</span> <span class="n">optimize</span><span class="o">.</span><span class="n">fmin_bfgs</span><span class="p">(</span><span class="n">f</span><span class="p">,</span> <span class="n">start_params</span><span class="p">,</span> <span class="n">score</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="n">fargs</span><span class="p">,</span>
+                                 <span class="n">gtol</span><span class="o">=</span><span class="n">gtol</span><span class="p">,</span> <span class="n">norm</span><span class="o">=</span><span class="n">norm</span><span class="p">,</span> <span class="n">epsilon</span><span class="o">=</span><span class="n">epsilon</span><span class="p">,</span>
+                                 <span class="n">maxiter</span><span class="o">=</span><span class="n">maxiter</span><span class="p">,</span> <span class="n">full_output</span><span class="o">=</span><span class="n">full_output</span><span class="p">,</span>
+                                 <span class="n">disp</span><span class="o">=</span><span class="n">disp</span><span class="p">,</span> <span class="n">retall</span><span class="o">=</span><span class="n">retall</span><span class="p">,</span> <span class="n">callback</span><span class="o">=</span><span class="n">callback</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">full_output</span><span class="p">:</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">retall</span><span class="p">:</span>
+            <span class="n">xopt</span><span class="p">,</span> <span class="n">fopt</span><span class="p">,</span> <span class="n">gopt</span><span class="p">,</span> <span class="n">Hinv</span><span class="p">,</span> <span class="n">fcalls</span><span class="p">,</span> <span class="n">gcalls</span><span class="p">,</span> <span class="n">warnflag</span> <span class="o">=</span> <span class="n">retvals</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="p">(</span><span class="n">xopt</span><span class="p">,</span> <span class="n">fopt</span><span class="p">,</span> <span class="n">gopt</span><span class="p">,</span> <span class="n">Hinv</span><span class="p">,</span> <span class="n">fcalls</span><span class="p">,</span>
+             <span class="n">gcalls</span><span class="p">,</span> <span class="n">warnflag</span><span class="p">,</span> <span class="n">allvecs</span><span class="p">)</span> <span class="o">=</span> <span class="n">retvals</span>
+        <span class="n">converged</span> <span class="o">=</span> <span class="ow">not</span> <span class="n">warnflag</span>
+        <span class="n">retvals</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;fopt&#39;</span><span class="p">:</span> <span class="n">fopt</span><span class="p">,</span> <span class="s1">&#39;gopt&#39;</span><span class="p">:</span> <span class="n">gopt</span><span class="p">,</span> <span class="s1">&#39;Hinv&#39;</span><span class="p">:</span> <span class="n">Hinv</span><span class="p">,</span>
+                <span class="s1">&#39;fcalls&#39;</span><span class="p">:</span> <span class="n">fcalls</span><span class="p">,</span> <span class="s1">&#39;gcalls&#39;</span><span class="p">:</span> <span class="n">gcalls</span><span class="p">,</span> <span class="s1">&#39;warnflag&#39;</span><span class="p">:</span>
+                <span class="n">warnflag</span><span class="p">,</span> <span class="s1">&#39;converged&#39;</span><span class="p">:</span> <span class="n">converged</span><span class="p">}</span>
+        <span class="k">if</span> <span class="n">retall</span><span class="p">:</span>
+            <span class="n">retvals</span><span class="o">.</span><span class="n">update</span><span class="p">({</span><span class="s1">&#39;allvecs&#39;</span><span class="p">:</span> <span class="n">allvecs</span><span class="p">})</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">xopt</span> <span class="o">=</span> <span class="n">retvals</span>
+        <span class="n">retvals</span> <span class="o">=</span> <span class="kc">None</span>
+
+    <span class="k">return</span> <span class="n">xopt</span><span class="p">,</span> <span class="n">retvals</span></div>
+
+
+<div class="viewcode-block" id="_fit_lbfgs"><a class="viewcode-back" href="../../../generated/statsmodels.base.optimizer._fit_lbfgs.html#statsmodels.base.optimizer._fit_lbfgs">[docs]</a><span class="k">def</span> <span class="nf">_fit_lbfgs</span><span class="p">(</span><span class="n">f</span><span class="p">,</span> <span class="n">score</span><span class="p">,</span> <span class="n">start_params</span><span class="p">,</span> <span class="n">fargs</span><span class="p">,</span> <span class="n">kwargs</span><span class="p">,</span> <span class="n">disp</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">maxiter</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span>
+               <span class="n">callback</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">retall</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">full_output</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">hess</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Fit model using L-BFGS algorithm</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    f : function</span>
+<span class="sd">        Returns negative log likelihood given parameters.</span>
+<span class="sd">    score : function</span>
+<span class="sd">        Returns gradient of negative log likelihood with respect to params.</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    Within the mle part of statsmodels, the log likelihood function and</span>
+<span class="sd">    its gradient with respect to the parameters do not have notationally</span>
+<span class="sd">    consistent sign.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="c1"># Use unconstrained optimization by default.</span>
+    <span class="n">bounds</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s1">&#39;bounds&#39;</span><span class="p">,</span> <span class="p">[(</span><span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">)]</span> <span class="o">*</span> <span class="nb">len</span><span class="p">(</span><span class="n">start_params</span><span class="p">))</span>
+    <span class="n">kwargs</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s1">&#39;iprint&#39;</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+
+    <span class="c1"># Pass the following keyword argument names through to fmin_l_bfgs_b</span>
+    <span class="c1"># if they are present in kwargs, otherwise use the fmin_l_bfgs_b</span>
+    <span class="c1"># default values.</span>
+    <span class="n">names</span> <span class="o">=</span> <span class="p">(</span><span class="s1">&#39;m&#39;</span><span class="p">,</span> <span class="s1">&#39;pgtol&#39;</span><span class="p">,</span> <span class="s1">&#39;factr&#39;</span><span class="p">,</span> <span class="s1">&#39;maxfun&#39;</span><span class="p">,</span> <span class="s1">&#39;epsilon&#39;</span><span class="p">,</span> <span class="s1">&#39;approx_grad&#39;</span><span class="p">)</span>
+    <span class="n">extra_kwargs</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">((</span><span class="n">x</span><span class="p">,</span> <span class="n">kwargs</span><span class="p">[</span><span class="n">x</span><span class="p">])</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">names</span> <span class="k">if</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">kwargs</span><span class="p">)</span>
+
+    <span class="c1"># Extract values for the options related to the gradient.</span>
+    <span class="n">approx_grad</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;approx_grad&#39;</span><span class="p">,</span> <span class="kc">False</span><span class="p">)</span>
+    <span class="n">loglike_and_score</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;loglike_and_score&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+    <span class="n">epsilon</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;epsilon&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+
+    <span class="c1"># The approx_grad flag has superpowers nullifying the score function arg.</span>
+    <span class="k">if</span> <span class="n">approx_grad</span><span class="p">:</span>
+        <span class="n">score</span> <span class="o">=</span> <span class="kc">None</span>
+
+    <span class="c1"># Choose among three options for dealing with the gradient (the gradient</span>
+    <span class="c1"># of a log likelihood function with respect to its parameters</span>
+    <span class="c1"># is more specifically called the score in statistics terminology).</span>
+    <span class="c1"># The first option is to use the finite-differences</span>
+    <span class="c1"># approximation that is built into the fmin_l_bfgs_b optimizer.</span>
+    <span class="c1"># The second option is to use the provided score function.</span>
+    <span class="c1"># The third option is to use the score component of a provided</span>
+    <span class="c1"># function that simultaneously evaluates the log likelihood and score.</span>
+    <span class="k">if</span> <span class="n">epsilon</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">approx_grad</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;a finite-differences epsilon was provided &#39;</span>
+                         <span class="s1">&#39;even though we are not using approx_grad&#39;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">approx_grad</span> <span class="ow">and</span> <span class="n">loglike_and_score</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;gradient approximation was requested &#39;</span>
+                         <span class="s1">&#39;even though an analytic loglike_and_score function &#39;</span>
+                         <span class="s1">&#39;was given&#39;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">loglike_and_score</span><span class="p">:</span>
+        <span class="n">func</span> <span class="o">=</span> <span class="k">lambda</span> <span class="n">p</span><span class="p">,</span> <span class="o">*</span><span class="n">a</span> <span class="p">:</span> <span class="nb">tuple</span><span class="p">(</span><span class="o">-</span><span class="n">x</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">loglike_and_score</span><span class="p">(</span><span class="n">p</span><span class="p">,</span> <span class="o">*</span><span class="n">a</span><span class="p">))</span>
+    <span class="k">elif</span> <span class="n">score</span><span class="p">:</span>
+        <span class="n">func</span> <span class="o">=</span> <span class="n">f</span>
+        <span class="n">extra_kwargs</span><span class="p">[</span><span class="s1">&#39;fprime&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">score</span>
+    <span class="k">elif</span> <span class="n">approx_grad</span><span class="p">:</span>
+        <span class="n">func</span> <span class="o">=</span> <span class="n">f</span>
+
+    <span class="n">retvals</span> <span class="o">=</span> <span class="n">optimize</span><span class="o">.</span><span class="n">fmin_l_bfgs_b</span><span class="p">(</span><span class="n">func</span><span class="p">,</span> <span class="n">start_params</span><span class="p">,</span> <span class="n">maxiter</span><span class="o">=</span><span class="n">maxiter</span><span class="p">,</span>
+                                     <span class="n">callback</span><span class="o">=</span><span class="n">callback</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="n">fargs</span><span class="p">,</span>
+                                     <span class="n">bounds</span><span class="o">=</span><span class="n">bounds</span><span class="p">,</span> <span class="n">disp</span><span class="o">=</span><span class="n">disp</span><span class="p">,</span>
+                                     <span class="o">**</span><span class="n">extra_kwargs</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">full_output</span><span class="p">:</span>
+        <span class="n">xopt</span><span class="p">,</span> <span class="n">fopt</span><span class="p">,</span> <span class="n">d</span> <span class="o">=</span> <span class="n">retvals</span>
+        <span class="c1"># The warnflag is</span>
+        <span class="c1"># 0 if converged</span>
+        <span class="c1"># 1 if too many function evaluations or too many iterations</span>
+        <span class="c1"># 2 if stopped for another reason, given in d[&#39;task&#39;]</span>
+        <span class="n">warnflag</span> <span class="o">=</span> <span class="n">d</span><span class="p">[</span><span class="s1">&#39;warnflag&#39;</span><span class="p">]</span>
+        <span class="n">converged</span> <span class="o">=</span> <span class="p">(</span><span class="n">warnflag</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span>
+        <span class="n">gopt</span> <span class="o">=</span> <span class="n">d</span><span class="p">[</span><span class="s1">&#39;grad&#39;</span><span class="p">]</span>
+        <span class="n">fcalls</span> <span class="o">=</span> <span class="n">d</span><span class="p">[</span><span class="s1">&#39;funcalls&#39;</span><span class="p">]</span>
+        <span class="n">iterations</span> <span class="o">=</span> <span class="n">d</span><span class="p">[</span><span class="s1">&#39;nit&#39;</span><span class="p">]</span>
+        <span class="n">retvals</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;fopt&#39;</span><span class="p">:</span> <span class="n">fopt</span><span class="p">,</span> <span class="s1">&#39;gopt&#39;</span><span class="p">:</span> <span class="n">gopt</span><span class="p">,</span> <span class="s1">&#39;fcalls&#39;</span><span class="p">:</span> <span class="n">fcalls</span><span class="p">,</span>
+                   <span class="s1">&#39;warnflag&#39;</span><span class="p">:</span> <span class="n">warnflag</span><span class="p">,</span> <span class="s1">&#39;converged&#39;</span><span class="p">:</span> <span class="n">converged</span><span class="p">,</span>
+                   <span class="s1">&#39;iterations&#39;</span><span class="p">:</span> <span class="n">iterations</span><span class="p">}</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">xopt</span> <span class="o">=</span> <span class="n">retvals</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">retvals</span> <span class="o">=</span> <span class="kc">None</span>
+
+    <span class="k">return</span> <span class="n">xopt</span><span class="p">,</span> <span class="n">retvals</span></div>
+
+
+<div class="viewcode-block" id="_fit_nm"><a class="viewcode-back" href="../../../generated/statsmodels.base.optimizer._fit_nm.html#statsmodels.base.optimizer._fit_nm">[docs]</a><span class="k">def</span> <span class="nf">_fit_nm</span><span class="p">(</span><span class="n">f</span><span class="p">,</span> <span class="n">score</span><span class="p">,</span> <span class="n">start_params</span><span class="p">,</span> <span class="n">fargs</span><span class="p">,</span> <span class="n">kwargs</span><span class="p">,</span> <span class="n">disp</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+                <span class="n">maxiter</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="n">callback</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">retall</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+                <span class="n">full_output</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">hess</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="n">xtol</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s1">&#39;xtol&#39;</span><span class="p">,</span> <span class="mf">0.0001</span><span class="p">)</span>
+    <span class="n">ftol</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s1">&#39;ftol&#39;</span><span class="p">,</span> <span class="mf">0.0001</span><span class="p">)</span>
+    <span class="n">maxfun</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s1">&#39;maxfun&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+    <span class="n">retvals</span> <span class="o">=</span> <span class="n">optimize</span><span class="o">.</span><span class="n">fmin</span><span class="p">(</span><span class="n">f</span><span class="p">,</span> <span class="n">start_params</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="n">fargs</span><span class="p">,</span> <span class="n">xtol</span><span class="o">=</span><span class="n">xtol</span><span class="p">,</span>
+                            <span class="n">ftol</span><span class="o">=</span><span class="n">ftol</span><span class="p">,</span> <span class="n">maxiter</span><span class="o">=</span><span class="n">maxiter</span><span class="p">,</span> <span class="n">maxfun</span><span class="o">=</span><span class="n">maxfun</span><span class="p">,</span>
+                            <span class="n">full_output</span><span class="o">=</span><span class="n">full_output</span><span class="p">,</span> <span class="n">disp</span><span class="o">=</span><span class="n">disp</span><span class="p">,</span> <span class="n">retall</span><span class="o">=</span><span class="n">retall</span><span class="p">,</span>
+                            <span class="n">callback</span><span class="o">=</span><span class="n">callback</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">full_output</span><span class="p">:</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">retall</span><span class="p">:</span>
+            <span class="n">xopt</span><span class="p">,</span> <span class="n">fopt</span><span class="p">,</span> <span class="n">niter</span><span class="p">,</span> <span class="n">fcalls</span><span class="p">,</span> <span class="n">warnflag</span> <span class="o">=</span> <span class="n">retvals</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">xopt</span><span class="p">,</span> <span class="n">fopt</span><span class="p">,</span> <span class="n">niter</span><span class="p">,</span> <span class="n">fcalls</span><span class="p">,</span> <span class="n">warnflag</span><span class="p">,</span> <span class="n">allvecs</span> <span class="o">=</span> <span class="n">retvals</span>
+        <span class="n">converged</span> <span class="o">=</span> <span class="ow">not</span> <span class="n">warnflag</span>
+        <span class="n">retvals</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;fopt&#39;</span><span class="p">:</span> <span class="n">fopt</span><span class="p">,</span> <span class="s1">&#39;iterations&#39;</span><span class="p">:</span> <span class="n">niter</span><span class="p">,</span>
+                   <span class="s1">&#39;fcalls&#39;</span><span class="p">:</span> <span class="n">fcalls</span><span class="p">,</span> <span class="s1">&#39;warnflag&#39;</span><span class="p">:</span> <span class="n">warnflag</span><span class="p">,</span>
+                   <span class="s1">&#39;converged&#39;</span><span class="p">:</span> <span class="n">converged</span><span class="p">}</span>
+        <span class="k">if</span> <span class="n">retall</span><span class="p">:</span>
+            <span class="n">retvals</span><span class="o">.</span><span class="n">update</span><span class="p">({</span><span class="s1">&#39;allvecs&#39;</span><span class="p">:</span> <span class="n">allvecs</span><span class="p">})</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">xopt</span> <span class="o">=</span> <span class="n">retvals</span>
+        <span class="n">retvals</span> <span class="o">=</span> <span class="kc">None</span>
+
+    <span class="k">return</span> <span class="n">xopt</span><span class="p">,</span> <span class="n">retvals</span></div>
+
+
+<div class="viewcode-block" id="_fit_cg"><a class="viewcode-back" href="../../../generated/statsmodels.base.optimizer._fit_cg.html#statsmodels.base.optimizer._fit_cg">[docs]</a><span class="k">def</span> <span class="nf">_fit_cg</span><span class="p">(</span><span class="n">f</span><span class="p">,</span> <span class="n">score</span><span class="p">,</span> <span class="n">start_params</span><span class="p">,</span> <span class="n">fargs</span><span class="p">,</span> <span class="n">kwargs</span><span class="p">,</span> <span class="n">disp</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+                <span class="n">maxiter</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="n">callback</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">retall</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+                <span class="n">full_output</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">hess</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="n">gtol</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s1">&#39;gtol&#39;</span><span class="p">,</span> <span class="mf">1.0000000000000001e-05</span><span class="p">)</span>
+    <span class="n">norm</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s1">&#39;norm&#39;</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">Inf</span><span class="p">)</span>
+    <span class="n">epsilon</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s1">&#39;epsilon&#39;</span><span class="p">,</span> <span class="mf">1.4901161193847656e-08</span><span class="p">)</span>
+    <span class="n">retvals</span> <span class="o">=</span> <span class="n">optimize</span><span class="o">.</span><span class="n">fmin_cg</span><span class="p">(</span><span class="n">f</span><span class="p">,</span> <span class="n">start_params</span><span class="p">,</span> <span class="n">score</span><span class="p">,</span> <span class="n">gtol</span><span class="o">=</span><span class="n">gtol</span><span class="p">,</span> <span class="n">norm</span><span class="o">=</span><span class="n">norm</span><span class="p">,</span>
+                               <span class="n">epsilon</span><span class="o">=</span><span class="n">epsilon</span><span class="p">,</span> <span class="n">maxiter</span><span class="o">=</span><span class="n">maxiter</span><span class="p">,</span>
+                               <span class="n">full_output</span><span class="o">=</span><span class="n">full_output</span><span class="p">,</span> <span class="n">disp</span><span class="o">=</span><span class="n">disp</span><span class="p">,</span>
+                               <span class="n">retall</span><span class="o">=</span><span class="n">retall</span><span class="p">,</span> <span class="n">callback</span><span class="o">=</span><span class="n">callback</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">full_output</span><span class="p">:</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">retall</span><span class="p">:</span>
+            <span class="n">xopt</span><span class="p">,</span> <span class="n">fopt</span><span class="p">,</span> <span class="n">fcalls</span><span class="p">,</span> <span class="n">gcalls</span><span class="p">,</span> <span class="n">warnflag</span> <span class="o">=</span> <span class="n">retvals</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">xopt</span><span class="p">,</span> <span class="n">fopt</span><span class="p">,</span> <span class="n">fcalls</span><span class="p">,</span> <span class="n">gcalls</span><span class="p">,</span> <span class="n">warnflag</span><span class="p">,</span> <span class="n">allvecs</span> <span class="o">=</span> <span class="n">retvals</span>
+        <span class="n">converged</span> <span class="o">=</span> <span class="ow">not</span> <span class="n">warnflag</span>
+        <span class="n">retvals</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;fopt&#39;</span><span class="p">:</span> <span class="n">fopt</span><span class="p">,</span> <span class="s1">&#39;fcalls&#39;</span><span class="p">:</span> <span class="n">fcalls</span><span class="p">,</span> <span class="s1">&#39;gcalls&#39;</span><span class="p">:</span> <span class="n">gcalls</span><span class="p">,</span>
+                   <span class="s1">&#39;warnflag&#39;</span><span class="p">:</span> <span class="n">warnflag</span><span class="p">,</span> <span class="s1">&#39;converged&#39;</span><span class="p">:</span> <span class="n">converged</span><span class="p">}</span>
+        <span class="k">if</span> <span class="n">retall</span><span class="p">:</span>
+            <span class="n">retvals</span><span class="o">.</span><span class="n">update</span><span class="p">({</span><span class="s1">&#39;allvecs&#39;</span><span class="p">:</span> <span class="n">allvecs</span><span class="p">})</span>
+
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">xopt</span> <span class="o">=</span> <span class="n">retvals</span>
+        <span class="n">retvals</span> <span class="o">=</span> <span class="kc">None</span>
+
+    <span class="k">return</span> <span class="n">xopt</span><span class="p">,</span> <span class="n">retvals</span></div>
+
+
+<div class="viewcode-block" id="_fit_ncg"><a class="viewcode-back" href="../../../generated/statsmodels.base.optimizer._fit_ncg.html#statsmodels.base.optimizer._fit_ncg">[docs]</a><span class="k">def</span> <span class="nf">_fit_ncg</span><span class="p">(</span><span class="n">f</span><span class="p">,</span> <span class="n">score</span><span class="p">,</span> <span class="n">start_params</span><span class="p">,</span> <span class="n">fargs</span><span class="p">,</span> <span class="n">kwargs</span><span class="p">,</span> <span class="n">disp</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+                 <span class="n">maxiter</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="n">callback</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">retall</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+                 <span class="n">full_output</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">hess</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="n">fhess_p</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s1">&#39;fhess_p&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+    <span class="n">avextol</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s1">&#39;avextol&#39;</span><span class="p">,</span> <span class="mf">1.0000000000000001e-05</span><span class="p">)</span>
+    <span class="n">epsilon</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s1">&#39;epsilon&#39;</span><span class="p">,</span> <span class="mf">1.4901161193847656e-08</span><span class="p">)</span>
+    <span class="n">retvals</span> <span class="o">=</span> <span class="n">optimize</span><span class="o">.</span><span class="n">fmin_ncg</span><span class="p">(</span><span class="n">f</span><span class="p">,</span> <span class="n">start_params</span><span class="p">,</span> <span class="n">score</span><span class="p">,</span> <span class="n">fhess_p</span><span class="o">=</span><span class="n">fhess_p</span><span class="p">,</span>
+                                <span class="n">fhess</span><span class="o">=</span><span class="n">hess</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="n">fargs</span><span class="p">,</span> <span class="n">avextol</span><span class="o">=</span><span class="n">avextol</span><span class="p">,</span>
+                                <span class="n">epsilon</span><span class="o">=</span><span class="n">epsilon</span><span class="p">,</span> <span class="n">maxiter</span><span class="o">=</span><span class="n">maxiter</span><span class="p">,</span>
+                                <span class="n">full_output</span><span class="o">=</span><span class="n">full_output</span><span class="p">,</span> <span class="n">disp</span><span class="o">=</span><span class="n">disp</span><span class="p">,</span>
+                                <span class="n">retall</span><span class="o">=</span><span class="n">retall</span><span class="p">,</span> <span class="n">callback</span><span class="o">=</span><span class="n">callback</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">full_output</span><span class="p">:</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">retall</span><span class="p">:</span>
+            <span class="n">xopt</span><span class="p">,</span> <span class="n">fopt</span><span class="p">,</span> <span class="n">fcalls</span><span class="p">,</span> <span class="n">gcalls</span><span class="p">,</span> <span class="n">hcalls</span><span class="p">,</span> <span class="n">warnflag</span> <span class="o">=</span> <span class="n">retvals</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">xopt</span><span class="p">,</span> <span class="n">fopt</span><span class="p">,</span> <span class="n">fcalls</span><span class="p">,</span> <span class="n">gcalls</span><span class="p">,</span> <span class="n">hcalls</span><span class="p">,</span> <span class="n">warnflag</span><span class="p">,</span> <span class="n">allvecs</span> <span class="o">=</span>\
+                <span class="n">retvals</span>
+        <span class="n">converged</span> <span class="o">=</span> <span class="ow">not</span> <span class="n">warnflag</span>
+        <span class="n">retvals</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;fopt&#39;</span><span class="p">:</span> <span class="n">fopt</span><span class="p">,</span> <span class="s1">&#39;fcalls&#39;</span><span class="p">:</span> <span class="n">fcalls</span><span class="p">,</span> <span class="s1">&#39;gcalls&#39;</span><span class="p">:</span> <span class="n">gcalls</span><span class="p">,</span>
+                   <span class="s1">&#39;hcalls&#39;</span><span class="p">:</span> <span class="n">hcalls</span><span class="p">,</span> <span class="s1">&#39;warnflag&#39;</span><span class="p">:</span> <span class="n">warnflag</span><span class="p">,</span>
+                   <span class="s1">&#39;converged&#39;</span><span class="p">:</span> <span class="n">converged</span><span class="p">}</span>
+        <span class="k">if</span> <span class="n">retall</span><span class="p">:</span>
+            <span class="n">retvals</span><span class="o">.</span><span class="n">update</span><span class="p">({</span><span class="s1">&#39;allvecs&#39;</span><span class="p">:</span> <span class="n">allvecs</span><span class="p">})</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">xopt</span> <span class="o">=</span> <span class="n">retvals</span>
+        <span class="n">retvals</span> <span class="o">=</span> <span class="kc">None</span>
+
+    <span class="k">return</span> <span class="n">xopt</span><span class="p">,</span> <span class="n">retvals</span></div>
+
+
+<div class="viewcode-block" id="_fit_powell"><a class="viewcode-back" href="../../../generated/statsmodels.base.optimizer._fit_powell.html#statsmodels.base.optimizer._fit_powell">[docs]</a><span class="k">def</span> <span class="nf">_fit_powell</span><span class="p">(</span><span class="n">f</span><span class="p">,</span> <span class="n">score</span><span class="p">,</span> <span class="n">start_params</span><span class="p">,</span> <span class="n">fargs</span><span class="p">,</span> <span class="n">kwargs</span><span class="p">,</span> <span class="n">disp</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+                    <span class="n">maxiter</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="n">callback</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">retall</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+                    <span class="n">full_output</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">hess</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="n">xtol</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s1">&#39;xtol&#39;</span><span class="p">,</span> <span class="mf">0.0001</span><span class="p">)</span>
+    <span class="n">ftol</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s1">&#39;ftol&#39;</span><span class="p">,</span> <span class="mf">0.0001</span><span class="p">)</span>
+    <span class="n">maxfun</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s1">&#39;maxfun&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+    <span class="n">start_direc</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s1">&#39;start_direc&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+    <span class="n">retvals</span> <span class="o">=</span> <span class="n">optimize</span><span class="o">.</span><span class="n">fmin_powell</span><span class="p">(</span><span class="n">f</span><span class="p">,</span> <span class="n">start_params</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="n">fargs</span><span class="p">,</span> <span class="n">xtol</span><span class="o">=</span><span class="n">xtol</span><span class="p">,</span>
+                                   <span class="n">ftol</span><span class="o">=</span><span class="n">ftol</span><span class="p">,</span> <span class="n">maxiter</span><span class="o">=</span><span class="n">maxiter</span><span class="p">,</span> <span class="n">maxfun</span><span class="o">=</span><span class="n">maxfun</span><span class="p">,</span>
+                                   <span class="n">full_output</span><span class="o">=</span><span class="n">full_output</span><span class="p">,</span> <span class="n">disp</span><span class="o">=</span><span class="n">disp</span><span class="p">,</span>
+                                   <span class="n">retall</span><span class="o">=</span><span class="n">retall</span><span class="p">,</span> <span class="n">callback</span><span class="o">=</span><span class="n">callback</span><span class="p">,</span>
+                                   <span class="n">direc</span><span class="o">=</span><span class="n">start_direc</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">full_output</span><span class="p">:</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">retall</span><span class="p">:</span>
+            <span class="n">xopt</span><span class="p">,</span> <span class="n">fopt</span><span class="p">,</span> <span class="n">direc</span><span class="p">,</span> <span class="n">niter</span><span class="p">,</span> <span class="n">fcalls</span><span class="p">,</span> <span class="n">warnflag</span> <span class="o">=</span> <span class="n">retvals</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">xopt</span><span class="p">,</span> <span class="n">fopt</span><span class="p">,</span> <span class="n">direc</span><span class="p">,</span> <span class="n">niter</span><span class="p">,</span> <span class="n">fcalls</span><span class="p">,</span> <span class="n">warnflag</span><span class="p">,</span> <span class="n">allvecs</span> <span class="o">=</span>\
+                <span class="n">retvals</span>
+        <span class="n">converged</span> <span class="o">=</span> <span class="ow">not</span> <span class="n">warnflag</span>
+        <span class="n">retvals</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;fopt&#39;</span><span class="p">:</span> <span class="n">fopt</span><span class="p">,</span> <span class="s1">&#39;direc&#39;</span><span class="p">:</span> <span class="n">direc</span><span class="p">,</span> <span class="s1">&#39;iterations&#39;</span><span class="p">:</span> <span class="n">niter</span><span class="p">,</span>
+                   <span class="s1">&#39;fcalls&#39;</span><span class="p">:</span> <span class="n">fcalls</span><span class="p">,</span> <span class="s1">&#39;warnflag&#39;</span><span class="p">:</span> <span class="n">warnflag</span><span class="p">,</span>
+                   <span class="s1">&#39;converged&#39;</span><span class="p">:</span> <span class="n">converged</span><span class="p">}</span>
+        <span class="k">if</span> <span class="n">retall</span><span class="p">:</span>
+            <span class="n">retvals</span><span class="o">.</span><span class="n">update</span><span class="p">({</span><span class="s1">&#39;allvecs&#39;</span><span class="p">:</span> <span class="n">allvecs</span><span class="p">})</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">xopt</span> <span class="o">=</span> <span class="n">retvals</span>
+        <span class="n">retvals</span> <span class="o">=</span> <span class="kc">None</span>
+
+    <span class="k">return</span> <span class="n">xopt</span><span class="p">,</span> <span class="n">retvals</span></div>
+
+
+<div class="viewcode-block" id="_fit_basinhopping"><a class="viewcode-back" href="../../../generated/statsmodels.base.optimizer._fit_basinhopping.html#statsmodels.base.optimizer._fit_basinhopping">[docs]</a><span class="k">def</span> <span class="nf">_fit_basinhopping</span><span class="p">(</span><span class="n">f</span><span class="p">,</span> <span class="n">score</span><span class="p">,</span> <span class="n">start_params</span><span class="p">,</span> <span class="n">fargs</span><span class="p">,</span> <span class="n">kwargs</span><span class="p">,</span> <span class="n">disp</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+                          <span class="n">maxiter</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="n">callback</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">retall</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+                          <span class="n">full_output</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">hess</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+
+    <span class="kn">from</span> <span class="nn">copy</span> <span class="k">import</span> <span class="n">copy</span>
+    <span class="n">kwargs</span> <span class="o">=</span> <span class="n">copy</span><span class="p">(</span><span class="n">kwargs</span><span class="p">)</span>
+    <span class="n">niter</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s1">&#39;niter&#39;</span><span class="p">,</span> <span class="mi">100</span><span class="p">)</span>
+    <span class="n">niter_success</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s1">&#39;niter_success&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+    <span class="n">T</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s1">&#39;T&#39;</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">)</span>
+    <span class="n">stepsize</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s1">&#39;stepsize&#39;</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">)</span>
+    <span class="n">interval</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s1">&#39;interval&#39;</span><span class="p">,</span> <span class="mi">50</span><span class="p">)</span>
+    <span class="n">minimizer_kwargs</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;minimizer&#39;</span><span class="p">,</span> <span class="p">{})</span>
+    <span class="n">minimizer_kwargs</span><span class="p">[</span><span class="s1">&#39;args&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">fargs</span>
+    <span class="n">minimizer_kwargs</span><span class="p">[</span><span class="s1">&#39;jac&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">score</span>
+    <span class="n">method</span> <span class="o">=</span> <span class="n">minimizer_kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;method&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">method</span> <span class="ow">and</span> <span class="n">method</span> <span class="o">!=</span> <span class="s1">&#39;L-BFGS-B&#39;</span><span class="p">:</span> <span class="c1"># l_bfgs_b doesn&#39;t take a hessian</span>
+        <span class="n">minimizer_kwargs</span><span class="p">[</span><span class="s1">&#39;hess&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">hess</span>
+
+    <span class="n">retvals</span> <span class="o">=</span> <span class="n">optimize</span><span class="o">.</span><span class="n">basinhopping</span><span class="p">(</span><span class="n">f</span><span class="p">,</span> <span class="n">start_params</span><span class="p">,</span>
+                                    <span class="n">minimizer_kwargs</span><span class="o">=</span><span class="n">minimizer_kwargs</span><span class="p">,</span>
+                                    <span class="n">niter</span><span class="o">=</span><span class="n">niter</span><span class="p">,</span> <span class="n">niter_success</span><span class="o">=</span><span class="n">niter_success</span><span class="p">,</span>
+                                    <span class="n">T</span><span class="o">=</span><span class="n">T</span><span class="p">,</span> <span class="n">stepsize</span><span class="o">=</span><span class="n">stepsize</span><span class="p">,</span> <span class="n">disp</span><span class="o">=</span><span class="n">disp</span><span class="p">,</span>
+                                    <span class="n">callback</span><span class="o">=</span><span class="n">callback</span><span class="p">,</span> <span class="n">interval</span><span class="o">=</span><span class="n">interval</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">full_output</span><span class="p">:</span>
+        <span class="n">xopt</span><span class="p">,</span> <span class="n">fopt</span><span class="p">,</span> <span class="n">niter</span><span class="p">,</span> <span class="n">fcalls</span> <span class="o">=</span> <span class="nb">map</span><span class="p">(</span><span class="k">lambda</span> <span class="n">x</span> <span class="p">:</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">retvals</span><span class="p">,</span> <span class="n">x</span><span class="p">),</span>
+                                        <span class="p">[</span><span class="s1">&#39;x&#39;</span><span class="p">,</span> <span class="s1">&#39;fun&#39;</span><span class="p">,</span> <span class="s1">&#39;nit&#39;</span><span class="p">,</span> <span class="s1">&#39;nfev&#39;</span><span class="p">])</span>
+        <span class="n">converged</span> <span class="o">=</span> <span class="s1">&#39;completed successfully&#39;</span> <span class="ow">in</span> <span class="n">retvals</span><span class="o">.</span><span class="n">message</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">retvals</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;fopt&#39;</span><span class="p">:</span> <span class="n">fopt</span><span class="p">,</span> <span class="s1">&#39;iterations&#39;</span><span class="p">:</span> <span class="n">niter</span><span class="p">,</span>
+                   <span class="s1">&#39;fcalls&#39;</span><span class="p">:</span> <span class="n">fcalls</span><span class="p">,</span> <span class="s1">&#39;converged&#39;</span><span class="p">:</span> <span class="n">converged</span><span class="p">}</span>
+
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">xopt</span> <span class="o">=</span> <span class="n">retvals</span><span class="o">.</span><span class="n">x</span>
+        <span class="n">retvals</span> <span class="o">=</span> <span class="kc">None</span>
+
+    <span class="k">return</span> <span class="n">xopt</span><span class="p">,</span> <span class="n">retvals</span></div>
+</pre></div>
+
+
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../../../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" />
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer" role="contentinfo">
+        &#169; Copyright 2009-2018, Josef Perktold, Skipper Seabold, Jonathan Taylor, statsmodels-developers.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 2.1.2.
+    </div>
+  </body>
+</html>

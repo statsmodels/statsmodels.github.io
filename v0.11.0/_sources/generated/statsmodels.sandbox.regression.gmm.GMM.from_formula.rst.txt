@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.sandbox.regression.gmm.GMM.from\_formula
+====================================================
+
+.. currentmodule:: statsmodels.sandbox.regression.gmm
+
+.. automethod:: GMM.from_formula

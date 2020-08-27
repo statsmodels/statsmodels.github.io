@@ -1,0 +1,1116 @@
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>statsmodels.stats.proportion &#8212; statsmodels 0.8.0 documentation</title>
+    
+    <link rel="stylesheet" href="../../../_static/nature.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../../',
+        VERSION:     '0.8.0',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true,
+        SOURCELINK_SUFFIX: '.txt'
+      };
+    </script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <link rel="shortcut icon" href="../../../_static/statsmodels_hybi_favico.ico"/>
+    <link rel="author" title="About these documents" href="../../../about.html" />
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+<link rel="stylesheet" href="../../../_static/examples.css" type="text/css" />
+<link rel="stylesheet" href="../../../_static/facebox.css" type="text/css" />
+<script type="text/javascript" src="../../../_static/scripts.js">
+</script>
+<script type="text/javascript" src="../../../_static/facebox.js">
+</script>
+
+  </head>
+  <body role="document">
+<div class="headerwrap">
+    <div class = "header">
+        
+        <a href = "../../../index.html">
+<img src="../../../_static/statsmodels_hybi_banner.png" alt="Logo"
+    style="padding-left: 15px"/></a>
+        
+    </div>
+</div>
+
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+<li><a href ="../../../install.html">Install</a></li> &nbsp;|&nbsp;
+<li><a href="https://groups.google.com/group/pystatsmodels?hl=en">Support</a></li> &nbsp;|&nbsp;
+<li><a href="https://github.com/statsmodels/statsmodels/issues">Bugs</a></li> &nbsp;|&nbsp;
+<li><a href="../../../dev/index.html">Develop</a></li> &nbsp;|&nbsp;
+<li><a href="../../../examples/index.html">Examples</a></li> &nbsp;|&nbsp;
+<li><a href="../../../faq.html">FAQ</a></li> &nbsp;|&nbsp;
+
+          <li class="nav-item nav-item-1"><a href="../../index.html" accesskey="U">Module code</a> |</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+
+
+
+
+  <h1>Source code for statsmodels.stats.proportion</h1><div class="highlight"><pre>
+<span></span><span class="c1"># -*- coding: utf-8 -*-</span>
+<span class="sd">&quot;&quot;&quot;Tests and Confidence Intervals for Binomial Proportions</span>
+
+<span class="sd">Created on Fri Mar 01 00:23:07 2013</span>
+
+<span class="sd">Author: Josef Perktold</span>
+<span class="sd">License: BSD-3</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="kn">from</span> <span class="nn">statsmodels.compat.python</span> <span class="k">import</span> <span class="n">lzip</span><span class="p">,</span> <span class="nb">range</span>
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+<span class="kn">from</span> <span class="nn">scipy</span> <span class="k">import</span> <span class="n">stats</span><span class="p">,</span> <span class="n">optimize</span>
+<span class="kn">from</span> <span class="nn">sys</span> <span class="k">import</span> <span class="n">float_info</span>
+
+<span class="kn">from</span> <span class="nn">statsmodels.stats.base</span> <span class="k">import</span> <span class="n">AllPairsResults</span>
+<span class="kn">from</span> <span class="nn">statsmodels.tools.sm_exceptions</span> <span class="k">import</span> <span class="n">HypothesisTestWarning</span>
+
+
+<div class="viewcode-block" id="proportion_confint"><a class="viewcode-back" href="../../../generated/statsmodels.stats.proportion.proportion_confint.html#statsmodels.stats.proportion.proportion_confint">[docs]</a><span class="k">def</span> <span class="nf">proportion_confint</span><span class="p">(</span><span class="n">count</span><span class="p">,</span> <span class="n">nobs</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="mf">0.05</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s1">&#39;normal&#39;</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;confidence interval for a binomial proportion</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    count : int or array</span>
+<span class="sd">        number of successes</span>
+<span class="sd">    nobs : int</span>
+<span class="sd">        total number of trials</span>
+<span class="sd">    alpha : float in (0, 1)</span>
+<span class="sd">        significance level, default 0.05</span>
+<span class="sd">    method : string in [&#39;normal&#39;]</span>
+<span class="sd">        method to use for confidence interval,</span>
+<span class="sd">        currently available methods :</span>
+
+<span class="sd">         - `normal` : asymptotic normal approximation</span>
+<span class="sd">         - `agresti_coull` : Agresti-Coull interval</span>
+<span class="sd">         - `beta` : Clopper-Pearson interval based on Beta distribution</span>
+<span class="sd">         - `wilson` : Wilson Score interval</span>
+<span class="sd">         - `jeffreys` : Jeffreys Bayesian Interval</span>
+<span class="sd">         - `binom_test` : experimental, inversion of binom_test</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    ci_low, ci_upp : float</span>
+<span class="sd">        lower and upper confidence level with coverage (approximately) 1-alpha.</span>
+<span class="sd">        Note: Beta has coverage</span>
+<span class="sd">        coverage is only 1-alpha on average for some other methods.)</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    Beta, the Clopper-Pearson interval has coverage at least 1-alpha, but is</span>
+<span class="sd">    in general conservative. Most of the other methods have average coverage</span>
+<span class="sd">    equal to 1-alpha, but will have smaller coverage in some cases.</span>
+
+<span class="sd">    Method &quot;binom_test&quot; directly inverts the binomial test in scipy.stats.</span>
+<span class="sd">    which has discrete steps.</span>
+
+<span class="sd">    TODO: binom_test intervals raise an exception in small samples if one</span>
+<span class="sd">       interval bound is close to zero or one.</span>
+
+<span class="sd">    References</span>
+<span class="sd">    ----------</span>
+<span class="sd">    http://en.wikipedia.org/wiki/Binomial_proportion_confidence_interval</span>
+
+<span class="sd">    Brown, Lawrence D.; Cai, T. Tony; DasGupta, Anirban (2001). &quot;Interval</span>
+<span class="sd">        Estimation for a Binomial Proportion&quot;,</span>
+<span class="sd">        Statistical Science 16 (2): 101–133. doi:10.1214/ss/1009213286.</span>
+<span class="sd">        TODO: Is this the correct one ?</span>
+
+<span class="sd">    &#39;&#39;&#39;</span>
+
+    <span class="n">q_</span> <span class="o">=</span> <span class="n">count</span> <span class="o">*</span> <span class="mf">1.</span> <span class="o">/</span> <span class="n">nobs</span>
+    <span class="n">alpha_2</span> <span class="o">=</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="n">alpha</span>
+
+    <span class="k">if</span> <span class="n">method</span> <span class="o">==</span> <span class="s1">&#39;normal&#39;</span><span class="p">:</span>
+        <span class="n">std_</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">q_</span> <span class="o">*</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">q_</span><span class="p">)</span> <span class="o">/</span> <span class="n">nobs</span><span class="p">)</span>
+        <span class="n">dist</span> <span class="o">=</span> <span class="n">stats</span><span class="o">.</span><span class="n">norm</span><span class="o">.</span><span class="n">isf</span><span class="p">(</span><span class="n">alpha</span> <span class="o">/</span> <span class="mf">2.</span><span class="p">)</span> <span class="o">*</span> <span class="n">std_</span>
+        <span class="n">ci_low</span> <span class="o">=</span> <span class="n">q_</span> <span class="o">-</span> <span class="n">dist</span>
+        <span class="n">ci_upp</span> <span class="o">=</span> <span class="n">q_</span> <span class="o">+</span> <span class="n">dist</span>
+
+    <span class="k">elif</span> <span class="n">method</span> <span class="o">==</span> <span class="s1">&#39;binom_test&#39;</span><span class="p">:</span>
+        <span class="c1"># inverting the binomial test</span>
+        <span class="k">def</span> <span class="nf">func</span><span class="p">(</span><span class="n">qi</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">stats</span><span class="o">.</span><span class="n">binom_test</span><span class="p">(</span><span class="n">q_</span> <span class="o">*</span> <span class="n">nobs</span><span class="p">,</span> <span class="n">nobs</span><span class="p">,</span> <span class="n">p</span><span class="o">=</span><span class="n">qi</span><span class="p">)</span> <span class="o">-</span> <span class="n">alpha</span>
+        <span class="k">if</span> <span class="n">count</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">ci_low</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">ci_low</span> <span class="o">=</span> <span class="n">optimize</span><span class="o">.</span><span class="n">brentq</span><span class="p">(</span><span class="n">func</span><span class="p">,</span> <span class="n">float_info</span><span class="o">.</span><span class="n">min</span><span class="p">,</span> <span class="n">q_</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">count</span> <span class="o">==</span> <span class="n">nobs</span><span class="p">:</span>
+            <span class="n">ci_upp</span> <span class="o">=</span> <span class="mi">1</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">ci_upp</span> <span class="o">=</span> <span class="n">optimize</span><span class="o">.</span><span class="n">brentq</span><span class="p">(</span><span class="n">func</span><span class="p">,</span> <span class="n">q_</span><span class="p">,</span> <span class="mf">1.</span> <span class="o">-</span> <span class="n">float_info</span><span class="o">.</span><span class="n">epsilon</span><span class="p">)</span>
+
+    <span class="k">elif</span> <span class="n">method</span> <span class="o">==</span> <span class="s1">&#39;beta&#39;</span><span class="p">:</span>
+        <span class="n">ci_low</span> <span class="o">=</span> <span class="n">stats</span><span class="o">.</span><span class="n">beta</span><span class="o">.</span><span class="n">ppf</span><span class="p">(</span><span class="n">alpha_2</span><span class="p">,</span> <span class="n">count</span><span class="p">,</span> <span class="n">nobs</span> <span class="o">-</span> <span class="n">count</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="n">ci_upp</span> <span class="o">=</span> <span class="n">stats</span><span class="o">.</span><span class="n">beta</span><span class="o">.</span><span class="n">isf</span><span class="p">(</span><span class="n">alpha_2</span><span class="p">,</span> <span class="n">count</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="n">nobs</span> <span class="o">-</span> <span class="n">count</span><span class="p">)</span>
+
+    <span class="k">elif</span> <span class="n">method</span> <span class="o">==</span> <span class="s1">&#39;agresti_coull&#39;</span><span class="p">:</span>
+        <span class="n">crit</span> <span class="o">=</span> <span class="n">stats</span><span class="o">.</span><span class="n">norm</span><span class="o">.</span><span class="n">isf</span><span class="p">(</span><span class="n">alpha</span> <span class="o">/</span> <span class="mf">2.</span><span class="p">)</span>
+        <span class="n">nobs_c</span> <span class="o">=</span> <span class="n">nobs</span> <span class="o">+</span> <span class="n">crit</span><span class="o">**</span><span class="mi">2</span>
+        <span class="n">q_c</span> <span class="o">=</span> <span class="p">(</span><span class="n">count</span> <span class="o">+</span> <span class="n">crit</span><span class="o">**</span><span class="mi">2</span> <span class="o">/</span> <span class="mf">2.</span><span class="p">)</span> <span class="o">/</span> <span class="n">nobs_c</span>
+        <span class="n">std_c</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">q_c</span> <span class="o">*</span> <span class="p">(</span><span class="mf">1.</span> <span class="o">-</span> <span class="n">q_c</span><span class="p">)</span> <span class="o">/</span> <span class="n">nobs_c</span><span class="p">)</span>
+        <span class="n">dist</span> <span class="o">=</span> <span class="n">crit</span> <span class="o">*</span> <span class="n">std_c</span>
+        <span class="n">ci_low</span> <span class="o">=</span> <span class="n">q_c</span> <span class="o">-</span> <span class="n">dist</span>
+        <span class="n">ci_upp</span> <span class="o">=</span> <span class="n">q_c</span> <span class="o">+</span> <span class="n">dist</span>
+
+    <span class="k">elif</span> <span class="n">method</span> <span class="o">==</span> <span class="s1">&#39;wilson&#39;</span><span class="p">:</span>
+        <span class="n">crit</span> <span class="o">=</span> <span class="n">stats</span><span class="o">.</span><span class="n">norm</span><span class="o">.</span><span class="n">isf</span><span class="p">(</span><span class="n">alpha</span> <span class="o">/</span> <span class="mf">2.</span><span class="p">)</span>
+        <span class="n">crit2</span> <span class="o">=</span> <span class="n">crit</span><span class="o">**</span><span class="mi">2</span>
+        <span class="n">denom</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">+</span> <span class="n">crit2</span> <span class="o">/</span> <span class="n">nobs</span>
+        <span class="n">center</span> <span class="o">=</span> <span class="p">(</span><span class="n">q_</span> <span class="o">+</span> <span class="n">crit2</span> <span class="o">/</span> <span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">nobs</span><span class="p">))</span> <span class="o">/</span> <span class="n">denom</span>
+        <span class="n">dist</span> <span class="o">=</span> <span class="n">crit</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">q_</span> <span class="o">*</span> <span class="p">(</span><span class="mf">1.</span> <span class="o">-</span> <span class="n">q_</span><span class="p">)</span> <span class="o">/</span> <span class="n">nobs</span> <span class="o">+</span> <span class="n">crit2</span> <span class="o">/</span> <span class="p">(</span><span class="mf">4.</span> <span class="o">*</span> <span class="n">nobs</span><span class="o">**</span><span class="mi">2</span><span class="p">))</span>
+        <span class="n">dist</span> <span class="o">/=</span> <span class="n">denom</span>
+        <span class="n">ci_low</span> <span class="o">=</span> <span class="n">center</span> <span class="o">-</span> <span class="n">dist</span>
+        <span class="n">ci_upp</span> <span class="o">=</span> <span class="n">center</span> <span class="o">+</span> <span class="n">dist</span>
+
+    <span class="c1"># method adjusted to be more forgiving of misspellings or incorrect option name</span>
+    <span class="k">elif</span> <span class="n">method</span><span class="p">[:</span><span class="mi">4</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;jeff&#39;</span><span class="p">:</span>
+        <span class="n">ci_low</span><span class="p">,</span> <span class="n">ci_upp</span> <span class="o">=</span> <span class="n">stats</span><span class="o">.</span><span class="n">beta</span><span class="o">.</span><span class="n">interval</span><span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">alpha</span><span class="p">,</span> <span class="n">count</span> <span class="o">+</span> <span class="mf">0.5</span><span class="p">,</span>
+                                             <span class="n">nobs</span> <span class="o">-</span> <span class="n">count</span> <span class="o">+</span> <span class="mf">0.5</span><span class="p">)</span>
+
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span><span class="s1">&#39;method &quot;</span><span class="si">%s</span><span class="s1">&quot; is not available&#39;</span> <span class="o">%</span> <span class="n">method</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">ci_low</span><span class="p">,</span> <span class="n">ci_upp</span></div>
+
+
+<div class="viewcode-block" id="multinomial_proportions_confint"><a class="viewcode-back" href="../../../generated/statsmodels.stats.proportion.multinomial_proportions_confint.html#statsmodels.stats.proportion.multinomial_proportions_confint">[docs]</a><span class="k">def</span> <span class="nf">multinomial_proportions_confint</span><span class="p">(</span><span class="n">counts</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="mf">0.05</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s1">&#39;goodman&#39;</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;Confidence intervals for multinomial proportions.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    counts : array_like of int, 1-D</span>
+<span class="sd">        Number of observations in each category.</span>
+<span class="sd">    alpha : float in (0, 1), optional</span>
+<span class="sd">        Significance level, defaults to 0.05.</span>
+<span class="sd">    method : {&#39;goodman&#39;, &#39;sison-glaz&#39;}, optional</span>
+<span class="sd">        Method to use to compute the confidence intervals; available methods</span>
+<span class="sd">        are:</span>
+
+<span class="sd">         - `goodman`: based on a chi-squared approximation, valid if all</span>
+<span class="sd">           values in `counts` are greater or equal to 5 [2]_</span>
+<span class="sd">         - `sison-glaz`: less conservative than `goodman`, but only valid if</span>
+<span class="sd">           `counts` has 7 or more categories (``len(counts) &gt;= 7``) [3]_</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    confint : ndarray, 2-D</span>
+<span class="sd">        Array of [lower, upper] confidence levels for each category, such that</span>
+<span class="sd">        overall coverage is (approximately) `1-alpha`.</span>
+
+<span class="sd">    Raises</span>
+<span class="sd">    ------</span>
+<span class="sd">    ValueError</span>
+<span class="sd">        If `alpha` is not in `(0, 1)` (bounds excluded), or if the values in</span>
+<span class="sd">        `counts` are not all positive or null.</span>
+<span class="sd">    NotImplementedError</span>
+<span class="sd">        If `method` is not kown.</span>
+<span class="sd">    Exception</span>
+<span class="sd">        When ``method == &#39;sison-glaz&#39;``, if for some reason `c` cannot be</span>
+<span class="sd">        computed; this signals a bug and should be reported.</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    The `goodman` method [2]_ is based on approximating a statistic based on</span>
+<span class="sd">    the multinomial as a chi-squared random variable. The usual recommendation</span>
+<span class="sd">    is that this is valid if all the values in `counts` are greater than or</span>
+<span class="sd">    equal to 5. There is no condition on the number of categories for this</span>
+<span class="sd">    method.</span>
+
+<span class="sd">    The `sison-glaz` method [3]_ approximates the multinomial probabilities,</span>
+<span class="sd">    and evaluates that with a maximum-likelihood estimator. The first</span>
+<span class="sd">    approximation is an Edgeworth expansion that converges when the number of</span>
+<span class="sd">    categories goes to infinity, and the maximum-likelihood estimator converges</span>
+<span class="sd">    when the number of observations (``sum(counts)``) goes to infinity. In</span>
+<span class="sd">    their paper, Sison &amp; Glaz demo their method with at least 7 categories, so</span>
+<span class="sd">    ``len(counts) &gt;= 7`` with all values in `counts` at or above 5 can be used</span>
+<span class="sd">    as a rule of thumb for the validity of this method. This method is less</span>
+<span class="sd">    conservative than the `goodman` method (i.e. it will yield confidence</span>
+<span class="sd">    intervals closer to the desired significance level), but produces</span>
+<span class="sd">    confidence intervals of uniform width over all categories (except when the</span>
+<span class="sd">    intervals reach 0 or 1, in which case they are truncated), which makes it</span>
+<span class="sd">    most useful when proportions are of similar magnitude.</span>
+
+<span class="sd">    Aside from the original sources ([1]_, [2]_, and [3]_), the implementation</span>
+<span class="sd">    uses the formulas (though not the code) presented in [4]_ and [5]_.</span>
+
+<span class="sd">    References</span>
+<span class="sd">    ----------</span>
+<span class="sd">    .. [1] Levin, Bruce, &quot;A representation for multinomial cumulative</span>
+<span class="sd">           distribution functions,&quot; The Annals of Statistics, Vol. 9, No. 5,</span>
+<span class="sd">           1981, pp. 1123-1126.</span>
+
+<span class="sd">    .. [2] Goodman, L.A., &quot;On simultaneous confidence intervals for multinomial</span>
+<span class="sd">           proportions,&quot; Technometrics, Vol. 7, No. 2, 1965, pp. 247-254.</span>
+
+<span class="sd">    .. [3] Sison, Cristina P., and Joseph Glaz, &quot;Simultaneous Confidence</span>
+<span class="sd">           Intervals and Sample Size Determination for Multinomial</span>
+<span class="sd">           Proportions,&quot; Journal of the American Statistical Association,</span>
+<span class="sd">           Vol. 90, No. 429, 1995, pp. 366-369.</span>
+
+<span class="sd">    .. [4] May, Warren L., and William D. Johnson, &quot;A SAS® macro for</span>
+<span class="sd">           constructing simultaneous confidence intervals  for multinomial</span>
+<span class="sd">           proportions,&quot; Computer methods and programs in Biomedicine, Vol. 53,</span>
+<span class="sd">           No. 3, 1997, pp. 153-162.</span>
+
+<span class="sd">    .. [5] May, Warren L., and William D. Johnson, &quot;Constructing two-sided</span>
+<span class="sd">           simultaneous confidence intervals for multinomial proportions for</span>
+<span class="sd">           small counts in a large number of cells,&quot; Journal of Statistical</span>
+<span class="sd">           Software, Vol. 5, No. 6, 2000, pp. 1-24.</span>
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="k">if</span> <span class="n">alpha</span> <span class="o">&lt;=</span> <span class="mi">0</span> <span class="ow">or</span> <span class="n">alpha</span> <span class="o">&gt;=</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;alpha must be in (0, 1), bounds excluded&#39;</span><span class="p">)</span>
+    <span class="n">counts</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">counts</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float</span><span class="p">)</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">counts</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">any</span><span class="p">():</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;counts must be &gt;= 0&#39;</span><span class="p">)</span>
+
+    <span class="n">n</span> <span class="o">=</span> <span class="n">counts</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
+    <span class="n">k</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">counts</span><span class="p">)</span>
+    <span class="n">proportions</span> <span class="o">=</span> <span class="n">counts</span> <span class="o">/</span> <span class="n">n</span>
+    <span class="k">if</span> <span class="n">method</span> <span class="o">==</span> <span class="s1">&#39;goodman&#39;</span><span class="p">:</span>
+        <span class="n">chi2</span> <span class="o">=</span> <span class="n">stats</span><span class="o">.</span><span class="n">chi2</span><span class="o">.</span><span class="n">ppf</span><span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">alpha</span> <span class="o">/</span> <span class="n">k</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="n">delta</span> <span class="o">=</span> <span class="n">chi2</span> <span class="o">**</span> <span class="mi">2</span> <span class="o">+</span> <span class="p">(</span><span class="mi">4</span> <span class="o">*</span> <span class="n">n</span> <span class="o">*</span> <span class="n">proportions</span> <span class="o">*</span> <span class="n">chi2</span> <span class="o">*</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">proportions</span><span class="p">))</span>
+        <span class="n">region</span> <span class="o">=</span> <span class="p">((</span><span class="mi">2</span> <span class="o">*</span> <span class="n">n</span> <span class="o">*</span> <span class="n">proportions</span> <span class="o">+</span> <span class="n">chi2</span> <span class="o">+</span>
+                   <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">delta</span><span class="p">),</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">delta</span><span class="p">)]))</span> <span class="o">/</span>
+                  <span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="p">(</span><span class="n">chi2</span> <span class="o">+</span> <span class="n">n</span><span class="p">)))</span><span class="o">.</span><span class="n">T</span>
+    <span class="k">elif</span> <span class="n">method</span><span class="p">[:</span><span class="mi">5</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;sison&#39;</span><span class="p">:</span>  <span class="c1"># We accept any name starting with &#39;sison&#39;</span>
+        <span class="c1"># Define a few functions we&#39;ll use a lot.</span>
+        <span class="k">def</span> <span class="nf">poisson_interval</span><span class="p">(</span><span class="n">interval</span><span class="p">,</span> <span class="n">p</span><span class="p">):</span>
+            <span class="sd">&quot;&quot;&quot;Compute P(b &lt;= Z &lt;= a) where Z ~ Poisson(p) and</span>
+<span class="sd">            `interval = (b, a)`.&quot;&quot;&quot;</span>
+            <span class="n">b</span><span class="p">,</span> <span class="n">a</span> <span class="o">=</span> <span class="n">interval</span>
+            <span class="n">prob</span> <span class="o">=</span> <span class="n">stats</span><span class="o">.</span><span class="n">poisson</span><span class="o">.</span><span class="n">cdf</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">p</span><span class="p">)</span> <span class="o">-</span> <span class="n">stats</span><span class="o">.</span><span class="n">poisson</span><span class="o">.</span><span class="n">cdf</span><span class="p">(</span><span class="n">b</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span> <span class="n">p</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">p</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">prob</span><span class="p">):</span>
+                <span class="c1"># hack for older scipy &lt;=0.16.1</span>
+                <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="n">b</span> <span class="o">-</span> <span class="mi">1</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">prob</span>
+
+        <span class="k">def</span> <span class="nf">truncated_poisson_factorial_moment</span><span class="p">(</span><span class="n">interval</span><span class="p">,</span> <span class="n">r</span><span class="p">,</span> <span class="n">p</span><span class="p">):</span>
+            <span class="sd">&quot;&quot;&quot;Compute mu_r, the r-th factorial moment of a poisson random</span>
+<span class="sd">            variable of parameter `p` truncated to `interval = (b, a)`.&quot;&quot;&quot;</span>
+            <span class="n">b</span><span class="p">,</span> <span class="n">a</span> <span class="o">=</span> <span class="n">interval</span>
+            <span class="k">return</span> <span class="n">p</span> <span class="o">**</span> <span class="n">r</span> <span class="o">*</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="p">((</span><span class="n">poisson_interval</span><span class="p">((</span><span class="n">a</span> <span class="o">-</span> <span class="n">r</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="n">a</span><span class="p">),</span> <span class="n">p</span><span class="p">)</span> <span class="o">-</span>
+                                   <span class="n">poisson_interval</span><span class="p">((</span><span class="n">b</span> <span class="o">-</span> <span class="n">r</span><span class="p">,</span> <span class="n">b</span> <span class="o">-</span> <span class="mi">1</span><span class="p">),</span> <span class="n">p</span><span class="p">))</span> <span class="o">/</span>
+                                  <span class="n">poisson_interval</span><span class="p">((</span><span class="n">b</span><span class="p">,</span> <span class="n">a</span><span class="p">),</span> <span class="n">p</span><span class="p">)))</span>
+
+        <span class="k">def</span> <span class="nf">edgeworth</span><span class="p">(</span><span class="n">intervals</span><span class="p">):</span>
+            <span class="sd">&quot;&quot;&quot;Compute the Edgeworth expansion term of Sison &amp; Glaz&#39;s formula</span>
+<span class="sd">            (1) (approximated probability for multinomial proportions in a</span>
+<span class="sd">            given box).&quot;&quot;&quot;</span>
+            <span class="c1"># Compute means and central moments of the truncated poisson</span>
+            <span class="c1"># variables.</span>
+            <span class="n">mu_r1</span><span class="p">,</span> <span class="n">mu_r2</span><span class="p">,</span> <span class="n">mu_r3</span><span class="p">,</span> <span class="n">mu_r4</span> <span class="o">=</span> <span class="p">[</span>
+                <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">truncated_poisson_factorial_moment</span><span class="p">(</span><span class="n">interval</span><span class="p">,</span> <span class="n">r</span><span class="p">,</span> <span class="n">p</span><span class="p">)</span>
+                          <span class="k">for</span> <span class="p">(</span><span class="n">interval</span><span class="p">,</span> <span class="n">p</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">intervals</span><span class="p">,</span> <span class="n">counts</span><span class="p">)])</span>
+                <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">5</span><span class="p">)</span>
+            <span class="p">]</span>
+            <span class="n">mu</span> <span class="o">=</span> <span class="n">mu_r1</span>
+            <span class="n">mu2</span> <span class="o">=</span> <span class="n">mu_r2</span> <span class="o">+</span> <span class="n">mu</span> <span class="o">-</span> <span class="n">mu</span> <span class="o">**</span> <span class="mi">2</span>
+            <span class="n">mu3</span> <span class="o">=</span> <span class="n">mu_r3</span> <span class="o">+</span> <span class="n">mu_r2</span> <span class="o">*</span> <span class="p">(</span><span class="mi">3</span> <span class="o">-</span> <span class="mi">3</span> <span class="o">*</span> <span class="n">mu</span><span class="p">)</span> <span class="o">+</span> <span class="n">mu</span> <span class="o">-</span> <span class="mi">3</span> <span class="o">*</span> <span class="n">mu</span> <span class="o">**</span> <span class="mi">2</span> <span class="o">+</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">mu</span> <span class="o">**</span> <span class="mi">3</span>
+            <span class="n">mu4</span> <span class="o">=</span> <span class="p">(</span><span class="n">mu_r4</span> <span class="o">+</span> <span class="n">mu_r3</span> <span class="o">*</span> <span class="p">(</span><span class="mi">6</span> <span class="o">-</span> <span class="mi">4</span> <span class="o">*</span> <span class="n">mu</span><span class="p">)</span> <span class="o">+</span>
+                   <span class="n">mu_r2</span> <span class="o">*</span> <span class="p">(</span><span class="mi">7</span> <span class="o">-</span> <span class="mi">12</span> <span class="o">*</span> <span class="n">mu</span> <span class="o">+</span> <span class="mi">6</span> <span class="o">*</span> <span class="n">mu</span> <span class="o">**</span> <span class="mi">2</span><span class="p">)</span> <span class="o">+</span>
+                   <span class="n">mu</span> <span class="o">-</span> <span class="mi">4</span> <span class="o">*</span> <span class="n">mu</span> <span class="o">**</span> <span class="mi">2</span> <span class="o">+</span> <span class="mi">6</span> <span class="o">*</span> <span class="n">mu</span> <span class="o">**</span> <span class="mi">3</span> <span class="o">-</span> <span class="mi">3</span> <span class="o">*</span> <span class="n">mu</span> <span class="o">**</span> <span class="mi">4</span><span class="p">)</span>
+
+            <span class="c1"># Compute expansion factors, gamma_1 and gamma_2.</span>
+            <span class="n">g1</span> <span class="o">=</span> <span class="n">mu3</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span> <span class="o">/</span> <span class="n">mu2</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span> <span class="o">**</span> <span class="mf">1.5</span>
+            <span class="n">g2</span> <span class="o">=</span> <span class="p">(</span><span class="n">mu4</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span> <span class="o">-</span> <span class="mi">3</span> <span class="o">*</span> <span class="p">(</span><span class="n">mu2</span> <span class="o">**</span> <span class="mi">2</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">())</span> <span class="o">/</span> <span class="n">mu2</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span> <span class="o">**</span> <span class="mi">2</span>
+
+            <span class="c1"># Compute the expansion itself.</span>
+            <span class="n">x</span> <span class="o">=</span> <span class="p">(</span><span class="n">n</span> <span class="o">-</span> <span class="n">mu</span><span class="o">.</span><span class="n">sum</span><span class="p">())</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">mu2</span><span class="o">.</span><span class="n">sum</span><span class="p">())</span>
+            <span class="n">phi</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="o">-</span> <span class="n">x</span> <span class="o">**</span> <span class="mi">2</span> <span class="o">/</span> <span class="mi">2</span><span class="p">)</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">pi</span><span class="p">)</span>
+            <span class="n">H3</span> <span class="o">=</span> <span class="n">x</span> <span class="o">**</span> <span class="mi">3</span> <span class="o">-</span> <span class="mi">3</span> <span class="o">*</span> <span class="n">x</span>
+            <span class="n">H4</span> <span class="o">=</span> <span class="n">x</span> <span class="o">**</span> <span class="mi">4</span> <span class="o">-</span> <span class="mi">6</span> <span class="o">*</span> <span class="n">x</span> <span class="o">**</span> <span class="mi">2</span> <span class="o">+</span> <span class="mi">3</span>
+            <span class="n">H6</span> <span class="o">=</span> <span class="n">x</span> <span class="o">**</span> <span class="mi">6</span> <span class="o">-</span> <span class="mi">15</span> <span class="o">*</span> <span class="n">x</span> <span class="o">**</span> <span class="mi">4</span> <span class="o">+</span> <span class="mi">45</span> <span class="o">*</span> <span class="n">x</span> <span class="o">**</span> <span class="mi">2</span> <span class="o">-</span> <span class="mi">15</span>
+            <span class="n">f</span> <span class="o">=</span> <span class="n">phi</span> <span class="o">*</span> <span class="p">(</span><span class="mi">1</span> <span class="o">+</span> <span class="n">g1</span> <span class="o">*</span> <span class="n">H3</span> <span class="o">/</span> <span class="mi">6</span> <span class="o">+</span> <span class="n">g2</span> <span class="o">*</span> <span class="n">H4</span> <span class="o">/</span> <span class="mi">24</span> <span class="o">+</span> <span class="n">g1</span> <span class="o">**</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">H6</span> <span class="o">/</span> <span class="mi">72</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">f</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">mu2</span><span class="o">.</span><span class="n">sum</span><span class="p">())</span>
+
+
+        <span class="k">def</span> <span class="nf">approximated_multinomial_interval</span><span class="p">(</span><span class="n">intervals</span><span class="p">):</span>
+            <span class="sd">&quot;&quot;&quot;Compute approximated probability for Multinomial(n, proportions)</span>
+<span class="sd">            to be in `intervals` (Sison &amp; Glaz&#39;s formula (1)).&quot;&quot;&quot;</span>
+            <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span>
+                <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">([</span><span class="n">poisson_interval</span><span class="p">(</span><span class="n">interval</span><span class="p">,</span> <span class="n">p</span><span class="p">)</span>
+                               <span class="k">for</span> <span class="p">(</span><span class="n">interval</span><span class="p">,</span> <span class="n">p</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">intervals</span><span class="p">,</span> <span class="n">counts</span><span class="p">)]))</span> <span class="o">+</span>
+                <span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">edgeworth</span><span class="p">(</span><span class="n">intervals</span><span class="p">))</span> <span class="o">-</span>
+                <span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">stats</span><span class="o">.</span><span class="n">poisson</span><span class="o">.</span><span class="n">_pmf</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">n</span><span class="p">))</span>
+            <span class="p">)</span>
+
+        <span class="k">def</span> <span class="nf">nu</span><span class="p">(</span><span class="n">c</span><span class="p">):</span>
+            <span class="sd">&quot;&quot;&quot;Compute interval coverage for a given `c` (Sison &amp; Glaz&#39;s</span>
+<span class="sd">            formula (7)).&quot;&quot;&quot;</span>
+            <span class="k">return</span> <span class="n">approximated_multinomial_interval</span><span class="p">(</span>
+                <span class="p">[(</span><span class="n">np</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span><span class="n">count</span> <span class="o">-</span> <span class="n">c</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span> <span class="n">np</span><span class="o">.</span><span class="n">minimum</span><span class="p">(</span><span class="n">count</span> <span class="o">+</span> <span class="n">c</span><span class="p">,</span> <span class="n">n</span><span class="p">))</span>
+                 <span class="k">for</span> <span class="n">count</span> <span class="ow">in</span> <span class="n">counts</span><span class="p">])</span>
+
+        <span class="c1"># Find the value of `c` that will give us the confidence intervals</span>
+        <span class="c1"># (solving nu(c) &lt;= 1 - alpha &lt; nu(c + 1).</span>
+        <span class="n">c</span> <span class="o">=</span> <span class="mf">1.0</span>
+        <span class="n">nuc</span> <span class="o">=</span> <span class="n">nu</span><span class="p">(</span><span class="n">c</span><span class="p">)</span>
+        <span class="n">nucp1</span> <span class="o">=</span> <span class="n">nu</span><span class="p">(</span><span class="n">c</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="k">while</span> <span class="ow">not</span> <span class="p">(</span><span class="n">nuc</span> <span class="o">&lt;=</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">alpha</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">nucp1</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">c</span> <span class="o">&gt;</span> <span class="n">n</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">Exception</span><span class="p">(</span><span class="s2">&quot;Couldn&#39;t find a value for `c` that &quot;</span>
+                                <span class="s2">&quot;solves nu(c) &lt;= 1 - alpha &lt; nu(c + 1)&quot;</span><span class="p">)</span>
+            <span class="n">c</span> <span class="o">+=</span> <span class="mi">1</span>
+            <span class="n">nuc</span> <span class="o">=</span> <span class="n">nucp1</span>
+            <span class="n">nucp1</span> <span class="o">=</span> <span class="n">nu</span><span class="p">(</span><span class="n">c</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span>
+
+        <span class="c1"># Compute gamma and the corresponding confidence intervals.</span>
+        <span class="n">g</span> <span class="o">=</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">alpha</span> <span class="o">-</span> <span class="n">nuc</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="n">nucp1</span> <span class="o">-</span> <span class="n">nuc</span><span class="p">)</span>
+        <span class="n">ci_lower</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span><span class="n">proportions</span> <span class="o">-</span> <span class="n">c</span> <span class="o">/</span> <span class="n">n</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+        <span class="n">ci_upper</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">minimum</span><span class="p">(</span><span class="n">proportions</span> <span class="o">+</span> <span class="p">(</span><span class="n">c</span> <span class="o">+</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">g</span><span class="p">)</span> <span class="o">/</span> <span class="n">n</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="n">region</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">ci_lower</span><span class="p">,</span> <span class="n">ci_upper</span><span class="p">])</span><span class="o">.</span><span class="n">T</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span><span class="s1">&#39;method &quot;</span><span class="si">%s</span><span class="s1">&quot; is not available&#39;</span> <span class="o">%</span> <span class="n">method</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">region</span></div>
+
+
+<div class="viewcode-block" id="samplesize_confint_proportion"><a class="viewcode-back" href="../../../generated/statsmodels.stats.proportion.samplesize_confint_proportion.html#statsmodels.stats.proportion.samplesize_confint_proportion">[docs]</a><span class="k">def</span> <span class="nf">samplesize_confint_proportion</span><span class="p">(</span><span class="n">proportion</span><span class="p">,</span> <span class="n">half_length</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="mf">0.05</span><span class="p">,</span>
+                                  <span class="n">method</span><span class="o">=</span><span class="s1">&#39;normal&#39;</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;find sample size to get desired confidence interval length</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    proportion : float in (0, 1)</span>
+<span class="sd">        proportion or quantile</span>
+<span class="sd">    half_length : float in (0, 1)</span>
+<span class="sd">        desired half length of the confidence interval</span>
+<span class="sd">    alpha : float in (0, 1)</span>
+<span class="sd">        significance level, default 0.05,</span>
+<span class="sd">        coverage of the two-sided interval is (approximately) ``1 - alpha``</span>
+<span class="sd">    method : string in [&#39;normal&#39;]</span>
+<span class="sd">        method to use for confidence interval,</span>
+<span class="sd">        currently only normal approximation</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    n : float</span>
+<span class="sd">        sample size to get the desired half length of the confidence interval</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    this is mainly to store the formula.</span>
+<span class="sd">    possible application: number of replications in bootstrap samples</span>
+
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="n">q_</span> <span class="o">=</span> <span class="n">proportion</span>
+    <span class="k">if</span> <span class="n">method</span> <span class="o">==</span> <span class="s1">&#39;normal&#39;</span><span class="p">:</span>
+        <span class="n">n</span> <span class="o">=</span> <span class="n">q_</span> <span class="o">*</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">q_</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="n">half_length</span> <span class="o">/</span> <span class="n">stats</span><span class="o">.</span><span class="n">norm</span><span class="o">.</span><span class="n">isf</span><span class="p">(</span><span class="n">alpha</span> <span class="o">/</span> <span class="mf">2.</span><span class="p">))</span><span class="o">**</span><span class="mi">2</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span><span class="s1">&#39;only &quot;normal&quot; is available&#39;</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">n</span></div>
+
+<div class="viewcode-block" id="proportion_effectsize"><a class="viewcode-back" href="../../../generated/statsmodels.stats.proportion.proportion_effectsize.html#statsmodels.stats.proportion.proportion_effectsize">[docs]</a><span class="k">def</span> <span class="nf">proportion_effectsize</span><span class="p">(</span><span class="n">prop1</span><span class="p">,</span> <span class="n">prop2</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s1">&#39;normal&#39;</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;effect size for a test comparing two proportions</span>
+
+<span class="sd">    for use in power function</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    prop1, prop2: float or array_like</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    es : float or ndarray</span>
+<span class="sd">        effect size for (transformed) prop1 - prop2</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    only method=&#39;normal&#39; is implemented to match pwr.p2.test</span>
+<span class="sd">    see http://www.statmethods.net/stats/power.html</span>
+
+<span class="sd">    Effect size for `normal` is defined as ::</span>
+
+<span class="sd">        2 * (arcsin(sqrt(prop1)) - arcsin(sqrt(prop2)))</span>
+
+<span class="sd">    I think other conversions to normality can be used, but I need to check.</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    &gt;&gt;&gt; import statsmodels.api as sm</span>
+<span class="sd">    &gt;&gt;&gt; sm.stats.proportion_effectsize(0.5, 0.4)</span>
+<span class="sd">    0.20135792079033088</span>
+<span class="sd">    &gt;&gt;&gt; sm.stats.proportion_effectsize([0.3, 0.4, 0.5], 0.4)</span>
+<span class="sd">    array([-0.21015893,  0.        ,  0.20135792])</span>
+
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="k">if</span> <span class="n">method</span> <span class="o">!=</span> <span class="s1">&#39;normal&#39;</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;only &quot;normal&quot; is implemented&#39;</span><span class="p">)</span>
+
+    <span class="n">es</span> <span class="o">=</span> <span class="mi">2</span> <span class="o">*</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">arcsin</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">prop1</span><span class="p">))</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">arcsin</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">prop2</span><span class="p">)))</span>
+    <span class="k">return</span> <span class="n">es</span></div>
+
+<span class="k">def</span> <span class="nf">std_prop</span><span class="p">(</span><span class="n">prop</span><span class="p">,</span> <span class="n">nobs</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;standard error for the estimate of a proportion</span>
+
+<span class="sd">    This is just ``np.sqrt(p * (1. - p) / nobs)``</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    prop : array_like</span>
+<span class="sd">        proportion</span>
+<span class="sd">    nobs : int, array_like</span>
+<span class="sd">        number of observations</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    std : array_like</span>
+<span class="sd">        standard error for a proportion of nobs independent observations</span>
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">prop</span> <span class="o">*</span> <span class="p">(</span><span class="mf">1.</span> <span class="o">-</span> <span class="n">prop</span><span class="p">)</span> <span class="o">/</span> <span class="n">nobs</span><span class="p">)</span>
+
+<span class="k">def</span> <span class="nf">_power_ztost</span><span class="p">(</span><span class="n">mean_low</span><span class="p">,</span> <span class="n">var_low</span><span class="p">,</span> <span class="n">mean_upp</span><span class="p">,</span> <span class="n">var_upp</span><span class="p">,</span> <span class="n">mean_alt</span><span class="p">,</span> <span class="n">var_alt</span><span class="p">,</span>
+                 <span class="n">alpha</span><span class="o">=</span><span class="mf">0.05</span><span class="p">,</span> <span class="n">discrete</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">dist</span><span class="o">=</span><span class="s1">&#39;norm&#39;</span><span class="p">,</span> <span class="n">nobs</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                 <span class="n">continuity</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">critval_continuity</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;Generic statistical power function for normal based equivalence test</span>
+
+<span class="sd">    This includes options to adjust the normal approximation and can use</span>
+<span class="sd">    the binomial to evaluate the probability of the rejection region</span>
+
+<span class="sd">    see power_ztost_prob for a description of the options</span>
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="c1"># TODO: refactor structure, separate norm and binom better</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">continuity</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">):</span>
+        <span class="n">continuity</span> <span class="o">=</span> <span class="p">(</span><span class="n">continuity</span><span class="p">,</span> <span class="n">continuity</span><span class="p">)</span>
+    <span class="n">crit</span> <span class="o">=</span> <span class="n">stats</span><span class="o">.</span><span class="n">norm</span><span class="o">.</span><span class="n">isf</span><span class="p">(</span><span class="n">alpha</span><span class="p">)</span>
+    <span class="n">k_low</span> <span class="o">=</span> <span class="n">mean_low</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">var_low</span><span class="p">)</span> <span class="o">*</span> <span class="n">crit</span>
+    <span class="n">k_upp</span> <span class="o">=</span> <span class="n">mean_upp</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">var_upp</span><span class="p">)</span> <span class="o">*</span> <span class="n">crit</span>
+    <span class="k">if</span> <span class="n">discrete</span> <span class="ow">or</span> <span class="n">dist</span> <span class="o">==</span> <span class="s1">&#39;binom&#39;</span><span class="p">:</span>
+        <span class="n">k_low</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ceil</span><span class="p">(</span><span class="n">k_low</span> <span class="o">*</span> <span class="n">nobs</span> <span class="o">+</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="n">critval_continuity</span><span class="p">)</span>
+        <span class="n">k_upp</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">trunc</span><span class="p">(</span><span class="n">k_upp</span> <span class="o">*</span> <span class="n">nobs</span> <span class="o">-</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="n">critval_continuity</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">dist</span> <span class="o">==</span> <span class="s1">&#39;norm&#39;</span><span class="p">:</span>
+            <span class="c1">#need proportion</span>
+            <span class="n">k_low</span> <span class="o">=</span> <span class="p">(</span><span class="n">k_low</span><span class="p">)</span> <span class="o">*</span> <span class="mf">1.</span> <span class="o">/</span> <span class="n">nobs</span> <span class="c1">#-1 to match PASS</span>
+            <span class="n">k_upp</span> <span class="o">=</span> <span class="n">k_upp</span> <span class="o">*</span> <span class="mf">1.</span> <span class="o">/</span> <span class="n">nobs</span>
+<span class="c1">#    else:</span>
+<span class="c1">#        if dist == &#39;binom&#39;:</span>
+<span class="c1">#            #need counts</span>
+<span class="c1">#            k_low *= nobs</span>
+<span class="c1">#            k_upp *= nobs</span>
+    <span class="c1">#print mean_low, np.sqrt(var_low), crit, var_low</span>
+    <span class="c1">#print mean_upp, np.sqrt(var_upp), crit, var_upp</span>
+    <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">k_low</span> <span class="o">&gt;</span> <span class="n">k_upp</span><span class="p">):</span>   <span class="c1">#vectorize</span>
+        <span class="kn">import</span> <span class="nn">warnings</span>
+        <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="s2">&quot;no overlap, power is zero&quot;</span><span class="p">,</span> <span class="n">HypothesisTestWarning</span><span class="p">)</span>
+    <span class="n">std_alt</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">var_alt</span><span class="p">)</span>
+    <span class="n">z_low</span> <span class="o">=</span> <span class="p">(</span><span class="n">k_low</span> <span class="o">-</span> <span class="n">mean_alt</span> <span class="o">-</span> <span class="n">continuity</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="mf">0.5</span> <span class="o">/</span> <span class="n">nobs</span><span class="p">)</span> <span class="o">/</span> <span class="n">std_alt</span>
+    <span class="n">z_upp</span> <span class="o">=</span> <span class="p">(</span><span class="n">k_upp</span> <span class="o">-</span> <span class="n">mean_alt</span> <span class="o">+</span> <span class="n">continuity</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">*</span> <span class="mf">0.5</span> <span class="o">/</span> <span class="n">nobs</span><span class="p">)</span> <span class="o">/</span> <span class="n">std_alt</span>
+    <span class="k">if</span> <span class="n">dist</span> <span class="o">==</span> <span class="s1">&#39;norm&#39;</span><span class="p">:</span>
+        <span class="n">power</span> <span class="o">=</span> <span class="n">stats</span><span class="o">.</span><span class="n">norm</span><span class="o">.</span><span class="n">cdf</span><span class="p">(</span><span class="n">z_upp</span><span class="p">)</span> <span class="o">-</span> <span class="n">stats</span><span class="o">.</span><span class="n">norm</span><span class="o">.</span><span class="n">cdf</span><span class="p">(</span><span class="n">z_low</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">dist</span> <span class="o">==</span> <span class="s1">&#39;binom&#39;</span><span class="p">:</span>
+        <span class="n">power</span> <span class="o">=</span> <span class="p">(</span><span class="n">stats</span><span class="o">.</span><span class="n">binom</span><span class="o">.</span><span class="n">cdf</span><span class="p">(</span><span class="n">k_upp</span><span class="p">,</span> <span class="n">nobs</span><span class="p">,</span> <span class="n">mean_alt</span><span class="p">)</span> <span class="o">-</span>
+                     <span class="n">stats</span><span class="o">.</span><span class="n">binom</span><span class="o">.</span><span class="n">cdf</span><span class="p">(</span><span class="n">k_low</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">nobs</span><span class="p">,</span> <span class="n">mean_alt</span><span class="p">))</span>
+    <span class="k">return</span> <span class="n">power</span><span class="p">,</span> <span class="p">(</span><span class="n">k_low</span><span class="p">,</span> <span class="n">k_upp</span><span class="p">,</span> <span class="n">z_low</span><span class="p">,</span> <span class="n">z_upp</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="binom_tost"><a class="viewcode-back" href="../../../generated/statsmodels.stats.proportion.binom_tost.html#statsmodels.stats.proportion.binom_tost">[docs]</a><span class="k">def</span> <span class="nf">binom_tost</span><span class="p">(</span><span class="n">count</span><span class="p">,</span> <span class="n">nobs</span><span class="p">,</span> <span class="n">low</span><span class="p">,</span> <span class="n">upp</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;exact TOST test for one proportion using binomial distribution</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    count : integer or array_like</span>
+<span class="sd">        the number of successes in nobs trials.</span>
+<span class="sd">    nobs : integer</span>
+<span class="sd">        the number of trials or observations.</span>
+<span class="sd">    low, upp : floats</span>
+<span class="sd">        lower and upper limit of equivalence region</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    pvalue : float</span>
+<span class="sd">        p-value of equivalence test</span>
+<span class="sd">    pval_low, pval_upp : floats</span>
+<span class="sd">        p-values of lower and upper one-sided tests</span>
+
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="c1"># binom_test_stat only returns pval</span>
+    <span class="n">tt1</span> <span class="o">=</span> <span class="n">binom_test</span><span class="p">(</span><span class="n">count</span><span class="p">,</span> <span class="n">nobs</span><span class="p">,</span> <span class="n">alternative</span><span class="o">=</span><span class="s1">&#39;larger&#39;</span><span class="p">,</span> <span class="n">prop</span><span class="o">=</span><span class="n">low</span><span class="p">)</span>
+    <span class="n">tt2</span> <span class="o">=</span> <span class="n">binom_test</span><span class="p">(</span><span class="n">count</span><span class="p">,</span> <span class="n">nobs</span><span class="p">,</span> <span class="n">alternative</span><span class="o">=</span><span class="s1">&#39;smaller&#39;</span><span class="p">,</span> <span class="n">prop</span><span class="o">=</span><span class="n">upp</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span><span class="n">tt1</span><span class="p">,</span> <span class="n">tt2</span><span class="p">),</span> <span class="n">tt1</span><span class="p">,</span> <span class="n">tt2</span><span class="p">,</span></div>
+
+
+<div class="viewcode-block" id="binom_tost_reject_interval"><a class="viewcode-back" href="../../../generated/statsmodels.stats.proportion.binom_tost_reject_interval.html#statsmodels.stats.proportion.binom_tost_reject_interval">[docs]</a><span class="k">def</span> <span class="nf">binom_tost_reject_interval</span><span class="p">(</span><span class="n">low</span><span class="p">,</span> <span class="n">upp</span><span class="p">,</span> <span class="n">nobs</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="mf">0.05</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;rejection region for binomial TOST</span>
+
+<span class="sd">    The interval includes the end points,</span>
+<span class="sd">    `reject` if and only if `r_low &lt;= x &lt;= r_upp`.</span>
+
+<span class="sd">    The interval might be empty with `r_upp &lt; r_low`.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    low, upp : floats</span>
+<span class="sd">        lower and upper limit of equivalence region</span>
+<span class="sd">    nobs : integer</span>
+<span class="sd">        the number of trials or observations.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    x_low, x_upp : float</span>
+<span class="sd">        lower and upper bound of rejection region</span>
+
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="n">x_low</span> <span class="o">=</span> <span class="n">stats</span><span class="o">.</span><span class="n">binom</span><span class="o">.</span><span class="n">isf</span><span class="p">(</span><span class="n">alpha</span><span class="p">,</span> <span class="n">nobs</span><span class="p">,</span> <span class="n">low</span><span class="p">)</span> <span class="o">+</span> <span class="mi">1</span>
+    <span class="n">x_upp</span> <span class="o">=</span> <span class="n">stats</span><span class="o">.</span><span class="n">binom</span><span class="o">.</span><span class="n">ppf</span><span class="p">(</span><span class="n">alpha</span><span class="p">,</span> <span class="n">nobs</span><span class="p">,</span> <span class="n">upp</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span>
+    <span class="k">return</span> <span class="n">x_low</span><span class="p">,</span> <span class="n">x_upp</span></div>
+
+<div class="viewcode-block" id="binom_test_reject_interval"><a class="viewcode-back" href="../../../generated/statsmodels.stats.proportion.binom_test_reject_interval.html#statsmodels.stats.proportion.binom_test_reject_interval">[docs]</a><span class="k">def</span> <span class="nf">binom_test_reject_interval</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">nobs</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="mf">0.05</span><span class="p">,</span> <span class="n">alternative</span><span class="o">=</span><span class="s1">&#39;two-sided&#39;</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;rejection region for binomial test for one sample proportion</span>
+
+<span class="sd">    The interval includes the end points of the rejection region.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    value : float</span>
+<span class="sd">        proportion under the Null hypothesis</span>
+<span class="sd">    nobs : integer</span>
+<span class="sd">        the number of trials or observations.</span>
+
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    x_low, x_upp : float</span>
+<span class="sd">        lower and upper bound of rejection region</span>
+
+
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="k">if</span> <span class="n">alternative</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;2s&#39;</span><span class="p">,</span> <span class="s1">&#39;two-sided&#39;</span><span class="p">]:</span>
+        <span class="n">alternative</span> <span class="o">=</span> <span class="s1">&#39;2s&#39;</span>  <span class="c1"># normalize alternative name</span>
+        <span class="n">alpha</span> <span class="o">=</span> <span class="n">alpha</span> <span class="o">/</span> <span class="mi">2</span>
+
+    <span class="k">if</span> <span class="n">alternative</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;2s&#39;</span><span class="p">,</span> <span class="s1">&#39;smaller&#39;</span><span class="p">]:</span>
+        <span class="n">x_low</span> <span class="o">=</span> <span class="n">stats</span><span class="o">.</span><span class="n">binom</span><span class="o">.</span><span class="n">ppf</span><span class="p">(</span><span class="n">alpha</span><span class="p">,</span> <span class="n">nobs</span><span class="p">,</span> <span class="n">value</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">x_low</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="k">if</span> <span class="n">alternative</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;2s&#39;</span><span class="p">,</span> <span class="s1">&#39;larger&#39;</span><span class="p">]:</span>
+        <span class="n">x_upp</span> <span class="o">=</span> <span class="n">stats</span><span class="o">.</span><span class="n">binom</span><span class="o">.</span><span class="n">isf</span><span class="p">(</span><span class="n">alpha</span><span class="p">,</span> <span class="n">nobs</span><span class="p">,</span> <span class="n">value</span><span class="p">)</span> <span class="o">+</span> <span class="mi">1</span>
+    <span class="k">else</span> <span class="p">:</span>
+        <span class="n">x_upp</span> <span class="o">=</span> <span class="n">nobs</span>
+
+    <span class="k">return</span> <span class="n">x_low</span><span class="p">,</span> <span class="n">x_upp</span></div>
+
+<div class="viewcode-block" id="binom_test"><a class="viewcode-back" href="../../../generated/statsmodels.stats.proportion.binom_test.html#statsmodels.stats.proportion.binom_test">[docs]</a><span class="k">def</span> <span class="nf">binom_test</span><span class="p">(</span><span class="n">count</span><span class="p">,</span> <span class="n">nobs</span><span class="p">,</span> <span class="n">prop</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">alternative</span><span class="o">=</span><span class="s1">&#39;two-sided&#39;</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;Perform a test that the probability of success is p.</span>
+
+<span class="sd">    This is an exact, two-sided test of the null hypothesis</span>
+<span class="sd">    that the probability of success in a Bernoulli experiment</span>
+<span class="sd">    is `p`.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    count : integer or array_like</span>
+<span class="sd">        the number of successes in nobs trials.</span>
+<span class="sd">    nobs : integer</span>
+<span class="sd">        the number of trials or observations.</span>
+<span class="sd">    prop : float, optional</span>
+<span class="sd">        The probability of success under the null hypothesis,</span>
+<span class="sd">        `0 &lt;= prop &lt;= 1`. The default value is `prop = 0.5`</span>
+<span class="sd">    alternative : string in [&#39;two-sided&#39;, &#39;smaller&#39;, &#39;larger&#39;]</span>
+<span class="sd">        alternative hypothesis, which can be two-sided or either one of the</span>
+<span class="sd">        one-sided tests.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    p-value : float</span>
+<span class="sd">        The p-value of the hypothesis test</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    This uses scipy.stats.binom_test for the two-sided alternative.</span>
+
+<span class="sd">    &#39;&#39;&#39;</span>
+
+    <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">prop</span> <span class="o">&gt;</span> <span class="mf">1.0</span><span class="p">)</span> <span class="ow">or</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">prop</span> <span class="o">&lt;</span> <span class="mf">0.0</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;p must be in range [0,1]&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">alternative</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;2s&#39;</span><span class="p">,</span> <span class="s1">&#39;two-sided&#39;</span><span class="p">]:</span>
+        <span class="n">pval</span> <span class="o">=</span> <span class="n">stats</span><span class="o">.</span><span class="n">binom_test</span><span class="p">(</span><span class="n">count</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="n">nobs</span><span class="p">,</span> <span class="n">p</span><span class="o">=</span><span class="n">prop</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">alternative</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;l&#39;</span><span class="p">,</span> <span class="s1">&#39;larger&#39;</span><span class="p">]:</span>
+        <span class="n">pval</span> <span class="o">=</span> <span class="n">stats</span><span class="o">.</span><span class="n">binom</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="n">count</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">nobs</span><span class="p">,</span> <span class="n">prop</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">alternative</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;s&#39;</span><span class="p">,</span> <span class="s1">&#39;smaller&#39;</span><span class="p">]:</span>
+        <span class="n">pval</span> <span class="o">=</span> <span class="n">stats</span><span class="o">.</span><span class="n">binom</span><span class="o">.</span><span class="n">cdf</span><span class="p">(</span><span class="n">count</span><span class="p">,</span> <span class="n">nobs</span><span class="p">,</span> <span class="n">prop</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;alternative not recognized</span><span class="se">\n</span><span class="s1">&#39;</span>
+                         <span class="s1">&#39;should be two-sided, larger or smaller&#39;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">pval</span></div>
+
+
+<div class="viewcode-block" id="power_binom_tost"><a class="viewcode-back" href="../../../generated/statsmodels.stats.proportion.power_binom_tost.html#statsmodels.stats.proportion.power_binom_tost">[docs]</a><span class="k">def</span> <span class="nf">power_binom_tost</span><span class="p">(</span><span class="n">low</span><span class="p">,</span> <span class="n">upp</span><span class="p">,</span> <span class="n">nobs</span><span class="p">,</span> <span class="n">p_alt</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="mf">0.05</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">p_alt</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">p_alt</span> <span class="o">=</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="p">(</span><span class="n">low</span> <span class="o">+</span> <span class="n">upp</span><span class="p">)</span>
+    <span class="n">x_low</span><span class="p">,</span> <span class="n">x_upp</span> <span class="o">=</span> <span class="n">binom_tost_reject_interval</span><span class="p">(</span><span class="n">low</span><span class="p">,</span> <span class="n">upp</span><span class="p">,</span> <span class="n">nobs</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="n">alpha</span><span class="p">)</span>
+    <span class="n">power</span> <span class="o">=</span> <span class="p">(</span><span class="n">stats</span><span class="o">.</span><span class="n">binom</span><span class="o">.</span><span class="n">cdf</span><span class="p">(</span><span class="n">x_upp</span><span class="p">,</span> <span class="n">nobs</span><span class="p">,</span> <span class="n">p_alt</span><span class="p">)</span> <span class="o">-</span>
+                     <span class="n">stats</span><span class="o">.</span><span class="n">binom</span><span class="o">.</span><span class="n">cdf</span><span class="p">(</span><span class="n">x_low</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">nobs</span><span class="p">,</span> <span class="n">p_alt</span><span class="p">))</span>
+    <span class="k">return</span> <span class="n">power</span></div>
+
+<div class="viewcode-block" id="power_ztost_prop"><a class="viewcode-back" href="../../../generated/statsmodels.stats.proportion.power_ztost_prop.html#statsmodels.stats.proportion.power_ztost_prop">[docs]</a><span class="k">def</span> <span class="nf">power_ztost_prop</span><span class="p">(</span><span class="n">low</span><span class="p">,</span> <span class="n">upp</span><span class="p">,</span> <span class="n">nobs</span><span class="p">,</span> <span class="n">p_alt</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="mf">0.05</span><span class="p">,</span> <span class="n">dist</span><span class="o">=</span><span class="s1">&#39;norm&#39;</span><span class="p">,</span>
+                     <span class="n">variance_prop</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">discrete</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">continuity</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+                     <span class="n">critval_continuity</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;Power of proportions equivalence test based on normal distribution</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    low, upp : floats</span>
+<span class="sd">        lower and upper limit of equivalence region</span>
+<span class="sd">    nobs : int</span>
+<span class="sd">        number of observations</span>
+<span class="sd">    p_alt : float in (0,1)</span>
+<span class="sd">        proportion under the alternative</span>
+<span class="sd">    alpha : float in (0,1)</span>
+<span class="sd">        significance level of the test</span>
+<span class="sd">    dist : string in [&#39;norm&#39;, &#39;binom&#39;]</span>
+<span class="sd">        This defines the distribution to evalute the power of the test. The</span>
+<span class="sd">        critical values of the TOST test are always based on the normal</span>
+<span class="sd">        approximation, but the distribution for the power can be either the</span>
+<span class="sd">        normal (default) or the binomial (exact) distribution.</span>
+<span class="sd">    variance_prop : None or float in (0,1)</span>
+<span class="sd">        If this is None, then the variances for the two one sided tests are</span>
+<span class="sd">        based on the proportions equal to the equivalence limits.</span>
+<span class="sd">        If variance_prop is given, then it is used to calculate the variance</span>
+<span class="sd">        for the TOST statistics. If this is based on an sample, then the</span>
+<span class="sd">        estimated proportion can be used.</span>
+<span class="sd">    discrete : bool</span>
+<span class="sd">        If true, then the critical values of the rejection region are converted</span>
+<span class="sd">        to integers. If dist is &quot;binom&quot;, this is automatically assumed.</span>
+<span class="sd">        If discrete is false, then the TOST critical values are used as</span>
+<span class="sd">        floating point numbers, and the power is calculated based on the</span>
+<span class="sd">        rejection region that is not discretized.</span>
+<span class="sd">    continuity : bool or float</span>
+<span class="sd">        adjust the rejection region for the normal power probability. This has</span>
+<span class="sd">        and effect only if ``dist=&#39;norm&#39;``</span>
+<span class="sd">    critval_continuity : bool or float</span>
+<span class="sd">        If this is non-zero, then the critical values of the tost rejection</span>
+<span class="sd">        region are adjusted before converting to integers. This affects both</span>
+<span class="sd">        distributions, ``dist=&#39;norm&#39;`` and ``dist=&#39;binom&#39;``.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    power : float</span>
+<span class="sd">        statistical power of the equivalence test.</span>
+<span class="sd">    (k_low, k_upp, z_low, z_upp) : tuple of floats</span>
+<span class="sd">        critical limits in intermediate steps</span>
+<span class="sd">        temporary return, will be changed</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    In small samples the power for the ``discrete`` version, has a sawtooth</span>
+<span class="sd">    pattern as a function of the number of observations. As a consequence,</span>
+<span class="sd">    small changes in the number of observations or in the normal approximation</span>
+<span class="sd">    can have a large effect on the power.</span>
+
+<span class="sd">    ``continuity`` and ``critval_continuity`` are added to match some results</span>
+<span class="sd">    of PASS, and are mainly to investigate the sensitivity of the ztost power</span>
+<span class="sd">    to small changes in the rejection region. From my interpretation of the</span>
+<span class="sd">    equations in the SAS manual, both are zero in SAS.</span>
+
+<span class="sd">    works vectorized</span>
+
+<span class="sd">    **verification:**</span>
+
+<span class="sd">    The ``dist=&#39;binom&#39;`` results match PASS,</span>
+<span class="sd">    The ``dist=&#39;norm&#39;`` results look reasonable, but no benchmark is available.</span>
+
+<span class="sd">    References</span>
+<span class="sd">    ----------</span>
+<span class="sd">    SAS Manual: Chapter 68: The Power Procedure, Computational Resources</span>
+<span class="sd">    PASS Chapter 110: Equivalence Tests for One Proportion.</span>
+
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="n">mean_low</span> <span class="o">=</span> <span class="n">low</span>
+    <span class="n">var_low</span> <span class="o">=</span> <span class="n">std_prop</span><span class="p">(</span><span class="n">low</span><span class="p">,</span> <span class="n">nobs</span><span class="p">)</span><span class="o">**</span><span class="mi">2</span>
+    <span class="n">mean_upp</span> <span class="o">=</span> <span class="n">upp</span>
+    <span class="n">var_upp</span> <span class="o">=</span> <span class="n">std_prop</span><span class="p">(</span><span class="n">upp</span><span class="p">,</span> <span class="n">nobs</span><span class="p">)</span><span class="o">**</span><span class="mi">2</span>
+    <span class="n">mean_alt</span> <span class="o">=</span> <span class="n">p_alt</span>
+    <span class="n">var_alt</span> <span class="o">=</span> <span class="n">std_prop</span><span class="p">(</span><span class="n">p_alt</span><span class="p">,</span> <span class="n">nobs</span><span class="p">)</span><span class="o">**</span><span class="mi">2</span>
+    <span class="k">if</span> <span class="n">variance_prop</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">var_low</span> <span class="o">=</span> <span class="n">var_upp</span> <span class="o">=</span> <span class="n">std_prop</span><span class="p">(</span><span class="n">variance_prop</span><span class="p">,</span> <span class="n">nobs</span><span class="p">)</span><span class="o">**</span><span class="mi">2</span>
+    <span class="n">power</span> <span class="o">=</span> <span class="n">_power_ztost</span><span class="p">(</span><span class="n">mean_low</span><span class="p">,</span> <span class="n">var_low</span><span class="p">,</span> <span class="n">mean_upp</span><span class="p">,</span> <span class="n">var_upp</span><span class="p">,</span> <span class="n">mean_alt</span><span class="p">,</span> <span class="n">var_alt</span><span class="p">,</span>
+                 <span class="n">alpha</span><span class="o">=</span><span class="n">alpha</span><span class="p">,</span> <span class="n">discrete</span><span class="o">=</span><span class="n">discrete</span><span class="p">,</span> <span class="n">dist</span><span class="o">=</span><span class="n">dist</span><span class="p">,</span> <span class="n">nobs</span><span class="o">=</span><span class="n">nobs</span><span class="p">,</span>
+                 <span class="n">continuity</span><span class="o">=</span><span class="n">continuity</span><span class="p">,</span> <span class="n">critval_continuity</span><span class="o">=</span><span class="n">critval_continuity</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span><span class="n">power</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="mi">0</span><span class="p">),</span> <span class="n">power</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span></div>
+
+
+<span class="k">def</span> <span class="nf">_table_proportion</span><span class="p">(</span><span class="n">count</span><span class="p">,</span> <span class="n">nobs</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;create a k by 2 contingency table for proportion</span>
+
+<span class="sd">    helper function for proportions_chisquare</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    count : integer or array_like</span>
+<span class="sd">        the number of successes in nobs trials.</span>
+<span class="sd">    nobs : integer</span>
+<span class="sd">        the number of trials or observations.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    table : ndarray</span>
+<span class="sd">        (k, 2) contingency table</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    recent scipy has more elaborate contingency table functions</span>
+
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="n">table</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">column_stack</span><span class="p">((</span><span class="n">count</span><span class="p">,</span> <span class="n">nobs</span> <span class="o">-</span> <span class="n">count</span><span class="p">))</span>
+    <span class="n">expected</span> <span class="o">=</span> <span class="n">table</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span> <span class="o">*</span> <span class="n">table</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="mi">1</span><span class="p">)[:,</span><span class="kc">None</span><span class="p">]</span> <span class="o">*</span> <span class="mf">1.</span> <span class="o">/</span> <span class="n">table</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
+    <span class="n">n_rows</span> <span class="o">=</span> <span class="n">table</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="k">return</span> <span class="n">table</span><span class="p">,</span> <span class="n">expected</span><span class="p">,</span> <span class="n">n_rows</span>
+
+
+<div class="viewcode-block" id="proportions_ztest"><a class="viewcode-back" href="../../../generated/statsmodels.stats.proportion.proportions_ztest.html#statsmodels.stats.proportion.proportions_ztest">[docs]</a><span class="k">def</span> <span class="nf">proportions_ztest</span><span class="p">(</span><span class="n">count</span><span class="p">,</span> <span class="n">nobs</span><span class="p">,</span> <span class="n">value</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">alternative</span><span class="o">=</span><span class="s1">&#39;two-sided&#39;</span><span class="p">,</span>
+                      <span class="n">prop_var</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Test for proportions based on normal (z) test</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    count : integer or array_like</span>
+<span class="sd">        the number of successes in nobs trials. If this is array_like, then</span>
+<span class="sd">        the assumption is that this represents the number of successes for</span>
+<span class="sd">        each independent sample</span>
+<span class="sd">    nobs : integer or array-like</span>
+<span class="sd">        the number of trials or observations, with the same length as</span>
+<span class="sd">        count.</span>
+<span class="sd">    value : float, array_like or None, optional</span>
+<span class="sd">        This is the value of the null hypothesis equal to the proportion in the</span>
+<span class="sd">        case of a one sample test. In the case of a two-sample test, the</span>
+<span class="sd">        null hypothesis is that prop[0] - prop[1] = value, where prop is the</span>
+<span class="sd">        proportion in the two samples. If not provided value = 0 and the null</span>
+<span class="sd">        is prop[0] = prop[1]</span>
+<span class="sd">    alternative : string in [&#39;two-sided&#39;, &#39;smaller&#39;, &#39;larger&#39;]</span>
+<span class="sd">        The alternative hypothesis can be either two-sided or one of the one-</span>
+<span class="sd">        sided tests, smaller means that the alternative hypothesis is</span>
+<span class="sd">        ``prop &lt; value` and larger means ``prop &gt; value``, or the corresponding</span>
+<span class="sd">        inequality for the two sample test.</span>
+<span class="sd">    prop_var : False or float in (0, 1)</span>
+<span class="sd">        If prop_var is false, then the variance of the proportion estimate is</span>
+<span class="sd">        calculated based on the sample proportion. Alternatively, a proportion</span>
+<span class="sd">        can be specified to calculate this variance. Common use case is to</span>
+<span class="sd">        use the proportion under the Null hypothesis to specify the variance</span>
+<span class="sd">        of the proportion estimate.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    zstat : float</span>
+<span class="sd">        test statistic for the z-test</span>
+<span class="sd">    p-value : float</span>
+<span class="sd">        p-value for the z-test</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    &gt;&gt;&gt; count = 5</span>
+<span class="sd">    &gt;&gt;&gt; nobs = 83</span>
+<span class="sd">    &gt;&gt;&gt; value = .05</span>
+<span class="sd">    &gt;&gt;&gt; stat, pval = proportions_ztest(count, nobs, value)</span>
+<span class="sd">    &gt;&gt;&gt; print(&#39;{0:0.3f}&#39;.format(pval))</span>
+<span class="sd">    0.695</span>
+
+<span class="sd">    &gt;&gt;&gt; import numpy as np</span>
+<span class="sd">    &gt;&gt;&gt; from statsmodels.stats.proportion import proportions_ztest</span>
+<span class="sd">    &gt;&gt;&gt; count = np.array([5, 12])</span>
+<span class="sd">    &gt;&gt;&gt; nobs = np.array([83, 99])</span>
+<span class="sd">    &gt;&gt;&gt; stat, pval = proportions_ztest(counts, nobs)</span>
+<span class="sd">    &gt;&gt;&gt; print(&#39;{0:0.3f}&#39;.format(pval))</span>
+<span class="sd">    0.159</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    This uses a simple normal test for proportions. It should be the same as</span>
+<span class="sd">    running the mean z-test on the data encoded 1 for event and 0 for no event</span>
+<span class="sd">    so that the sum corresponds to the count.</span>
+
+<span class="sd">    In the one and two sample cases with two-sided alternative, this test</span>
+<span class="sd">    produces the same p-value as ``proportions_chisquare``, since the</span>
+<span class="sd">    chisquare is the distribution of the square of a standard normal</span>
+<span class="sd">    distribution.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># TODO: verify that this really holds</span>
+    <span class="c1"># TODO: add continuity correction or other improvements for small samples</span>
+    <span class="c1"># TODO: change options similar to propotion_ztost ?</span>
+
+    <span class="n">count</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">count</span><span class="p">)</span>
+    <span class="n">nobs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">nobs</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">nobs</span><span class="o">.</span><span class="n">size</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="n">nobs</span> <span class="o">=</span> <span class="n">nobs</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">ones_like</span><span class="p">(</span><span class="n">count</span><span class="p">)</span>
+
+    <span class="n">prop</span> <span class="o">=</span> <span class="n">count</span> <span class="o">*</span> <span class="mf">1.</span> <span class="o">/</span> <span class="n">nobs</span>
+    <span class="n">k_sample</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">size</span><span class="p">(</span><span class="n">prop</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">k_sample</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;value must be provided for a 1-sample test&#39;</span><span class="p">)</span>
+        <span class="n">value</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="k">if</span> <span class="n">k_sample</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="n">diff</span> <span class="o">=</span> <span class="n">prop</span> <span class="o">-</span> <span class="n">value</span>
+    <span class="k">elif</span> <span class="n">k_sample</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
+        <span class="n">diff</span> <span class="o">=</span> <span class="n">prop</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">-</span> <span class="n">prop</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">-</span> <span class="n">value</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">msg</span> <span class="o">=</span> <span class="s1">&#39;more than two samples are not implemented yet&#39;</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+
+    <span class="n">p_pooled</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">count</span><span class="p">)</span> <span class="o">*</span> <span class="mf">1.</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">nobs</span><span class="p">)</span>
+
+    <span class="n">nobs_fact</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="mf">1.</span> <span class="o">/</span> <span class="n">nobs</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">prop_var</span><span class="p">:</span>
+        <span class="n">p_pooled</span> <span class="o">=</span> <span class="n">prop_var</span>
+    <span class="n">var_</span> <span class="o">=</span> <span class="n">p_pooled</span> <span class="o">*</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">p_pooled</span><span class="p">)</span> <span class="o">*</span> <span class="n">nobs_fact</span>
+    <span class="n">std_diff</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">var_</span><span class="p">)</span>
+    <span class="kn">from</span> <span class="nn">statsmodels.stats.weightstats</span> <span class="k">import</span> <span class="n">_zstat_generic2</span>
+    <span class="k">return</span> <span class="n">_zstat_generic2</span><span class="p">(</span><span class="n">diff</span><span class="p">,</span> <span class="n">std_diff</span><span class="p">,</span> <span class="n">alternative</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="proportions_ztost"><a class="viewcode-back" href="../../../generated/statsmodels.stats.proportion.proportions_ztost.html#statsmodels.stats.proportion.proportions_ztost">[docs]</a><span class="k">def</span> <span class="nf">proportions_ztost</span><span class="p">(</span><span class="n">count</span><span class="p">,</span> <span class="n">nobs</span><span class="p">,</span> <span class="n">low</span><span class="p">,</span> <span class="n">upp</span><span class="p">,</span> <span class="n">prop_var</span><span class="o">=</span><span class="s1">&#39;sample&#39;</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;Equivalence test based on normal distribution</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    count : integer or array_like</span>
+<span class="sd">        the number of successes in nobs trials. If this is array_like, then</span>
+<span class="sd">        the assumption is that this represents the number of successes for</span>
+<span class="sd">        each independent sample</span>
+<span class="sd">    nobs : integer</span>
+<span class="sd">        the number of trials or observations, with the same length as</span>
+<span class="sd">        count.</span>
+<span class="sd">    low, upp : float</span>
+<span class="sd">        equivalence interval low &lt; prop1 - prop2 &lt; upp</span>
+<span class="sd">    prop_var : string or float in (0, 1)</span>
+<span class="sd">        prop_var determines which proportion is used for the calculation</span>
+<span class="sd">        of the standard deviation of the proportion estimate</span>
+<span class="sd">        The available options for string are &#39;sample&#39; (default), &#39;null&#39; and</span>
+<span class="sd">        &#39;limits&#39;. If prop_var is a float, then it is used directly.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    pvalue : float</span>
+<span class="sd">        pvalue of the non-equivalence test</span>
+<span class="sd">    t1, pv1 : tuple of floats</span>
+<span class="sd">        test statistic and pvalue for lower threshold test</span>
+<span class="sd">    t2, pv2 : tuple of floats</span>
+<span class="sd">        test statistic and pvalue for upper threshold test</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    checked only for 1 sample case</span>
+
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="k">if</span> <span class="n">prop_var</span> <span class="o">==</span> <span class="s1">&#39;limits&#39;</span><span class="p">:</span>
+        <span class="n">prop_var_low</span> <span class="o">=</span> <span class="n">low</span>
+        <span class="n">prop_var_upp</span> <span class="o">=</span> <span class="n">upp</span>
+    <span class="k">elif</span> <span class="n">prop_var</span> <span class="o">==</span> <span class="s1">&#39;sample&#39;</span><span class="p">:</span>
+        <span class="n">prop_var_low</span> <span class="o">=</span> <span class="n">prop_var_upp</span> <span class="o">=</span> <span class="kc">False</span>  <span class="c1">#ztest uses sample</span>
+    <span class="k">elif</span> <span class="n">prop_var</span> <span class="o">==</span> <span class="s1">&#39;null&#39;</span><span class="p">:</span>
+        <span class="n">prop_var_low</span> <span class="o">=</span> <span class="n">prop_var_upp</span> <span class="o">=</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="p">(</span><span class="n">low</span> <span class="o">+</span> <span class="n">upp</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">np</span><span class="o">.</span><span class="n">isreal</span><span class="p">(</span><span class="n">prop_var</span><span class="p">):</span>
+        <span class="n">prop_var_low</span> <span class="o">=</span> <span class="n">prop_var_upp</span> <span class="o">=</span> <span class="n">prop_var</span>
+
+    <span class="n">tt1</span> <span class="o">=</span> <span class="n">proportions_ztest</span><span class="p">(</span><span class="n">count</span><span class="p">,</span> <span class="n">nobs</span><span class="p">,</span> <span class="n">alternative</span><span class="o">=</span><span class="s1">&#39;larger&#39;</span><span class="p">,</span>
+                            <span class="n">prop_var</span><span class="o">=</span><span class="n">prop_var_low</span><span class="p">,</span> <span class="n">value</span><span class="o">=</span><span class="n">low</span><span class="p">)</span>
+    <span class="n">tt2</span> <span class="o">=</span> <span class="n">proportions_ztest</span><span class="p">(</span><span class="n">count</span><span class="p">,</span> <span class="n">nobs</span><span class="p">,</span> <span class="n">alternative</span><span class="o">=</span><span class="s1">&#39;smaller&#39;</span><span class="p">,</span>
+                            <span class="n">prop_var</span><span class="o">=</span><span class="n">prop_var_upp</span><span class="p">,</span> <span class="n">value</span><span class="o">=</span><span class="n">upp</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span><span class="n">tt1</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">tt2</span><span class="p">[</span><span class="mi">1</span><span class="p">]),</span> <span class="n">tt1</span><span class="p">,</span> <span class="n">tt2</span><span class="p">,</span></div>
+
+<div class="viewcode-block" id="proportions_chisquare"><a class="viewcode-back" href="../../../generated/statsmodels.stats.proportion.proportions_chisquare.html#statsmodels.stats.proportion.proportions_chisquare">[docs]</a><span class="k">def</span> <span class="nf">proportions_chisquare</span><span class="p">(</span><span class="n">count</span><span class="p">,</span> <span class="n">nobs</span><span class="p">,</span> <span class="n">value</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;test for proportions based on chisquare test</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    count : integer or array_like</span>
+<span class="sd">        the number of successes in nobs trials. If this is array_like, then</span>
+<span class="sd">        the assumption is that this represents the number of successes for</span>
+<span class="sd">        each independent sample</span>
+<span class="sd">    nobs : integer</span>
+<span class="sd">        the number of trials or observations, with the same length as</span>
+<span class="sd">        count.</span>
+<span class="sd">    value : None or float or array_like</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    chi2stat : float</span>
+<span class="sd">        test statistic for the chisquare test</span>
+<span class="sd">    p-value : float</span>
+<span class="sd">        p-value for the chisquare test</span>
+<span class="sd">    (table, expected)</span>
+<span class="sd">        table is a (k, 2) contingency table, ``expected`` is the corresponding</span>
+<span class="sd">        table of counts that are expected under independence with given</span>
+<span class="sd">        margins</span>
+
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    Recent version of scipy.stats have a chisquare test for independence in</span>
+<span class="sd">    contingency tables.</span>
+
+<span class="sd">    This function provides a similar interface to chisquare tests as</span>
+<span class="sd">    ``prop.test`` in R, however without the option for Yates continuity</span>
+<span class="sd">    correction.</span>
+
+<span class="sd">    count can be the count for the number of events for a single proportion,</span>
+<span class="sd">    or the counts for several independent proportions. If value is given, then</span>
+<span class="sd">    all proportions are jointly tested against this value. If value is not</span>
+<span class="sd">    given and count and nobs are not scalar, then the null hypothesis is</span>
+<span class="sd">    that all samples have the same proportion.</span>
+
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="n">nobs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">atleast_1d</span><span class="p">(</span><span class="n">nobs</span><span class="p">)</span>
+    <span class="n">table</span><span class="p">,</span> <span class="n">expected</span><span class="p">,</span> <span class="n">n_rows</span> <span class="o">=</span> <span class="n">_table_proportion</span><span class="p">(</span><span class="n">count</span><span class="p">,</span> <span class="n">nobs</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">expected</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">column_stack</span><span class="p">((</span><span class="n">nobs</span> <span class="o">*</span> <span class="n">value</span><span class="p">,</span> <span class="n">nobs</span> <span class="o">*</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">value</span><span class="p">)))</span>
+        <span class="n">ddof</span> <span class="o">=</span> <span class="n">n_rows</span> <span class="o">-</span> <span class="mi">1</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">ddof</span> <span class="o">=</span> <span class="n">n_rows</span>
+
+    <span class="c1">#print table, expected</span>
+    <span class="n">chi2stat</span><span class="p">,</span> <span class="n">pval</span> <span class="o">=</span> <span class="n">stats</span><span class="o">.</span><span class="n">chisquare</span><span class="p">(</span><span class="n">table</span><span class="o">.</span><span class="n">ravel</span><span class="p">(),</span> <span class="n">expected</span><span class="o">.</span><span class="n">ravel</span><span class="p">(),</span>
+                                     <span class="n">ddof</span><span class="o">=</span><span class="n">ddof</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">chi2stat</span><span class="p">,</span> <span class="n">pval</span><span class="p">,</span> <span class="p">(</span><span class="n">table</span><span class="p">,</span> <span class="n">expected</span><span class="p">)</span></div>
+
+
+
+
+<div class="viewcode-block" id="proportions_chisquare_allpairs"><a class="viewcode-back" href="../../../generated/statsmodels.stats.proportion.proportions_chisquare_allpairs.html#statsmodels.stats.proportion.proportions_chisquare_allpairs">[docs]</a><span class="k">def</span> <span class="nf">proportions_chisquare_allpairs</span><span class="p">(</span><span class="n">count</span><span class="p">,</span> <span class="n">nobs</span><span class="p">,</span> <span class="n">multitest_method</span><span class="o">=</span><span class="s1">&#39;hs&#39;</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;chisquare test of proportions for all pairs of k samples</span>
+
+<span class="sd">    Performs a chisquare test for proportions for all pairwise comparisons.</span>
+<span class="sd">    The alternative is two-sided</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    count : integer or array_like</span>
+<span class="sd">        the number of successes in nobs trials.</span>
+<span class="sd">    nobs : integer</span>
+<span class="sd">        the number of trials or observations.</span>
+<span class="sd">    prop : float, optional</span>
+<span class="sd">        The probability of success under the null hypothesis,</span>
+<span class="sd">        `0 &lt;= prop &lt;= 1`. The default value is `prop = 0.5`</span>
+<span class="sd">    multitest_method : string</span>
+<span class="sd">        This chooses the method for the multiple testing p-value correction,</span>
+<span class="sd">        that is used as default in the results.</span>
+<span class="sd">        It can be any method that is available in  ``multipletesting``.</span>
+<span class="sd">        The default is Holm-Sidak &#39;hs&#39;.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    result : AllPairsResults instance</span>
+<span class="sd">        The returned results instance has several statistics, such as p-values,</span>
+<span class="sd">        attached, and additional methods for using a non-default</span>
+<span class="sd">        ``multitest_method``.</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    Yates continuity correction is not available.</span>
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="c1">#all_pairs = lmap(list, lzip(*np.triu_indices(4, 1)))</span>
+    <span class="n">all_pairs</span> <span class="o">=</span> <span class="n">lzip</span><span class="p">(</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">triu_indices</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">count</span><span class="p">),</span> <span class="mi">1</span><span class="p">))</span>
+    <span class="n">pvals</span> <span class="o">=</span> <span class="p">[</span><span class="n">proportions_chisquare</span><span class="p">(</span><span class="n">count</span><span class="p">[</span><span class="nb">list</span><span class="p">(</span><span class="n">pair</span><span class="p">)],</span> <span class="n">nobs</span><span class="p">[</span><span class="nb">list</span><span class="p">(</span><span class="n">pair</span><span class="p">)])[</span><span class="mi">1</span><span class="p">]</span>
+               <span class="k">for</span> <span class="n">pair</span> <span class="ow">in</span> <span class="n">all_pairs</span><span class="p">]</span>
+    <span class="k">return</span> <span class="n">AllPairsResults</span><span class="p">(</span><span class="n">pvals</span><span class="p">,</span> <span class="n">all_pairs</span><span class="p">,</span> <span class="n">multitest_method</span><span class="o">=</span><span class="n">multitest_method</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="proportions_chisquare_pairscontrol"><a class="viewcode-back" href="../../../generated/statsmodels.stats.proportion.proportions_chisquare_pairscontrol.html#statsmodels.stats.proportion.proportions_chisquare_pairscontrol">[docs]</a><span class="k">def</span> <span class="nf">proportions_chisquare_pairscontrol</span><span class="p">(</span><span class="n">count</span><span class="p">,</span> <span class="n">nobs</span><span class="p">,</span> <span class="n">value</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                               <span class="n">multitest_method</span><span class="o">=</span><span class="s1">&#39;hs&#39;</span><span class="p">,</span> <span class="n">alternative</span><span class="o">=</span><span class="s1">&#39;two-sided&#39;</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;chisquare test of proportions for pairs of k samples compared to control</span>
+
+<span class="sd">    Performs a chisquare test for proportions for pairwise comparisons with a</span>
+<span class="sd">    control (Dunnet&#39;s test). The control is assumed to be the first element</span>
+<span class="sd">    of ``count`` and ``nobs``. The alternative is two-sided, larger or</span>
+<span class="sd">    smaller.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    count : integer or array_like</span>
+<span class="sd">        the number of successes in nobs trials.</span>
+<span class="sd">    nobs : integer</span>
+<span class="sd">        the number of trials or observations.</span>
+<span class="sd">    prop : float, optional</span>
+<span class="sd">        The probability of success under the null hypothesis,</span>
+<span class="sd">        `0 &lt;= prop &lt;= 1`. The default value is `prop = 0.5`</span>
+<span class="sd">    multitest_method : string</span>
+<span class="sd">        This chooses the method for the multiple testing p-value correction,</span>
+<span class="sd">        that is used as default in the results.</span>
+<span class="sd">        It can be any method that is available in  ``multipletesting``.</span>
+<span class="sd">        The default is Holm-Sidak &#39;hs&#39;.</span>
+<span class="sd">    alternative : string in [&#39;two-sided&#39;, &#39;smaller&#39;, &#39;larger&#39;]</span>
+<span class="sd">        alternative hypothesis, which can be two-sided or either one of the</span>
+<span class="sd">        one-sided tests.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    result : AllPairsResults instance</span>
+<span class="sd">        The returned results instance has several statistics, such as p-values,</span>
+<span class="sd">        attached, and additional methods for using a non-default</span>
+<span class="sd">        ``multitest_method``.</span>
+
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    Yates continuity correction is not available.</span>
+
+<span class="sd">    ``value`` and ``alternative`` options are not yet implemented.</span>
+
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">value</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">)</span> <span class="ow">or</span> <span class="p">(</span><span class="ow">not</span> <span class="n">alternative</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;two-sided&#39;</span><span class="p">,</span> <span class="s1">&#39;2s&#39;</span><span class="p">]):</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span>
+    <span class="c1">#all_pairs = lmap(list, lzip(*np.triu_indices(4, 1)))</span>
+    <span class="n">all_pairs</span> <span class="o">=</span> <span class="p">[(</span><span class="mi">0</span><span class="p">,</span> <span class="n">k</span><span class="p">)</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">count</span><span class="p">))]</span>
+    <span class="n">pvals</span> <span class="o">=</span> <span class="p">[</span><span class="n">proportions_chisquare</span><span class="p">(</span><span class="n">count</span><span class="p">[</span><span class="nb">list</span><span class="p">(</span><span class="n">pair</span><span class="p">)],</span> <span class="n">nobs</span><span class="p">[</span><span class="nb">list</span><span class="p">(</span><span class="n">pair</span><span class="p">)],</span>
+                                   <span class="c1">#alternative=alternative)[1]</span>
+                                   <span class="p">)[</span><span class="mi">1</span><span class="p">]</span>
+               <span class="k">for</span> <span class="n">pair</span> <span class="ow">in</span> <span class="n">all_pairs</span><span class="p">]</span>
+    <span class="k">return</span> <span class="n">AllPairsResults</span><span class="p">(</span><span class="n">pvals</span><span class="p">,</span> <span class="n">all_pairs</span><span class="p">,</span> <span class="n">multitest_method</span><span class="o">=</span><span class="n">multitest_method</span><span class="p">)</span></div>
+</pre></div>
+
+
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <form class="search" action="../../../search.html" method="get">
+      <div><input type="text" name="q" /></div>
+      <div><input type="submit" value="Go" /></div>
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer" role="contentinfo">
+        &#169; Copyright 2009-2017, Josef Perktold, Skipper Seabold, Jonathan Taylor, statsmodels-developers.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.5.3.
+    </div>
+  </body>
+</html>

@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.discrete.discrete\_model.BinaryModel.initialize
+===========================================================
+
+.. currentmodule:: statsmodels.discrete.discrete_model
+
+.. automethod:: BinaryModel.initialize

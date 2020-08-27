@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.tsa.statespace.dynamic\_factor.DynamicFactorResults.get\_forecast
+=============================================================================
+
+.. currentmodule:: statsmodels.tsa.statespace.dynamic_factor
+
+.. automethod:: DynamicFactorResults.get_forecast

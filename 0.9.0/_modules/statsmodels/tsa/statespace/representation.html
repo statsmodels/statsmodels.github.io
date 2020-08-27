@@ -1,0 +1,961 @@
+
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="X-UA-Compatible" content="IE=Edge" />
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>statsmodels.tsa.statespace.representation &#8212; statsmodels 0.9.0 documentation</title>
+    <link rel="stylesheet" href="../../../../_static/nature.css" type="text/css" />
+    <link rel="stylesheet" href="../../../../_static/pygments.css" type="text/css" />
+    <script type="text/javascript" src="../../../../_static/documentation_options.js"></script>
+    <script type="text/javascript" src="../../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../../_static/doctools.js"></script>
+    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.1/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="shortcut icon" href="../../../../_static/statsmodels_hybi_favico.ico"/>
+    <link rel="author" title="About these documents" href="../../../../about.html" />
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" />
+<link rel="stylesheet" href="../../../../_static/examples.css" type="text/css" />
+<link rel="stylesheet" href="../../../../_static/facebox.css" type="text/css" />
+<script type="text/javascript" src="../../../../_static/scripts.js">
+</script>
+<script type="text/javascript" src="../../../../_static/facebox.js">
+</script>
+<script type="text/javascript">
+$.facebox.settings.closeImage = "../../../../_static/closelabel.png"
+$.facebox.settings.loadingImage = "../../../../_static/loading.gif"
+</script>
+
+  </head><body>
+<div class="headerwrap">
+    <div class = "header">
+        
+        <a href = "../../../../index.html">
+<img src="../../../../_static/statsmodels_hybi_banner.png" alt="Logo"
+    style="padding-left: 15px"/></a>
+        
+    </div>
+</div>
+
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+<li><a href ="../../../../install.html">Install</a></li> &nbsp;|&nbsp;
+<li><a href="https://groups.google.com/forum/?hl=en#!forum/pystatsmodels">Support</a></li> &nbsp;|&nbsp;
+<li><a href="https://github.com/statsmodels/statsmodels/issues">Bugs</a></li> &nbsp;|&nbsp;
+<li><a href="../../../../dev/index.html">Develop</a></li> &nbsp;|&nbsp;
+<li><a href="../../../../examples/index.html">Examples</a></li> &nbsp;|&nbsp;
+<li><a href="../../../../faq.html">FAQ</a></li> &nbsp;|&nbsp;
+
+          <li class="nav-item nav-item-1"><a href="../../../index.html" accesskey="U">Module code</a> |</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+
+
+
+
+  <h1>Source code for statsmodels.tsa.statespace.representation</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">State Space Representation</span>
+
+<span class="sd">Author: Chad Fulton</span>
+<span class="sd">License: Simplified-BSD</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="kn">from</span> <span class="nn">__future__</span> <span class="k">import</span> <span class="n">division</span><span class="p">,</span> <span class="n">absolute_import</span><span class="p">,</span> <span class="n">print_function</span>
+
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+<span class="kn">from</span> <span class="nn">.tools</span> <span class="k">import</span> <span class="p">(</span>
+    <span class="n">find_best_blas_type</span><span class="p">,</span> <span class="n">validate_matrix_shape</span><span class="p">,</span> <span class="n">validate_vector_shape</span>
+<span class="p">)</span>
+<span class="kn">from</span> <span class="nn">.</span> <span class="k">import</span> <span class="n">tools</span>
+
+
+<span class="k">class</span> <span class="nc">OptionWrapper</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">mask_attribute</span><span class="p">,</span> <span class="n">mask_value</span><span class="p">):</span>
+        <span class="c1"># Name of the class-level bitmask attribute</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">mask_attribute</span> <span class="o">=</span> <span class="n">mask_attribute</span>
+        <span class="c1"># Value of this option</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">mask_value</span> <span class="o">=</span> <span class="n">mask_value</span>
+
+    <span class="k">def</span> <span class="nf">__get__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">,</span> <span class="n">objtype</span><span class="p">):</span>
+        <span class="c1"># Return True / False based on whether the bit is set in the bitmask</span>
+        <span class="k">return</span> <span class="nb">bool</span><span class="p">(</span><span class="nb">getattr</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">mask_attribute</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span> <span class="o">&amp;</span> <span class="bp">self</span><span class="o">.</span><span class="n">mask_value</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">__set__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+        <span class="n">mask_attribute_value</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">mask_attribute</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">bool</span><span class="p">(</span><span class="n">value</span><span class="p">):</span>
+            <span class="n">value</span> <span class="o">=</span> <span class="n">mask_attribute_value</span> <span class="o">|</span> <span class="bp">self</span><span class="o">.</span><span class="n">mask_value</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">value</span> <span class="o">=</span> <span class="n">mask_attribute_value</span> <span class="o">&amp;</span> <span class="o">~</span><span class="bp">self</span><span class="o">.</span><span class="n">mask_value</span>
+        <span class="nb">setattr</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">mask_attribute</span><span class="p">,</span> <span class="n">value</span><span class="p">)</span>
+
+
+<span class="k">class</span> <span class="nc">MatrixWrapper</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">attribute</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">name</span> <span class="o">=</span> <span class="n">name</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">attribute</span> <span class="o">=</span> <span class="n">attribute</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_attribute</span> <span class="o">=</span> <span class="s1">&#39;_&#39;</span> <span class="o">+</span> <span class="n">attribute</span>
+
+    <span class="k">def</span> <span class="nf">__get__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">,</span> <span class="n">objtype</span><span class="p">):</span>
+        <span class="n">matrix</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_attribute</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+        <span class="c1"># # Remove last dimension if the array is not actually time-varying</span>
+        <span class="c1"># if matrix is not None and matrix.shape[-1] == 1:</span>
+        <span class="c1">#     return np.squeeze(matrix, -1)</span>
+        <span class="k">return</span> <span class="n">matrix</span>
+
+    <span class="k">def</span> <span class="nf">__set__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+        <span class="n">value</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="s2">&quot;F&quot;</span><span class="p">)</span>
+        <span class="n">shape</span> <span class="o">=</span> <span class="n">obj</span><span class="o">.</span><span class="n">shapes</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">attribute</span><span class="p">]</span>
+
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">shape</span><span class="p">)</span> <span class="o">==</span> <span class="mi">3</span><span class="p">:</span>
+            <span class="n">value</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_set_matrix</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">shape</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">value</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_set_vector</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">shape</span><span class="p">)</span>
+
+        <span class="nb">setattr</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_attribute</span><span class="p">,</span> <span class="n">value</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_set_matrix</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">shape</span><span class="p">):</span>
+        <span class="c1"># Expand 1-dimensional array if possible</span>
+        <span class="k">if</span> <span class="p">(</span><span class="n">value</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">1</span> <span class="ow">and</span> <span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="mi">1</span> <span class="ow">and</span>
+                <span class="n">value</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]):</span>
+            <span class="n">value</span> <span class="o">=</span> <span class="n">value</span><span class="p">[</span><span class="kc">None</span><span class="p">,</span> <span class="p">:]</span>
+
+        <span class="c1"># Enforce that the matrix is appropriate size</span>
+        <span class="n">validate_matrix_shape</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="p">,</span> <span class="n">value</span><span class="o">.</span><span class="n">shape</span><span class="p">,</span> <span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">obj</span><span class="o">.</span><span class="n">nobs</span>
+        <span class="p">)</span>
+
+        <span class="c1"># Expand time-invariant matrix</span>
+        <span class="k">if</span> <span class="n">value</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
+            <span class="n">value</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">value</span><span class="p">[:,</span> <span class="p">:,</span> <span class="kc">None</span><span class="p">],</span> <span class="n">order</span><span class="o">=</span><span class="s2">&quot;F&quot;</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">value</span>
+
+    <span class="k">def</span> <span class="nf">_set_vector</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">shape</span><span class="p">):</span>
+        <span class="c1"># Enforce that the vector has appropriate length</span>
+        <span class="n">validate_vector_shape</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="p">,</span> <span class="n">value</span><span class="o">.</span><span class="n">shape</span><span class="p">,</span> <span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">obj</span><span class="o">.</span><span class="n">nobs</span>
+        <span class="p">)</span>
+
+        <span class="c1"># Expand the time-invariant vector</span>
+        <span class="k">if</span> <span class="n">value</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="n">value</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">value</span><span class="p">[:,</span> <span class="kc">None</span><span class="p">],</span> <span class="n">order</span><span class="o">=</span><span class="s2">&quot;F&quot;</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">value</span>
+
+
+<div class="viewcode-block" id="Representation"><a class="viewcode-back" href="../../../../generated/statsmodels.tsa.statespace.representation.Representation.html#statsmodels.tsa.statespace.kalman_filter.Representation">[docs]</a><span class="k">class</span> <span class="nc">Representation</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sa">r</span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    State space representation of a time series process</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    k_endog : array_like or integer</span>
+<span class="sd">        The observed time-series process :math:`y` if array like or the</span>
+<span class="sd">        number of variables in the process if an integer.</span>
+<span class="sd">    k_states : int</span>
+<span class="sd">        The dimension of the unobserved state process.</span>
+<span class="sd">    k_posdef : int, optional</span>
+<span class="sd">        The dimension of a guaranteed positive definite covariance matrix</span>
+<span class="sd">        describing the shocks in the measurement equation. Must be less than</span>
+<span class="sd">        or equal to `k_states`. Default is `k_states`.</span>
+<span class="sd">    initial_variance : float, optional</span>
+<span class="sd">        Initial variance used when approximate diffuse initialization is</span>
+<span class="sd">        specified. Default is 1e6.</span>
+<span class="sd">    initialization : {&#39;approximate_diffuse&#39;,&#39;stationary&#39;,&#39;known&#39;}, optional</span>
+<span class="sd">        Initialization method for the initial state.</span>
+<span class="sd">    initial_state : array_like, optional</span>
+<span class="sd">        If known initialization is used, the mean of the initial state&#39;s</span>
+<span class="sd">        distribution.</span>
+<span class="sd">    initial_state_cov : array_like, optional</span>
+<span class="sd">        If known initialization is used, the covariance matrix of the initial</span>
+<span class="sd">        state&#39;s distribution.</span>
+<span class="sd">    nobs : integer, optional</span>
+<span class="sd">        If an endogenous vector is not given (i.e. `k_endog` is an integer),</span>
+<span class="sd">        the number of observations can optionally be specified. If not</span>
+<span class="sd">        specified, they will be set to zero until data is bound to the model.</span>
+<span class="sd">    dtype : np.dtype, optional</span>
+<span class="sd">        If an endogenous vector is not given (i.e. `k_endog` is an integer),</span>
+<span class="sd">        the default datatype of the state space matrices can optionally be</span>
+<span class="sd">        specified. Default is `np.float64`.</span>
+<span class="sd">    design : array_like, optional</span>
+<span class="sd">        The design matrix, :math:`Z`. Default is set to zeros.</span>
+<span class="sd">    obs_intercept : array_like, optional</span>
+<span class="sd">        The intercept for the observation equation, :math:`d`. Default is set</span>
+<span class="sd">        to zeros.</span>
+<span class="sd">    obs_cov : array_like, optional</span>
+<span class="sd">        The covariance matrix for the observation equation :math:`H`. Default</span>
+<span class="sd">        is set to zeros.</span>
+<span class="sd">    transition : array_like, optional</span>
+<span class="sd">        The transition matrix, :math:`T`. Default is set to zeros.</span>
+<span class="sd">    state_intercept : array_like, optional</span>
+<span class="sd">        The intercept for the transition equation, :math:`c`. Default is set to</span>
+<span class="sd">        zeros.</span>
+<span class="sd">    selection : array_like, optional</span>
+<span class="sd">        The selection matrix, :math:`R`. Default is set to zeros.</span>
+<span class="sd">    state_cov : array_like, optional</span>
+<span class="sd">        The covariance matrix for the state equation :math:`Q`. Default is set</span>
+<span class="sd">        to zeros.</span>
+<span class="sd">    **kwargs</span>
+<span class="sd">        Additional keyword arguments. Not used directly. It is present to</span>
+<span class="sd">        improve compatibility with subclasses, so that they can use `**kwargs`</span>
+<span class="sd">        to specify any default state space matrices (e.g. `design`) without</span>
+<span class="sd">        having to clean out any other keyword arguments they might have been</span>
+<span class="sd">        passed.</span>
+
+<span class="sd">    Attributes</span>
+<span class="sd">    ----------</span>
+<span class="sd">    nobs : int</span>
+<span class="sd">        The number of observations.</span>
+<span class="sd">    k_endog : int</span>
+<span class="sd">        The dimension of the observation series.</span>
+<span class="sd">    k_states : int</span>
+<span class="sd">        The dimension of the unobserved state process.</span>
+<span class="sd">    k_posdef : int</span>
+<span class="sd">        The dimension of a guaranteed positive</span>
+<span class="sd">        definite covariance matrix describing</span>
+<span class="sd">        the shocks in the measurement equation.</span>
+<span class="sd">    shapes : dictionary of name:tuple</span>
+<span class="sd">        A dictionary recording the initial shapes</span>
+<span class="sd">        of each of the representation matrices as</span>
+<span class="sd">        tuples.</span>
+<span class="sd">    initialization : str</span>
+<span class="sd">        Kalman filter initialization method. Default is unset.</span>
+<span class="sd">    initial_variance : float</span>
+<span class="sd">        Initial variance for approximate diffuse</span>
+<span class="sd">        initialization. Default is 1e6.</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    A general state space model is of the form</span>
+
+<span class="sd">    .. math::</span>
+
+<span class="sd">        y_t &amp; = Z_t \alpha_t + d_t + \varepsilon_t \\</span>
+<span class="sd">        \alpha_t &amp; = T_t \alpha_{t-1} + c_t + R_t \eta_t \\</span>
+
+<span class="sd">    where :math:`y_t` refers to the observation vector at time :math:`t`,</span>
+<span class="sd">    :math:`\alpha_t` refers to the (unobserved) state vector at time</span>
+<span class="sd">    :math:`t`, and where the irregular components are defined as</span>
+
+<span class="sd">    .. math::</span>
+
+<span class="sd">        \varepsilon_t \sim N(0, H_t) \\</span>
+<span class="sd">        \eta_t \sim N(0, Q_t) \\</span>
+
+<span class="sd">    The remaining variables (:math:`Z_t, d_t, H_t, T_t, c_t, R_t, Q_t`) in the</span>
+<span class="sd">    equations are matrices describing the process. Their variable names and</span>
+<span class="sd">    dimensions are as follows</span>
+
+<span class="sd">    Z : `design`          :math:`(k\_endog \times k\_states \times nobs)`</span>
+
+<span class="sd">    d : `obs_intercept`   :math:`(k\_endog \times nobs)`</span>
+
+<span class="sd">    H : `obs_cov`         :math:`(k\_endog \times k\_endog \times nobs)`</span>
+
+<span class="sd">    T : `transition`      :math:`(k\_states \times k\_states \times nobs)`</span>
+
+<span class="sd">    c : `state_intercept` :math:`(k\_states \times nobs)`</span>
+
+<span class="sd">    R : `selection`       :math:`(k\_states \times k\_posdef \times nobs)`</span>
+
+<span class="sd">    Q : `state_cov`       :math:`(k\_posdef \times k\_posdef \times nobs)`</span>
+
+<span class="sd">    In the case that one of the matrices is time-invariant (so that, for</span>
+<span class="sd">    example, :math:`Z_t = Z_{t+1} ~ \forall ~ t`), its last dimension may</span>
+<span class="sd">    be of size :math:`1` rather than size `nobs`.</span>
+
+<span class="sd">    References</span>
+<span class="sd">    ----------</span>
+<span class="sd">    .. [*] Durbin, James, and Siem Jan Koopman. 2012.</span>
+<span class="sd">       Time Series Analysis by State Space Methods: Second Edition.</span>
+<span class="sd">       Oxford University Press.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">endog</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="sa">r</span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    (array) The observation vector, alias for `obs`.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">design</span> <span class="o">=</span> <span class="n">MatrixWrapper</span><span class="p">(</span><span class="s1">&#39;design&#39;</span><span class="p">,</span> <span class="s1">&#39;design&#39;</span><span class="p">)</span>
+    <span class="sa">r</span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    (array) Design matrix: :math:`Z~(k\_endog \times k\_states \times nobs)`</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">obs_intercept</span> <span class="o">=</span> <span class="n">MatrixWrapper</span><span class="p">(</span><span class="s1">&#39;observation intercept&#39;</span><span class="p">,</span> <span class="s1">&#39;obs_intercept&#39;</span><span class="p">)</span>
+    <span class="sa">r</span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    (array) Observation intercept: :math:`d~(k\_endog \times nobs)`</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">obs_cov</span> <span class="o">=</span> <span class="n">MatrixWrapper</span><span class="p">(</span><span class="s1">&#39;observation covariance matrix&#39;</span><span class="p">,</span> <span class="s1">&#39;obs_cov&#39;</span><span class="p">)</span>
+    <span class="sa">r</span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    (array) Observation covariance matrix:</span>
+<span class="sd">    :math:`H~(k\_endog \times k\_endog \times nobs)`</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">transition</span> <span class="o">=</span> <span class="n">MatrixWrapper</span><span class="p">(</span><span class="s1">&#39;transition&#39;</span><span class="p">,</span> <span class="s1">&#39;transition&#39;</span><span class="p">)</span>
+    <span class="sa">r</span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    (array) Transition matrix: :math:`T~(k\_states \times k\_states \times nobs)`</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">state_intercept</span> <span class="o">=</span> <span class="n">MatrixWrapper</span><span class="p">(</span><span class="s1">&#39;state intercept&#39;</span><span class="p">,</span> <span class="s1">&#39;state_intercept&#39;</span><span class="p">)</span>
+    <span class="sa">r</span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    (array) State intercept: :math:`c~(k\_states \times nobs)`</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">selection</span> <span class="o">=</span> <span class="n">MatrixWrapper</span><span class="p">(</span><span class="s1">&#39;selection&#39;</span><span class="p">,</span> <span class="s1">&#39;selection&#39;</span><span class="p">)</span>
+    <span class="sa">r</span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    (array) Selection matrix: :math:`R~(k\_states \times k\_posdef \times nobs)`</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">state_cov</span> <span class="o">=</span> <span class="n">MatrixWrapper</span><span class="p">(</span><span class="s1">&#39;state covariance matrix&#39;</span><span class="p">,</span> <span class="s1">&#39;state_cov&#39;</span><span class="p">)</span>
+    <span class="sa">r</span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    (array) State covariance matrix: :math:`Q~(k\_posdef \times k\_posdef \times nobs)`</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">k_endog</span><span class="p">,</span> <span class="n">k_states</span><span class="p">,</span> <span class="n">k_posdef</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                 <span class="n">initial_variance</span><span class="o">=</span><span class="mf">1e6</span><span class="p">,</span> <span class="n">nobs</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">,</span>
+                 <span class="n">design</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">obs_intercept</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">obs_cov</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                 <span class="n">transition</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">state_intercept</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">selection</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                 <span class="n">state_cov</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">statespace_classes</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">shapes</span> <span class="o">=</span> <span class="p">{}</span>
+
+        <span class="c1"># Check if k_endog is actually the endog array</span>
+        <span class="n">endog</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">k_endog</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">):</span>
+            <span class="n">endog</span> <span class="o">=</span> <span class="n">k_endog</span>
+            <span class="c1"># If so, assume that it is either column-ordered and in wide format</span>
+            <span class="c1"># or row-ordered and in long format</span>
+            <span class="k">if</span> <span class="p">(</span><span class="n">endog</span><span class="o">.</span><span class="n">flags</span><span class="p">[</span><span class="s1">&#39;C_CONTIGUOUS&#39;</span><span class="p">]</span> <span class="ow">and</span>
+                    <span class="p">(</span><span class="n">endog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mi">1</span> <span class="ow">or</span> <span class="n">nobs</span> <span class="o">==</span> <span class="mi">1</span><span class="p">)):</span>
+                <span class="n">endog</span> <span class="o">=</span> <span class="n">endog</span><span class="o">.</span><span class="n">T</span>
+            <span class="n">k_endog</span> <span class="o">=</span> <span class="n">endog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+        <span class="c1"># Endogenous array, dimensions, dtype</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span> <span class="o">=</span> <span class="n">k_endog</span>
+        <span class="k">if</span> <span class="n">k_endog</span> <span class="o">&lt;</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;Number of endogenous variables in statespace&#39;</span>
+                             <span class="s1">&#39; model must be a positive number.&#39;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span> <span class="o">=</span> <span class="n">nobs</span>
+
+        <span class="c1"># Get dimensions from transition equation</span>
+        <span class="k">if</span> <span class="n">k_states</span> <span class="o">&lt;</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;Number of states in statespace model must be a&#39;</span>
+                             <span class="s1">&#39; positive number.&#39;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">k_states</span> <span class="o">=</span> <span class="n">k_states</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">k_posdef</span> <span class="o">=</span> <span class="n">k_posdef</span> <span class="k">if</span> <span class="n">k_posdef</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">k_states</span>
+
+        <span class="c1"># Make sure k_posdef &lt;= k_states</span>
+        <span class="c1"># TODO: we could technically allow k_posdef &gt; k_states, but the Cython</span>
+        <span class="c1"># code needs to be more thoroughly checked to avoid seg faults.</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_posdef</span> <span class="o">&gt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_states</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;Dimension of state innovation `k_posdef` cannot&#39;</span>
+                             <span class="s1">&#39; be larger than the dimension of the state.&#39;</span><span class="p">)</span>
+
+        <span class="c1"># Bind endog, if it was given</span>
+        <span class="k">if</span> <span class="n">endog</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">bind</span><span class="p">(</span><span class="n">endog</span><span class="p">)</span>
+
+        <span class="c1"># Record the shapes of all of our matrices</span>
+        <span class="c1"># Note: these are time-invariant shapes; in practice the last dimension</span>
+        <span class="c1"># may also be `self.nobs` for any or all of these.</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">shapes</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s1">&#39;obs&#39;</span><span class="p">:</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span><span class="p">),</span>
+            <span class="s1">&#39;design&#39;</span><span class="p">:</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_states</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span>
+            <span class="s1">&#39;obs_intercept&#39;</span><span class="p">:</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span>
+            <span class="s1">&#39;obs_cov&#39;</span><span class="p">:</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span>
+            <span class="s1">&#39;transition&#39;</span><span class="p">:</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">k_states</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_states</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span>
+            <span class="s1">&#39;state_intercept&#39;</span><span class="p">:</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">k_states</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span>
+            <span class="s1">&#39;selection&#39;</span><span class="p">:</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">k_states</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_posdef</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span>
+            <span class="s1">&#39;state_cov&#39;</span><span class="p">:</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">k_posdef</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_posdef</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span>
+        <span class="p">}</span>
+
+        <span class="c1"># Representation matrices</span>
+        <span class="c1"># These matrices are only used in the Python object as containers,</span>
+        <span class="c1"># which will be copied to the appropriate _statespace object if a</span>
+        <span class="c1"># filter is called.</span>
+        <span class="n">scope</span> <span class="o">=</span> <span class="nb">locals</span><span class="p">()</span>
+        <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">shape</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">shapes</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="k">if</span> <span class="n">name</span> <span class="o">==</span> <span class="s1">&#39;obs&#39;</span><span class="p">:</span>
+                <span class="k">continue</span>
+            <span class="c1"># Create the initial storage array for each matrix</span>
+            <span class="nb">setattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s1">&#39;_&#39;</span> <span class="o">+</span> <span class="n">name</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">shape</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="s2">&quot;F&quot;</span><span class="p">))</span>
+
+            <span class="c1"># If we were given an initial value for the matrix, set it</span>
+            <span class="c1"># (notice it is being set via the descriptor)</span>
+            <span class="k">if</span> <span class="n">scope</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="nb">setattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">scope</span><span class="p">[</span><span class="n">name</span><span class="p">])</span>
+
+        <span class="c1"># Options</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_compatibility_mode</span> <span class="o">=</span> <span class="n">tools</span><span class="o">.</span><span class="n">compatibility_mode</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">initial_variance</span> <span class="o">=</span> <span class="n">initial_variance</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">prefix_statespace_map</span> <span class="o">=</span> <span class="p">(</span><span class="n">statespace_classes</span>
+                                      <span class="k">if</span> <span class="n">statespace_classes</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+                                      <span class="k">else</span> <span class="n">tools</span><span class="o">.</span><span class="n">prefix_statespace_map</span><span class="o">.</span><span class="n">copy</span><span class="p">())</span>
+
+        <span class="c1"># State-space initialization data</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">initialization</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;initialization&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_initial_state</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_initial_state_cov</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_initial_variance</span> <span class="o">=</span> <span class="kc">None</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">initialization</span> <span class="o">==</span> <span class="s1">&#39;approximate_diffuse&#39;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">initialize_approximate_diffuse</span><span class="p">()</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">initialization</span> <span class="o">==</span> <span class="s1">&#39;stationary&#39;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">initialize_stationary</span><span class="p">()</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">initialization</span> <span class="o">==</span> <span class="s1">&#39;known&#39;</span><span class="p">:</span>
+            <span class="k">if</span> <span class="s1">&#39;initial_state&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">kwargs</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;Initial state must be provided when &quot;known&quot;&#39;</span>
+                                 <span class="s1">&#39; is the specified initialization method.&#39;</span><span class="p">)</span>
+            <span class="k">if</span> <span class="s1">&#39;initial_state_cov&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">kwargs</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;Initial state covariance matrix must be&#39;</span>
+                                 <span class="s1">&#39; provided when &quot;known&quot; is the specified&#39;</span>
+                                 <span class="s1">&#39; initialization method.&#39;</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">initialize_known</span><span class="p">(</span><span class="n">kwargs</span><span class="p">[</span><span class="s1">&#39;initial_state&#39;</span><span class="p">],</span>
+                                  <span class="n">kwargs</span><span class="p">[</span><span class="s1">&#39;initial_state_cov&#39;</span><span class="p">])</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">initialization</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Invalid state space initialization method.&quot;</span><span class="p">)</span>
+
+        <span class="c1"># Matrix representations storage</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_representations</span> <span class="o">=</span> <span class="p">{}</span>
+
+        <span class="c1"># Setup the underlying statespace object storage</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_statespaces</span> <span class="o">=</span> <span class="p">{}</span>
+
+        <span class="c1"># Caches</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_time_invariant</span> <span class="o">=</span> <span class="kc">None</span>
+
+    <span class="k">def</span> <span class="nf">__getitem__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">):</span>
+        <span class="n">_type</span> <span class="o">=</span> <span class="nb">type</span><span class="p">(</span><span class="n">key</span><span class="p">)</span>
+        <span class="c1"># If only a string is given then we must be getting an entire matrix</span>
+        <span class="k">if</span> <span class="n">_type</span> <span class="ow">is</span> <span class="nb">str</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">key</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">shapes</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">IndexError</span><span class="p">(</span><span class="s1">&#39;&quot;</span><span class="si">%s</span><span class="s1">&quot; is an invalid state space matrix name&#39;</span>
+                                 <span class="o">%</span> <span class="n">key</span><span class="p">)</span>
+            <span class="n">matrix</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s1">&#39;_&#39;</span> <span class="o">+</span> <span class="n">key</span><span class="p">)</span>
+
+            <span class="c1"># See note on time-varying arrays, below</span>
+            <span class="k">if</span> <span class="n">matrix</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">matrix</span><span class="p">[[</span><span class="nb">slice</span><span class="p">(</span><span class="kc">None</span><span class="p">)]</span><span class="o">*</span><span class="p">(</span><span class="n">matrix</span><span class="o">.</span><span class="n">ndim</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span> <span class="o">+</span> <span class="p">[</span><span class="mi">0</span><span class="p">]]</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">matrix</span>
+        <span class="c1"># Otherwise if we have a tuple, we want a slice of a matrix</span>
+        <span class="k">elif</span> <span class="n">_type</span> <span class="ow">is</span> <span class="nb">tuple</span><span class="p">:</span>
+            <span class="n">name</span><span class="p">,</span> <span class="n">slice_</span> <span class="o">=</span> <span class="n">key</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">key</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span>
+            <span class="k">if</span> <span class="n">name</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">shapes</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">IndexError</span><span class="p">(</span><span class="s1">&#39;&quot;</span><span class="si">%s</span><span class="s1">&quot; is an invalid state space matrix name&#39;</span>
+                                 <span class="o">%</span> <span class="n">name</span><span class="p">)</span>
+
+            <span class="n">matrix</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s1">&#39;_&#39;</span> <span class="o">+</span> <span class="n">name</span><span class="p">)</span>
+
+            <span class="c1"># Since the model can support time-varying arrays, but often we</span>
+            <span class="c1"># will instead have time-invariant arrays, we want to allow setting</span>
+            <span class="c1"># a matrix slice like mod[&#39;transition&#39;,0,:] even though technically</span>
+            <span class="c1"># it should be mod[&#39;transition&#39;,0,:,0]. Thus if the array in</span>
+            <span class="c1"># question is time-invariant but the last slice was excluded,</span>
+            <span class="c1"># add it in as a zero.</span>
+            <span class="k">if</span> <span class="n">matrix</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="mi">1</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">slice_</span><span class="p">)</span> <span class="o">&lt;=</span> <span class="n">matrix</span><span class="o">.</span><span class="n">ndim</span><span class="o">-</span><span class="mi">1</span><span class="p">:</span>
+                <span class="n">slice_</span> <span class="o">=</span> <span class="n">slice_</span> <span class="o">+</span> <span class="p">(</span><span class="mi">0</span><span class="p">,)</span>
+
+            <span class="k">return</span> <span class="n">matrix</span><span class="p">[</span><span class="n">slice_</span><span class="p">]</span>
+        <span class="c1"># Otherwise, we have only a single slice index, but it is not a string</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">IndexError</span><span class="p">(</span><span class="s1">&#39;First index must the name of a valid state space&#39;</span>
+                             <span class="s1">&#39; matrix.&#39;</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">__setitem__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+        <span class="n">_type</span> <span class="o">=</span> <span class="nb">type</span><span class="p">(</span><span class="n">key</span><span class="p">)</span>
+        <span class="c1"># If only a string is given then we must be setting an entire matrix</span>
+        <span class="k">if</span> <span class="n">_type</span> <span class="ow">is</span> <span class="nb">str</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">key</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">shapes</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">IndexError</span><span class="p">(</span><span class="s1">&#39;&quot;</span><span class="si">%s</span><span class="s1">&quot; is an invalid state space matrix name&#39;</span>
+                                 <span class="o">%</span> <span class="n">key</span><span class="p">)</span>
+            <span class="nb">setattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span><span class="p">)</span>
+        <span class="c1"># If it&#39;s a tuple (with a string as the first element) then we must be</span>
+        <span class="c1"># setting a slice of a matrix</span>
+        <span class="k">elif</span> <span class="n">_type</span> <span class="ow">is</span> <span class="nb">tuple</span><span class="p">:</span>
+            <span class="n">name</span><span class="p">,</span> <span class="n">slice_</span> <span class="o">=</span> <span class="n">key</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">key</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span>
+            <span class="k">if</span> <span class="n">name</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">shapes</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">IndexError</span><span class="p">(</span><span class="s1">&#39;&quot;</span><span class="si">%s</span><span class="s1">&quot; is an invalid state space matrix name&#39;</span>
+                                 <span class="o">%</span> <span class="n">key</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+
+            <span class="c1"># Change the dtype of the corresponding matrix</span>
+            <span class="n">dtype</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">value</span><span class="p">)</span><span class="o">.</span><span class="n">dtype</span>
+            <span class="n">matrix</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s1">&#39;_&#39;</span> <span class="o">+</span> <span class="n">name</span><span class="p">)</span>
+            <span class="n">valid_types</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;f&#39;</span><span class="p">,</span> <span class="s1">&#39;d&#39;</span><span class="p">,</span> <span class="s1">&#39;F&#39;</span><span class="p">,</span> <span class="s1">&#39;D&#39;</span><span class="p">]</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">matrix</span><span class="o">.</span><span class="n">dtype</span> <span class="o">==</span> <span class="n">dtype</span> <span class="ow">and</span> <span class="n">dtype</span><span class="o">.</span><span class="n">char</span> <span class="ow">in</span> <span class="n">valid_types</span><span class="p">:</span>
+                <span class="n">matrix</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s1">&#39;_&#39;</span> <span class="o">+</span> <span class="n">name</span><span class="p">)</span><span class="o">.</span><span class="n">real</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">dtype</span><span class="p">)</span>
+
+            <span class="c1"># Since the model can support time-varying arrays, but often we</span>
+            <span class="c1"># will instead have time-invariant arrays, we want to allow setting</span>
+            <span class="c1"># a matrix slice like mod[&#39;transition&#39;,0,:] even though technically</span>
+            <span class="c1"># it should be mod[&#39;transition&#39;,0,:,0]. Thus if the array in</span>
+            <span class="c1"># question is time-invariant but the last slice was excluded,</span>
+            <span class="c1"># add it in as a zero.</span>
+            <span class="k">if</span> <span class="n">matrix</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="mi">1</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">slice_</span><span class="p">)</span> <span class="o">==</span> <span class="n">matrix</span><span class="o">.</span><span class="n">ndim</span><span class="o">-</span><span class="mi">1</span><span class="p">:</span>
+                <span class="n">slice_</span> <span class="o">=</span> <span class="n">slice_</span> <span class="o">+</span> <span class="p">(</span><span class="mi">0</span><span class="p">,)</span>
+
+            <span class="c1"># Set the new value</span>
+            <span class="n">matrix</span><span class="p">[</span><span class="n">slice_</span><span class="p">]</span> <span class="o">=</span> <span class="n">value</span>
+            <span class="nb">setattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">matrix</span><span class="p">)</span>
+        <span class="c1"># Otherwise we got a single non-string key, (e.g. mod[:]), which is</span>
+        <span class="c1"># invalid</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">IndexError</span><span class="p">(</span><span class="s1">&#39;First index must the name of a valid state space&#39;</span>
+                             <span class="s1">&#39; matrix.&#39;</span><span class="p">)</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">prefix</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        (str) BLAS prefix of currently active representation matrices</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">arrays</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_design</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_obs_intercept</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_obs_cov</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_transition</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_state_intercept</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_selection</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_state_cov</span>
+        <span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">endog</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">arrays</span> <span class="o">=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">endog</span><span class="p">,)</span> <span class="o">+</span> <span class="n">arrays</span>
+        <span class="k">return</span> <span class="n">find_best_blas_type</span><span class="p">(</span><span class="n">arrays</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">dtype</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        (dtype) Datatype of currently active representation matrices</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">tools</span><span class="o">.</span><span class="n">prefix_dtype_map</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">prefix</span><span class="p">]</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">time_invariant</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        (bool) Whether or not currently active representation matrices are</span>
+<span class="sd">        time-invariant</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_time_invariant</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_design</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">==</span> <span class="bp">self</span><span class="o">.</span><span class="n">_obs_intercept</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_obs_cov</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">==</span> <span class="bp">self</span><span class="o">.</span><span class="n">_transition</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">==</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_state_intercept</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="bp">self</span><span class="o">.</span><span class="n">_selection</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">==</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_state_cov</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span>
+            <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_time_invariant</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">_statespace</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">prefix</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">prefix</span>
+        <span class="k">if</span> <span class="n">prefix</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_statespaces</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_statespaces</span><span class="p">[</span><span class="n">prefix</span><span class="p">]</span>
+        <span class="k">return</span> <span class="kc">None</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">obs</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sa">r</span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        (array) Observation vector: :math:`y~(k\_endog \times nobs)`</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">endog</span>
+
+<div class="viewcode-block" id="Representation.bind"><a class="viewcode-back" href="../../../../generated/statsmodels.tsa.statespace.representation.Representation.bind.html#statsmodels.tsa.statespace.kalman_filter.Representation.bind">[docs]</a>    <span class="k">def</span> <span class="nf">bind</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">endog</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Bind data to the statespace representation</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        endog : array</span>
+<span class="sd">            Endogenous data to bind to the model. Must be column-ordered</span>
+<span class="sd">            ndarray with shape (`k_endog`, `nobs`) or row-ordered ndarray with</span>
+<span class="sd">            shape (`nobs`, `k_endog`).</span>
+
+<span class="sd">        Notes</span>
+<span class="sd">        -----</span>
+<span class="sd">        The strict requirements arise because the underlying statespace and</span>
+<span class="sd">        Kalman filtering classes require Fortran-ordered arrays in the wide</span>
+<span class="sd">        format (shaped (`k_endog`, `nobs`)), and this structure is setup to</span>
+<span class="sd">        prevent copying arrays in memory.</span>
+
+<span class="sd">        By default, numpy arrays are row (C)-ordered and most time series are</span>
+<span class="sd">        represented in the long format (with time on the 0-th axis). In this</span>
+<span class="sd">        case, no copying or re-ordering needs to be performed, instead the</span>
+<span class="sd">        array can simply be transposed to get it in the right order and shape.</span>
+
+<span class="sd">        Although this class (Representation) has stringent `bind` requirements,</span>
+<span class="sd">        it is assumed that it will rarely be used directly.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">endog</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Invalid endogenous array; must be an ndarray.&quot;</span><span class="p">)</span>
+
+        <span class="c1"># Make sure we have a 2-dimensional array</span>
+        <span class="c1"># Note: reshaping a 1-dim array into a 2-dim array by changing the</span>
+        <span class="c1">#       shape tuple always results in a row (C)-ordered array, so it</span>
+        <span class="c1">#       must be shaped (nobs, k_endog)</span>
+        <span class="k">if</span> <span class="n">endog</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="c1"># In the case of nobs x 0 arrays</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="n">endog</span><span class="o">.</span><span class="n">shape</span> <span class="o">=</span> <span class="p">(</span><span class="n">endog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="mi">1</span><span class="p">)</span>
+            <span class="c1"># In the case of k_endog x 0 arrays</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">endog</span><span class="o">.</span><span class="n">shape</span> <span class="o">=</span> <span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">endog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">endog</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;Invalid endogenous array provided; must be&#39;</span>
+                             <span class="s1">&#39; 2-dimensional.&#39;</span><span class="p">)</span>
+
+        <span class="c1"># Check for valid column-ordered arrays</span>
+        <span class="k">if</span> <span class="n">endog</span><span class="o">.</span><span class="n">flags</span><span class="p">[</span><span class="s1">&#39;F_CONTIGUOUS&#39;</span><span class="p">]</span> <span class="ow">and</span> <span class="n">endog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span><span class="p">:</span>
+            <span class="k">pass</span>
+        <span class="c1"># Check for valid row-ordered arrays, and transpose them to be the</span>
+        <span class="c1"># correct column-ordered array</span>
+        <span class="k">elif</span> <span class="n">endog</span><span class="o">.</span><span class="n">flags</span><span class="p">[</span><span class="s1">&#39;C_CONTIGUOUS&#39;</span><span class="p">]</span> <span class="ow">and</span> <span class="n">endog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span><span class="p">:</span>
+            <span class="n">endog</span> <span class="o">=</span> <span class="n">endog</span><span class="o">.</span><span class="n">T</span>
+        <span class="c1"># Invalid column-ordered arrays</span>
+        <span class="k">elif</span> <span class="n">endog</span><span class="o">.</span><span class="n">flags</span><span class="p">[</span><span class="s1">&#39;F_CONTIGUOUS&#39;</span><span class="p">]:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;Invalid endogenous array; column-ordered&#39;</span>
+                             <span class="s1">&#39; arrays must have first axis shape of&#39;</span>
+                             <span class="s1">&#39; `k_endog`.&#39;</span><span class="p">)</span>
+        <span class="c1"># Invalid row-ordered arrays</span>
+        <span class="k">elif</span> <span class="n">endog</span><span class="o">.</span><span class="n">flags</span><span class="p">[</span><span class="s1">&#39;C_CONTIGUOUS&#39;</span><span class="p">]:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;Invalid endogenous array; row-ordered&#39;</span>
+                             <span class="s1">&#39; arrays must have last axis shape of&#39;</span>
+                             <span class="s1">&#39; `k_endog`.&#39;</span><span class="p">)</span>
+        <span class="c1"># Non-contiguous arrays</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;Invalid endogenous array; must be ordered in&#39;</span>
+                             <span class="s1">&#39; contiguous memory.&#39;</span><span class="p">)</span>
+
+        <span class="c1"># In some corner cases (e.g. np.array(1., ndmin=2) with numpy &lt; 1.8)</span>
+        <span class="c1"># we may still have a non-fortran contiguous array, so double-check</span>
+        <span class="c1"># that now</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">endog</span><span class="o">.</span><span class="n">flags</span><span class="p">[</span><span class="s1">&#39;F_CONTIGUOUS&#39;</span><span class="p">]:</span>
+            <span class="n">endog</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asfortranarray</span><span class="p">(</span><span class="n">endog</span><span class="p">)</span>
+
+        <span class="c1"># Set a flag for complex data</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_complex_endog</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">iscomplexobj</span><span class="p">(</span><span class="n">endog</span><span class="p">)</span>
+
+        <span class="c1"># Set the data</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">endog</span> <span class="o">=</span> <span class="n">endog</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">endog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+
+        <span class="c1"># Reset shapes</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s1">&#39;shapes&#39;</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">shapes</span><span class="p">[</span><span class="s1">&#39;obs&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">endog</span><span class="o">.</span><span class="n">shape</span></div>
+
+<div class="viewcode-block" id="Representation.initialize_known"><a class="viewcode-back" href="../../../../generated/statsmodels.tsa.statespace.representation.Representation.initialize_known.html#statsmodels.tsa.statespace.kalman_filter.Representation.initialize_known">[docs]</a>    <span class="k">def</span> <span class="nf">initialize_known</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">initial_state</span><span class="p">,</span> <span class="n">initial_state_cov</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Initialize the statespace model with known distribution for initial</span>
+<span class="sd">        state.</span>
+
+<span class="sd">        These values are assumed to be known with certainty or else</span>
+<span class="sd">        filled with parameters during, for example, maximum likelihood</span>
+<span class="sd">        estimation.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        initial_state : array_like</span>
+<span class="sd">            Known mean of the initial state vector.</span>
+<span class="sd">        initial_state_cov : array_like</span>
+<span class="sd">            Known covariance matrix of the initial state vector.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">initial_state</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">initial_state</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="s2">&quot;F&quot;</span><span class="p">)</span>
+        <span class="n">initial_state_cov</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">initial_state_cov</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="s2">&quot;F&quot;</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">initial_state</span><span class="o">.</span><span class="n">shape</span> <span class="o">==</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">k_states</span><span class="p">,):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;Invalid dimensions for initial state vector.&#39;</span>
+                             <span class="s1">&#39; Requires shape (</span><span class="si">%d</span><span class="s1">,), got </span><span class="si">%s</span><span class="s1">&#39;</span> <span class="o">%</span>
+                             <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">k_states</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="n">initial_state</span><span class="o">.</span><span class="n">shape</span><span class="p">)))</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">initial_state_cov</span><span class="o">.</span><span class="n">shape</span> <span class="o">==</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">k_states</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_states</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;Invalid dimensions for initial covariance&#39;</span>
+                             <span class="s1">&#39; matrix. Requires shape (</span><span class="si">%d</span><span class="s1">,</span><span class="si">%d</span><span class="s1">), got </span><span class="si">%s</span><span class="s1">&#39;</span> <span class="o">%</span>
+                             <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">k_states</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_states</span><span class="p">,</span>
+                              <span class="nb">str</span><span class="p">(</span><span class="n">initial_state</span><span class="o">.</span><span class="n">shape</span><span class="p">)))</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_initial_state</span> <span class="o">=</span> <span class="n">initial_state</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_initial_state_cov</span> <span class="o">=</span> <span class="n">initial_state_cov</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">initialization</span> <span class="o">=</span> <span class="s1">&#39;known&#39;</span></div>
+
+<div class="viewcode-block" id="Representation.initialize_approximate_diffuse"><a class="viewcode-back" href="../../../../generated/statsmodels.tsa.statespace.representation.Representation.initialize_approximate_diffuse.html#statsmodels.tsa.statespace.kalman_filter.Representation.initialize_approximate_diffuse">[docs]</a>    <span class="k">def</span> <span class="nf">initialize_approximate_diffuse</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">variance</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Initialize the statespace model with approximate diffuse values.</span>
+
+<span class="sd">        Rather than following the exact diffuse treatment (which is developed</span>
+<span class="sd">        for the case that the variance becomes infinitely large), this assigns</span>
+<span class="sd">        an arbitrary large number for the variance.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        variance : float, optional</span>
+<span class="sd">            The variance for approximating diffuse initial conditions. Default</span>
+<span class="sd">            is 1e6.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">variance</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">variance</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">initial_variance</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_initial_variance</span> <span class="o">=</span> <span class="n">variance</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">initialization</span> <span class="o">=</span> <span class="s1">&#39;approximate_diffuse&#39;</span></div>
+
+<div class="viewcode-block" id="Representation.initialize_stationary"><a class="viewcode-back" href="../../../../generated/statsmodels.tsa.statespace.representation.Representation.initialize_stationary.html#statsmodels.tsa.statespace.kalman_filter.Representation.initialize_stationary">[docs]</a>    <span class="k">def</span> <span class="nf">initialize_stationary</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Initialize the statespace model as stationary.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">initialization</span> <span class="o">=</span> <span class="s1">&#39;stationary&#39;</span></div>
+
+    <span class="k">def</span> <span class="nf">_initialize_representation</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">prefix</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">prefix</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">prefix</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">prefix</span>
+        <span class="n">dtype</span> <span class="o">=</span> <span class="n">tools</span><span class="o">.</span><span class="n">prefix_dtype_map</span><span class="p">[</span><span class="n">prefix</span><span class="p">]</span>
+
+        <span class="c1"># If the dtype-specific representation matrices do not exist, create</span>
+        <span class="c1"># them</span>
+        <span class="k">if</span> <span class="n">prefix</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_representations</span><span class="p">:</span>
+            <span class="c1"># Copy the statespace representation matrices</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_representations</span><span class="p">[</span><span class="n">prefix</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+            <span class="k">for</span> <span class="n">matrix</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">shapes</span><span class="o">.</span><span class="n">keys</span><span class="p">():</span>
+                <span class="k">if</span> <span class="n">matrix</span> <span class="o">==</span> <span class="s1">&#39;obs&#39;</span><span class="p">:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">_representations</span><span class="p">[</span><span class="n">prefix</span><span class="p">][</span><span class="n">matrix</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">obs</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">dtype</span><span class="p">)</span>
+                    <span class="p">)</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="c1"># Note: this always makes a copy</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">_representations</span><span class="p">[</span><span class="n">prefix</span><span class="p">][</span><span class="n">matrix</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+                        <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s1">&#39;_&#39;</span> <span class="o">+</span> <span class="n">matrix</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">dtype</span><span class="p">)</span>
+                    <span class="p">)</span>
+        <span class="c1"># If they do exist, update them</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">matrix</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">shapes</span><span class="o">.</span><span class="n">keys</span><span class="p">():</span>
+                <span class="n">existing</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_representations</span><span class="p">[</span><span class="n">prefix</span><span class="p">][</span><span class="n">matrix</span><span class="p">]</span>
+                <span class="k">if</span> <span class="n">matrix</span> <span class="o">==</span> <span class="s1">&#39;obs&#39;</span><span class="p">:</span>
+                    <span class="n">existing</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">obs</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">dtype</span><span class="p">)[:]</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">new</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s1">&#39;_&#39;</span> <span class="o">+</span> <span class="n">matrix</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">dtype</span><span class="p">)</span>
+                    <span class="k">if</span> <span class="n">existing</span><span class="o">.</span><span class="n">shape</span> <span class="o">==</span> <span class="n">new</span><span class="o">.</span><span class="n">shape</span><span class="p">:</span>
+                        <span class="n">existing</span><span class="p">[:]</span> <span class="o">=</span> <span class="n">new</span><span class="p">[:]</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="n">existing</span> <span class="o">=</span> <span class="n">new</span>
+
+        <span class="c1"># Determine if we need to (re-)create the _statespace models</span>
+        <span class="c1"># (if time-varying matrices changed)</span>
+        <span class="k">if</span> <span class="n">prefix</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_statespaces</span><span class="p">:</span>
+            <span class="n">ss</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_statespaces</span><span class="p">[</span><span class="n">prefix</span><span class="p">]</span>
+            <span class="n">create</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="ow">not</span> <span class="n">ss</span><span class="o">.</span><span class="n">obs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="bp">self</span><span class="o">.</span><span class="n">endog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="ow">or</span>
+                <span class="ow">not</span> <span class="n">ss</span><span class="o">.</span><span class="n">design</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">==</span> <span class="bp">self</span><span class="o">.</span><span class="n">design</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="ow">or</span>
+                <span class="ow">not</span> <span class="n">ss</span><span class="o">.</span><span class="n">obs_intercept</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="bp">self</span><span class="o">.</span><span class="n">obs_intercept</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="ow">or</span>
+                <span class="ow">not</span> <span class="n">ss</span><span class="o">.</span><span class="n">obs_cov</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">==</span> <span class="bp">self</span><span class="o">.</span><span class="n">obs_cov</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="ow">or</span>
+                <span class="ow">not</span> <span class="n">ss</span><span class="o">.</span><span class="n">transition</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">==</span> <span class="bp">self</span><span class="o">.</span><span class="n">transition</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="ow">or</span>
+                <span class="ow">not</span> <span class="p">(</span><span class="n">ss</span><span class="o">.</span><span class="n">state_intercept</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span>
+                     <span class="bp">self</span><span class="o">.</span><span class="n">state_intercept</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span> <span class="ow">or</span>
+                <span class="ow">not</span> <span class="n">ss</span><span class="o">.</span><span class="n">selection</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">==</span> <span class="bp">self</span><span class="o">.</span><span class="n">selection</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="ow">or</span>
+                <span class="ow">not</span> <span class="n">ss</span><span class="o">.</span><span class="n">state_cov</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">==</span> <span class="bp">self</span><span class="o">.</span><span class="n">state_cov</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span>
+            <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">create</span> <span class="o">=</span> <span class="kc">True</span>
+
+        <span class="c1"># (re-)create if necessary</span>
+        <span class="k">if</span> <span class="n">create</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">prefix</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_statespaces</span><span class="p">:</span>
+                <span class="k">del</span> <span class="bp">self</span><span class="o">.</span><span class="n">_statespaces</span><span class="p">[</span><span class="n">prefix</span><span class="p">]</span>
+
+            <span class="c1"># Setup the base statespace object</span>
+            <span class="bp">cls</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">prefix_statespace_map</span><span class="p">[</span><span class="n">prefix</span><span class="p">]</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_statespaces</span><span class="p">[</span><span class="n">prefix</span><span class="p">]</span> <span class="o">=</span> <span class="bp">cls</span><span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_representations</span><span class="p">[</span><span class="n">prefix</span><span class="p">][</span><span class="s1">&#39;obs&#39;</span><span class="p">],</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_representations</span><span class="p">[</span><span class="n">prefix</span><span class="p">][</span><span class="s1">&#39;design&#39;</span><span class="p">],</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_representations</span><span class="p">[</span><span class="n">prefix</span><span class="p">][</span><span class="s1">&#39;obs_intercept&#39;</span><span class="p">],</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_representations</span><span class="p">[</span><span class="n">prefix</span><span class="p">][</span><span class="s1">&#39;obs_cov&#39;</span><span class="p">],</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_representations</span><span class="p">[</span><span class="n">prefix</span><span class="p">][</span><span class="s1">&#39;transition&#39;</span><span class="p">],</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_representations</span><span class="p">[</span><span class="n">prefix</span><span class="p">][</span><span class="s1">&#39;state_intercept&#39;</span><span class="p">],</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_representations</span><span class="p">[</span><span class="n">prefix</span><span class="p">][</span><span class="s1">&#39;selection&#39;</span><span class="p">],</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_representations</span><span class="p">[</span><span class="n">prefix</span><span class="p">][</span><span class="s1">&#39;state_cov&#39;</span><span class="p">]</span>
+            <span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">prefix</span><span class="p">,</span> <span class="n">dtype</span><span class="p">,</span> <span class="n">create</span>
+
+    <span class="k">def</span> <span class="nf">_initialize_state</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">prefix</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">complex_step</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">prefix</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">prefix</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">prefix</span>
+        <span class="n">dtype</span> <span class="o">=</span> <span class="n">tools</span><span class="o">.</span><span class="n">prefix_dtype_map</span><span class="p">[</span><span class="n">prefix</span><span class="p">]</span>
+
+        <span class="c1"># (Re-)initialize the statespace model</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">initialization</span> <span class="o">==</span> <span class="s1">&#39;known&#39;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_statespaces</span><span class="p">[</span><span class="n">prefix</span><span class="p">]</span><span class="o">.</span><span class="n">initialize_known</span><span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_initial_state</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">dtype</span><span class="p">),</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_initial_state_cov</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">dtype</span><span class="p">)</span>
+            <span class="p">)</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">initialization</span> <span class="o">==</span> <span class="s1">&#39;approximate_diffuse&#39;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_statespaces</span><span class="p">[</span><span class="n">prefix</span><span class="p">]</span><span class="o">.</span><span class="n">initialize_approximate_diffuse</span><span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_initial_variance</span>
+            <span class="p">)</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">initialization</span> <span class="o">==</span> <span class="s1">&#39;stationary&#39;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_statespaces</span><span class="p">[</span><span class="n">prefix</span><span class="p">]</span><span class="o">.</span><span class="n">initialize_stationary</span><span class="p">(</span><span class="n">complex_step</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s1">&#39;Statespace model not initialized.&#39;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="FrozenRepresentation"><a class="viewcode-back" href="../../../../generated/statsmodels.tsa.statespace.representation.FrozenRepresentation.html#statsmodels.tsa.statespace.kalman_filter.FrozenRepresentation">[docs]</a><span class="k">class</span> <span class="nc">FrozenRepresentation</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Frozen Statespace Model</span>
+
+<span class="sd">    Takes a snapshot of a Statespace model.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    model : Representation</span>
+<span class="sd">        A Statespace representation</span>
+
+<span class="sd">    Attributes</span>
+<span class="sd">    ----------</span>
+<span class="sd">    nobs : int</span>
+<span class="sd">        Number of observations.</span>
+<span class="sd">    k_endog : int</span>
+<span class="sd">        The dimension of the observation series.</span>
+<span class="sd">    k_states : int</span>
+<span class="sd">        The dimension of the unobserved state process.</span>
+<span class="sd">    k_posdef : int</span>
+<span class="sd">        The dimension of a guaranteed positive definite</span>
+<span class="sd">        covariance matrix describing the shocks in the</span>
+<span class="sd">        measurement equation.</span>
+<span class="sd">    dtype : dtype</span>
+<span class="sd">        Datatype of representation matrices</span>
+<span class="sd">    prefix : str</span>
+<span class="sd">        BLAS prefix of representation matrices</span>
+<span class="sd">    shapes : dictionary of name:tuple</span>
+<span class="sd">        A dictionary recording the shapes of each of</span>
+<span class="sd">        the representation matrices as tuples.</span>
+<span class="sd">    endog : array</span>
+<span class="sd">        The observation vector.</span>
+<span class="sd">    design : array</span>
+<span class="sd">        The design matrix, :math:`Z`.</span>
+<span class="sd">    obs_intercept : array</span>
+<span class="sd">        The intercept for the observation equation, :math:`d`.</span>
+<span class="sd">    obs_cov : array</span>
+<span class="sd">        The covariance matrix for the observation equation :math:`H`.</span>
+<span class="sd">    transition : array</span>
+<span class="sd">        The transition matrix, :math:`T`.</span>
+<span class="sd">    state_intercept : array</span>
+<span class="sd">        The intercept for the transition equation, :math:`c`.</span>
+<span class="sd">    selection : array</span>
+<span class="sd">        The selection matrix, :math:`R`.</span>
+<span class="sd">    state_cov : array</span>
+<span class="sd">        The covariance matrix for the state equation :math:`Q`.</span>
+<span class="sd">    missing : array of bool</span>
+<span class="sd">        An array of the same size as `endog`, filled</span>
+<span class="sd">        with boolean values that are True if the</span>
+<span class="sd">        corresponding entry in `endog` is NaN and False</span>
+<span class="sd">        otherwise.</span>
+<span class="sd">    nmissing : array of int</span>
+<span class="sd">        An array of size `nobs`, where the ith entry</span>
+<span class="sd">        is the number (between 0 and `k_endog`) of NaNs in</span>
+<span class="sd">        the ith row of the `endog` array.</span>
+<span class="sd">    time_invariant : bool</span>
+<span class="sd">        Whether or not the representation matrices are time-invariant</span>
+<span class="sd">    initialization : str</span>
+<span class="sd">        Kalman filter initialization method.</span>
+<span class="sd">    initial_state : array_like</span>
+<span class="sd">        The state vector used to initialize the Kalamn filter.</span>
+<span class="sd">    initial_state_cov : array_like</span>
+<span class="sd">        The state covariance matrix used to initialize the Kalamn filter.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">_model_attributes</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="s1">&#39;model&#39;</span><span class="p">,</span> <span class="s1">&#39;prefix&#39;</span><span class="p">,</span> <span class="s1">&#39;dtype&#39;</span><span class="p">,</span> <span class="s1">&#39;nobs&#39;</span><span class="p">,</span> <span class="s1">&#39;k_endog&#39;</span><span class="p">,</span> <span class="s1">&#39;k_states&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;k_posdef&#39;</span><span class="p">,</span> <span class="s1">&#39;time_invariant&#39;</span><span class="p">,</span> <span class="s1">&#39;endog&#39;</span><span class="p">,</span> <span class="s1">&#39;design&#39;</span><span class="p">,</span> <span class="s1">&#39;obs_intercept&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;obs_cov&#39;</span><span class="p">,</span> <span class="s1">&#39;transition&#39;</span><span class="p">,</span> <span class="s1">&#39;state_intercept&#39;</span><span class="p">,</span> <span class="s1">&#39;selection&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;state_cov&#39;</span><span class="p">,</span> <span class="s1">&#39;missing&#39;</span><span class="p">,</span> <span class="s1">&#39;nmissing&#39;</span><span class="p">,</span> <span class="s1">&#39;shapes&#39;</span><span class="p">,</span> <span class="s1">&#39;initialization&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;initial_state&#39;</span><span class="p">,</span> <span class="s1">&#39;initial_state_cov&#39;</span><span class="p">,</span> <span class="s1">&#39;initial_variance&#39;</span>
+    <span class="p">]</span>
+    <span class="n">_attributes</span> <span class="o">=</span> <span class="n">_model_attributes</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model</span><span class="p">):</span>
+        <span class="c1"># Initialize all attributes to None</span>
+        <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_attributes</span><span class="p">:</span>
+            <span class="nb">setattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+
+        <span class="c1"># Update the representation attributes</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">update_representation</span><span class="p">(</span><span class="n">model</span><span class="p">)</span>
+
+<div class="viewcode-block" id="FrozenRepresentation.update_representation"><a class="viewcode-back" href="../../../../generated/statsmodels.tsa.statespace.representation.FrozenRepresentation.update_representation.html#statsmodels.tsa.statespace.kalman_filter.FrozenRepresentation.update_representation">[docs]</a>    <span class="k">def</span> <span class="nf">update_representation</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model</span><span class="p">):</span>
+        <span class="c1"># Model</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">model</span> <span class="o">=</span> <span class="n">model</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_compatibility_mode</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">_compatibility_mode</span>
+
+        <span class="c1"># Data type</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">prefix</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">prefix</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">dtype</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">dtype</span>
+
+        <span class="c1"># Copy the model dimensions</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">nobs</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">k_endog</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">k_states</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">k_states</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">k_posdef</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">k_posdef</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">time_invariant</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">time_invariant</span>
+
+        <span class="c1"># Save the state space representation at the time</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">endog</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">endog</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">design</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">_design</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">obs_intercept</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">_obs_intercept</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">obs_cov</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">_obs_cov</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">transition</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">_transition</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">state_intercept</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">_state_intercept</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">selection</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">_selection</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">state_cov</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">_state_cov</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">missing</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">_statespaces</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">prefix</span><span class="p">]</span><span class="o">.</span><span class="n">missing</span><span class="p">,</span>
+                                <span class="n">copy</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">nmissing</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">_statespaces</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">prefix</span><span class="p">]</span><span class="o">.</span><span class="n">nmissing</span><span class="p">,</span>
+                                 <span class="n">copy</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+        <span class="c1"># Save the final shapes of the matrices</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">shapes</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">shapes</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">shapes</span><span class="o">.</span><span class="n">keys</span><span class="p">():</span>
+            <span class="k">if</span> <span class="n">name</span> <span class="o">==</span> <span class="s1">&#39;obs&#39;</span><span class="p">:</span>
+                <span class="k">continue</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">shapes</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span><span class="o">.</span><span class="n">shape</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">shapes</span><span class="p">[</span><span class="s1">&#39;obs&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">endog</span><span class="o">.</span><span class="n">shape</span>
+
+        <span class="c1"># Save the state space initialization</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">initialization</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">initialization</span>
+
+        <span class="k">if</span> <span class="n">model</span><span class="o">.</span><span class="n">initialization</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">model</span><span class="o">.</span><span class="n">_initialize_state</span><span class="p">()</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">initial_state</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span>
+                <span class="n">model</span><span class="o">.</span><span class="n">_statespaces</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">prefix</span><span class="p">]</span><span class="o">.</span><span class="n">initial_state</span><span class="p">,</span> <span class="n">copy</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">initial_state_cov</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span>
+                <span class="n">model</span><span class="o">.</span><span class="n">_statespaces</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">prefix</span><span class="p">]</span><span class="o">.</span><span class="n">initial_state_cov</span><span class="p">,</span> <span class="n">copy</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span></div></div>
+</pre></div>
+
+
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../../../../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    </div>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer" role="contentinfo">
+        &#169; Copyright 2009-2017, Josef Perktold, Skipper Seabold, Jonathan Taylor, statsmodels-developers.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.7.4.
+    </div>
+  </body>
+</html>

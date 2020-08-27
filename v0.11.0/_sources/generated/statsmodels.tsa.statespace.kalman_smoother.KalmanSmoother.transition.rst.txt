@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.tsa.statespace.kalman\_smoother.KalmanSmoother.transition
+=====================================================================
+
+.. currentmodule:: statsmodels.tsa.statespace.kalman_smoother
+
+.. autoattribute:: KalmanSmoother.transition

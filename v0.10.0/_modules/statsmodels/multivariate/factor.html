@@ -1,0 +1,1172 @@
+
+
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta charset="utf-8" />
+    <title>statsmodels.multivariate.factor &#8212; statsmodels v0.10.0 documentation</title>
+    <link rel="stylesheet" href="../../../_static/nature.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css" />
+    <script type="text/javascript" id="documentation_options" data-url_root="../../../" src="../../../_static/documentation_options.js"></script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <script type="text/javascript" src="../../../_static/language_data.js"></script>
+    <script async="async" type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/latest.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="shortcut icon" href="../../../_static/statsmodels_hybi_favico.ico"/>
+    <link rel="author" title="About these documents" href="../../../about.html" />
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+<link rel="stylesheet" href="../../../_static/examples.css" type="text/css" />
+<link rel="stylesheet" href="../../../_static/facebox.css" type="text/css" />
+<script type="text/javascript" src="../../../_static/scripts.js">
+</script>
+<script type="text/javascript" src="../../../_static/facebox.js">
+</script>
+<script type="text/javascript">
+$.facebox.settings.closeImage = "../../../_static/closelabel.png"
+$.facebox.settings.loadingImage = "../../../_static/loading.gif"
+</script>
+
+<script>
+$(document).ready(function() {
+  $.getJSON("../../../../versions.json", function(versions) {
+    var dropdown = document.createElement("div");
+    dropdown.className = "dropdown";
+    var button = document.createElement("button");
+    button.className = "dropbtn";
+    button.innerHTML = "Other Versions";
+    var content = document.createElement("div");
+    content.className = "dropdown-content";
+    dropdown.appendChild(button);
+    dropdown.appendChild(content);
+    $(".header").prepend(dropdown);
+    for (var i = 0; i < versions.length; i++) {
+      if (versions[i].substring(0, 1) == "v") {
+        versions[i] = [versions[i], versions[i].substring(1)];
+      } else {
+        versions[i] = [versions[i], versions[i]];
+      };
+    };
+    for (var i = 0; i < versions.length; i++) {
+      var a = document.createElement("a");
+      a.innerHTML = versions[i][1];
+      a.href = "../../../../" + versions[i][0] + "/index.html";
+      a.title = versions[i][1];
+      $(".dropdown-content").append(a);
+    };
+  });
+});
+</script>
+
+
+  </head><body>
+<div class="headerwrap">
+    <div class = "header">
+        
+        <a href = "../../../index.html">
+<img src="../../../_static/statsmodels_hybi_banner.png" alt="Logo"
+    style="padding-left: 15px"/></a>
+        
+    </div>
+</div>
+
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+<li><a href ="../../../install.html">Install</a></li> &nbsp;|&nbsp;
+<li><a href="https://groups.google.com/forum/?hl=en#!forum/pystatsmodels">Support</a></li> &nbsp;|&nbsp;
+<li><a href="https://github.com/statsmodels/statsmodels/issues">Bugs</a></li> &nbsp;|&nbsp;
+<li><a href="../../../dev/index.html">Develop</a></li> &nbsp;|&nbsp;
+<li><a href="../../../examples/index.html">Examples</a></li> &nbsp;|&nbsp;
+<li><a href="../../../faq.html">FAQ</a></li> &nbsp;|&nbsp;
+
+          <li class="nav-item nav-item-1"><a href="../../index.html" accesskey="U">Module code</a> |</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+
+
+
+
+  <h1>Source code for statsmodels.multivariate.factor</h1><div class="highlight"><pre>
+<span></span><span class="c1"># -*- coding: utf-8 -*-</span>
+
+<span class="kn">from</span> <span class="nn">__future__</span> <span class="k">import</span> <span class="n">division</span>
+<span class="kn">import</span> <span class="nn">warnings</span>
+
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+<span class="kn">from</span> <span class="nn">numpy.linalg</span> <span class="k">import</span> <span class="n">eigh</span><span class="p">,</span> <span class="n">inv</span><span class="p">,</span> <span class="n">norm</span><span class="p">,</span> <span class="n">matrix_rank</span>
+<span class="kn">import</span> <span class="nn">pandas</span> <span class="k">as</span> <span class="nn">pd</span>
+<span class="kn">from</span> <span class="nn">scipy.optimize</span> <span class="k">import</span> <span class="n">minimize</span>
+
+<span class="kn">from</span> <span class="nn">statsmodels.tools.decorators</span> <span class="k">import</span> <span class="n">cache_readonly</span>
+<span class="kn">from</span> <span class="nn">statsmodels.base.model</span> <span class="k">import</span> <span class="n">Model</span>
+<span class="kn">from</span> <span class="nn">statsmodels.iolib</span> <span class="k">import</span> <span class="n">summary2</span>
+<span class="kn">from</span> <span class="nn">statsmodels.graphics.utils</span> <span class="k">import</span> <span class="n">_import_mpl</span>
+
+<span class="kn">from</span> <span class="nn">.factor_rotation</span> <span class="k">import</span> <span class="n">rotate_factors</span><span class="p">,</span> <span class="n">promax</span>
+
+
+<span class="n">_opt_defaults</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;gtol&#39;</span><span class="p">:</span> <span class="mf">1e-7</span><span class="p">}</span>
+
+
+<span class="k">def</span> <span class="nf">_check_args_1</span><span class="p">(</span><span class="n">endog</span><span class="p">,</span> <span class="n">n_factor</span><span class="p">,</span> <span class="n">corr</span><span class="p">,</span> <span class="n">nobs</span><span class="p">):</span>
+
+    <span class="n">msg</span> <span class="o">=</span> <span class="s2">&quot;Either endog or corr must be provided.&quot;</span>
+    <span class="k">if</span> <span class="n">endog</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">corr</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">endog</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">corr</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="s1">&#39;Both endog and corr are provided, &#39;</span> <span class="o">+</span>
+                      <span class="s1">&#39;corr will be used for factor analysis.&#39;</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">n_factor</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;n_factor must be larger than 0! </span><span class="si">%d</span><span class="s1"> &lt; 0&#39;</span> <span class="o">%</span>
+                         <span class="p">(</span><span class="n">n_factor</span><span class="p">))</span>
+
+    <span class="k">if</span> <span class="n">nobs</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">endog</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="s2">&quot;nobs is ignored when endog is provided&quot;</span><span class="p">)</span>
+
+
+<span class="k">def</span> <span class="nf">_check_args_2</span><span class="p">(</span><span class="n">endog</span><span class="p">,</span> <span class="n">n_factor</span><span class="p">,</span> <span class="n">corr</span><span class="p">,</span> <span class="n">nobs</span><span class="p">,</span> <span class="n">k_endog</span><span class="p">):</span>
+
+    <span class="k">if</span> <span class="n">n_factor</span> <span class="o">&gt;</span> <span class="n">k_endog</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;n_factor cannot be greater than the number&#39;</span>
+                         <span class="s1">&#39; of variables! </span><span class="si">%d</span><span class="s1"> &gt; </span><span class="si">%d</span><span class="s1">&#39;</span> <span class="o">%</span>
+                         <span class="p">(</span><span class="n">n_factor</span><span class="p">,</span> <span class="n">k_endog</span><span class="p">))</span>
+
+    <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">diag</span><span class="p">(</span><span class="n">corr</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">))</span> <span class="o">&gt;</span> <span class="mf">1e-10</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;corr must be a correlation matrix&quot;</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">corr</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">!=</span> <span class="n">corr</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;Correlation matrix corr must be a square &#39;</span>
+                         <span class="s1">&#39;(rows </span><span class="si">%d</span><span class="s1"> != cols </span><span class="si">%d</span><span class="s1">)&#39;</span> <span class="o">%</span> <span class="n">corr</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="Factor"><a class="viewcode-back" href="../../../generated/statsmodels.multivariate.factor.Factor.html#statsmodels.multivariate.factor.Factor">[docs]</a><span class="k">class</span> <span class="nc">Factor</span><span class="p">(</span><span class="n">Model</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Factor analysis</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    endog : array-like</span>
+<span class="sd">        Variables in columns, observations in rows.  May be `None` if</span>
+<span class="sd">        `corr` is not `None`.</span>
+<span class="sd">    n_factor : int</span>
+<span class="sd">        The number of factors to extract</span>
+<span class="sd">    corr : array-like</span>
+<span class="sd">        Directly specify the correlation matrix instead of estimating</span>
+<span class="sd">        it from `endog`.  If provided, `endog` is not used for the</span>
+<span class="sd">        factor analysis, it may be used in post-estimation.</span>
+<span class="sd">    method : str</span>
+<span class="sd">        The method to extract factors, currently must be either &#39;pa&#39;</span>
+<span class="sd">        for principal axis factor analysis or &#39;ml&#39; for maximum</span>
+<span class="sd">        likelihood estimation.</span>
+<span class="sd">    smc : True or False</span>
+<span class="sd">        Whether or not to apply squared multiple correlations (method=&#39;pa&#39;)</span>
+<span class="sd">    endog_names: str</span>
+<span class="sd">        Names of endogeous variables.  If specified, it will be used</span>
+<span class="sd">        instead of the column names in endog</span>
+<span class="sd">    nobs : int</span>
+<span class="sd">        The number of observations, not used if endog is present. Needs to</span>
+<span class="sd">        be provided for inference if endog is None.</span>
+<span class="sd">    missing : &#39;none&#39;, &#39;drop&#39;, or &#39;raise&#39;</span>
+<span class="sd">        Missing value handling for endog, default is row-wise deletion &#39;drop&#39;</span>
+<span class="sd">        If &#39;none&#39;, no nan checking is done. If &#39;drop&#39;, any observations with</span>
+<span class="sd">        nans are dropped. If &#39;raise&#39;, an error is raised.</span>
+
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    **Experimental**</span>
+
+<span class="sd">    Supported rotations: &#39;varimax&#39;, &#39;quartimax&#39;, &#39;biquartimax&#39;,</span>
+<span class="sd">    &#39;equamax&#39;, &#39;oblimin&#39;, &#39;parsimax&#39;, &#39;parsimony&#39;, &#39;biquartimin&#39;,</span>
+<span class="sd">    &#39;promax&#39;</span>
+
+<span class="sd">    If method=&#39;ml&#39;, the factors are rotated to satisfy condition IC3</span>
+<span class="sd">    of Bai and Li (2012).  This means that the scores have covariance</span>
+<span class="sd">    I, so the model for the covariance matrix is L * L&#39; + diag(U),</span>
+<span class="sd">    where L are the loadings and U are the uniquenesses.  In addition,</span>
+<span class="sd">    L&#39; * diag(U)^{-1} L must be diagonal.</span>
+
+<span class="sd">    References</span>
+<span class="sd">    ----------</span>
+<span class="sd">    .. [*] Hofacker, C. (2004). Exploratory Factor Analysis, Mathematical</span>
+<span class="sd">       Marketing. http://www.openaccesstexts.org/pdf/Quant_Chapter_11_efa.pdf</span>
+<span class="sd">    .. [*] J Bai, K Li (2012).  Statistical analysis of factor models of high</span>
+<span class="sd">       dimension.  Annals of Statistics. https://arxiv.org/pdf/1205.6617.pdf</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">endog</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">n_factor</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">corr</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s1">&#39;pa&#39;</span><span class="p">,</span>
+                 <span class="n">smc</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">endog_names</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">nobs</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">missing</span><span class="o">=</span><span class="s1">&#39;drop&#39;</span><span class="p">):</span>
+
+        <span class="n">_check_args_1</span><span class="p">(</span><span class="n">endog</span><span class="p">,</span> <span class="n">n_factor</span><span class="p">,</span> <span class="n">corr</span><span class="p">,</span> <span class="n">nobs</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">endog</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="nb">super</span><span class="p">(</span><span class="n">Factor</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">endog</span><span class="p">,</span> <span class="n">exog</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">missing</span><span class="o">=</span><span class="n">missing</span><span class="p">)</span>
+            <span class="n">endog</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">endog</span>   <span class="c1"># after preprocessing like missing, asarray</span>
+            <span class="n">k_endog</span> <span class="o">=</span> <span class="n">endog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+            <span class="n">nobs</span> <span class="o">=</span> <span class="n">endog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="n">corr</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">corr</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">corrcoef</span><span class="p">(</span><span class="n">endog</span><span class="p">,</span> <span class="n">rowvar</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">corr</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">corr</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">corr</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">corr</span><span class="p">)</span>
+            <span class="n">k_endog</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">corr</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">endog</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="s2">&quot;Either endog or corr must be provided.&quot;</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+
+        <span class="n">_check_args_2</span><span class="p">(</span><span class="n">endog</span><span class="p">,</span> <span class="n">n_factor</span><span class="p">,</span> <span class="n">corr</span><span class="p">,</span> <span class="n">nobs</span><span class="p">,</span> <span class="n">k_endog</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">n_factor</span> <span class="o">=</span> <span class="n">n_factor</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">loadings</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">communality</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">method</span> <span class="o">=</span> <span class="n">method</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">smc</span> <span class="o">=</span> <span class="n">smc</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span> <span class="o">=</span> <span class="n">nobs</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">method</span> <span class="o">=</span> <span class="n">method</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">corr</span> <span class="o">=</span> <span class="n">corr</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span> <span class="o">=</span> <span class="n">k_endog</span>
+
+        <span class="k">if</span> <span class="n">endog_names</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">corr</span><span class="p">,</span> <span class="s1">&#39;index&#39;</span><span class="p">):</span>
+                <span class="n">endog_names</span> <span class="o">=</span> <span class="n">corr</span><span class="o">.</span><span class="n">index</span>
+            <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">corr</span><span class="p">,</span> <span class="s1">&#39;columns&#39;</span><span class="p">):</span>
+                <span class="n">endog_names</span> <span class="o">=</span> <span class="n">corr</span><span class="o">.</span><span class="n">columns</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">endog_names</span> <span class="o">=</span> <span class="n">endog_names</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">endog_names</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Names of endogenous variables&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_endog_names</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_endog_names</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">endog</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">ynames</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">d</span> <span class="o">=</span> <span class="mi">0</span>
+                <span class="n">n</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">corr</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">-</span> <span class="mi">1</span>
+                <span class="k">while</span> <span class="n">n</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                    <span class="n">d</span> <span class="o">+=</span> <span class="mi">1</span>
+                    <span class="n">n</span> <span class="o">//=</span> <span class="mi">10</span>
+                <span class="k">return</span> <span class="p">[(</span><span class="s1">&#39;var%0&#39;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">d</span><span class="p">)</span> <span class="o">+</span> <span class="s1">&#39;d&#39;</span><span class="p">)</span> <span class="o">%</span> <span class="n">i</span>
+                        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">corr</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])]</span>
+
+    <span class="nd">@endog_names</span><span class="o">.</span><span class="n">setter</span>
+    <span class="k">def</span> <span class="nf">endog_names</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+        <span class="c1"># Check validity of endog_names:</span>
+        <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">value</span><span class="p">)</span> <span class="o">!=</span> <span class="bp">self</span><span class="o">.</span><span class="n">corr</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;The length of `endog_names` must &#39;</span>
+                                 <span class="s1">&#39;equal the number of variables.&#39;</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_endog_names</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_endog_names</span> <span class="o">=</span> <span class="kc">None</span>
+
+<div class="viewcode-block" id="Factor.fit"><a class="viewcode-back" href="../../../generated/statsmodels.multivariate.factor.Factor.fit.html#statsmodels.multivariate.factor.Factor.fit">[docs]</a>    <span class="k">def</span> <span class="nf">fit</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">maxiter</span><span class="o">=</span><span class="mi">50</span><span class="p">,</span> <span class="n">tol</span><span class="o">=</span><span class="mf">1e-8</span><span class="p">,</span> <span class="n">start</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">opt_method</span><span class="o">=</span><span class="s1">&#39;BFGS&#39;</span><span class="p">,</span>
+            <span class="n">opt</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">em_iter</span><span class="o">=</span><span class="mi">3</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Estimate factor model parameters.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        maxiter : int</span>
+<span class="sd">            Maximum number of iterations for iterative estimation algorithms</span>
+<span class="sd">        tol : float</span>
+<span class="sd">            Stopping critera (error tolerance) for iterative estimation</span>
+<span class="sd">            algorithms</span>
+<span class="sd">        start : array-like</span>
+<span class="sd">            Starting values, currently only used for ML estimation</span>
+<span class="sd">        opt_method : string</span>
+<span class="sd">            Optimization method for ML estimation</span>
+<span class="sd">        opt : dict-like</span>
+<span class="sd">            Keyword arguments passed to optimizer, only used for ML estimation</span>
+<span class="sd">        em_iter : int</span>
+<span class="sd">            The number of EM iterations before starting gradient optimization,</span>
+<span class="sd">            only used for ML estimation.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        results: FactorResults</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">method</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">method</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">method</span> <span class="o">==</span> <span class="s1">&#39;pa&#39;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_fit_pa</span><span class="p">(</span><span class="n">maxiter</span><span class="o">=</span><span class="n">maxiter</span><span class="p">,</span> <span class="n">tol</span><span class="o">=</span><span class="n">tol</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">method</span> <span class="o">==</span> <span class="s1">&#39;ml&#39;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_fit_ml</span><span class="p">(</span><span class="n">start</span><span class="p">,</span> <span class="n">em_iter</span><span class="p">,</span> <span class="n">opt_method</span><span class="p">,</span> <span class="n">opt</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="s2">&quot;Unknown factor extraction approach &#39;</span><span class="si">%s</span><span class="s2">&#39;&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">method</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span></div>
+
+    <span class="k">def</span> <span class="nf">_fit_pa</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">maxiter</span><span class="o">=</span><span class="mi">50</span><span class="p">,</span> <span class="n">tol</span><span class="o">=</span><span class="mf">1e-8</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Extract factors using the iterative principal axis method</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        maxiter : int</span>
+<span class="sd">            Maximum number of iterations for communality estimation</span>
+<span class="sd">        tol : float</span>
+<span class="sd">            If `norm(communality - last_communality)  &lt; tolerance`,</span>
+<span class="sd">            estimation stops</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        results : FactorResults instance</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="n">R</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">corr</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>  <span class="c1"># inplace modification below</span>
+
+        <span class="c1"># Parameter validation</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">n_comp</span> <span class="o">=</span> <span class="n">matrix_rank</span><span class="p">(</span><span class="n">R</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_factor</span> <span class="o">&gt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_comp</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;n_factor must be smaller or equal to the rank&#39;</span>
+                             <span class="s1">&#39; of endog! </span><span class="si">%d</span><span class="s1"> &gt; </span><span class="si">%d</span><span class="s1">&#39;</span> <span class="o">%</span>
+                             <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">n_factor</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_comp</span><span class="p">))</span>
+        <span class="k">if</span> <span class="n">maxiter</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;n_max_iter must be larger than 0! </span><span class="si">%d</span><span class="s1"> &lt; 0&#39;</span> <span class="o">%</span>
+                             <span class="p">(</span><span class="n">maxiter</span><span class="p">))</span>
+        <span class="k">if</span> <span class="n">tol</span> <span class="o">&lt;=</span> <span class="mi">0</span> <span class="ow">or</span> <span class="n">tol</span> <span class="o">&gt;</span> <span class="mf">0.01</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;tolerance must be larger than 0 and smaller than&#39;</span>
+                             <span class="s1">&#39; 0.01! Got </span><span class="si">%f</span><span class="s1"> instead&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">tol</span><span class="p">))</span>
+
+        <span class="c1">#  Initial communality estimation</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">smc</span><span class="p">:</span>
+            <span class="n">c</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">-</span> <span class="mi">1</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">diag</span><span class="p">(</span><span class="n">inv</span><span class="p">(</span><span class="n">R</span><span class="p">))</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">c</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">R</span><span class="p">))</span>
+
+        <span class="c1"># Iterative communality estimation</span>
+        <span class="n">eigenvals</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">maxiter</span><span class="p">):</span>
+            <span class="c1"># Get eigenvalues/eigenvectors of R with diag replaced by</span>
+            <span class="c1"># communality</span>
+            <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">R</span><span class="p">)):</span>
+                <span class="n">R</span><span class="p">[</span><span class="n">j</span><span class="p">,</span> <span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="n">c</span><span class="p">[</span><span class="n">j</span><span class="p">]</span>
+            <span class="n">L</span><span class="p">,</span> <span class="n">V</span> <span class="o">=</span> <span class="n">eigh</span><span class="p">(</span><span class="n">R</span><span class="p">,</span> <span class="n">UPLO</span><span class="o">=</span><span class="s1">&#39;U&#39;</span><span class="p">)</span>
+            <span class="n">c_last</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">c</span><span class="p">)</span>
+            <span class="n">ind</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">L</span><span class="p">)</span>
+            <span class="n">ind</span> <span class="o">=</span> <span class="n">ind</span><span class="p">[::</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+            <span class="n">L</span> <span class="o">=</span> <span class="n">L</span><span class="p">[</span><span class="n">ind</span><span class="p">]</span>
+            <span class="n">n_pos</span> <span class="o">=</span> <span class="p">(</span><span class="n">L</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
+            <span class="n">V</span> <span class="o">=</span> <span class="n">V</span><span class="p">[:,</span> <span class="n">ind</span><span class="p">]</span>
+            <span class="n">eigenvals</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">L</span><span class="p">)</span>
+
+            <span class="c1"># Select eigenvectors with positive eigenvalues</span>
+            <span class="n">n</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">([</span><span class="n">n_pos</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_factor</span><span class="p">])</span>
+            <span class="n">sL</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">diag</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">L</span><span class="p">[:</span><span class="n">n</span><span class="p">]))</span>
+            <span class="n">V</span> <span class="o">=</span> <span class="n">V</span><span class="p">[:,</span> <span class="p">:</span><span class="n">n</span><span class="p">]</span>
+
+            <span class="c1"># Calculate new loadings and communality</span>
+            <span class="n">A</span> <span class="o">=</span> <span class="n">V</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">sL</span><span class="p">)</span>
+            <span class="n">c</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">power</span><span class="p">(</span><span class="n">A</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">norm</span><span class="p">(</span><span class="n">c_last</span> <span class="o">-</span> <span class="n">c</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">tol</span><span class="p">:</span>
+                <span class="k">break</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">eigenvals</span> <span class="o">=</span> <span class="n">eigenvals</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">communality</span> <span class="o">=</span> <span class="n">c</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">uniqueness</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">-</span> <span class="n">c</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">loadings</span> <span class="o">=</span> <span class="n">A</span>
+        <span class="k">return</span> <span class="n">FactorResults</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
+
+    <span class="c1"># Unpacks the model parameters from a flat vector, used for ML</span>
+    <span class="c1"># estimation.  The first k_endog elements of par are the square</span>
+    <span class="c1"># roots of the uniquenesses.  The remaining elements are the</span>
+    <span class="c1"># factor loadings, packed one factor at a time.</span>
+    <span class="k">def</span> <span class="nf">_unpack</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">par</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">(</span><span class="n">par</span><span class="p">[</span><span class="mi">0</span><span class="p">:</span><span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span><span class="p">]</span><span class="o">**</span><span class="mi">2</span><span class="p">,</span>
+                <span class="n">np</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">par</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span><span class="p">:],</span> <span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span><span class="p">))</span><span class="o">.</span><span class="n">T</span><span class="p">)</span>
+
+    <span class="c1"># Packs the model parameters into a flat parameter, used for ML</span>
+    <span class="c1"># estimation.</span>
+    <span class="k">def</span> <span class="nf">_pack</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">load</span><span class="p">,</span> <span class="n">uniq</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">((</span><span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">uniq</span><span class="p">),</span> <span class="n">load</span><span class="o">.</span><span class="n">T</span><span class="o">.</span><span class="n">flat</span><span class="p">))</span>
+
+<div class="viewcode-block" id="Factor.loglike"><a class="viewcode-back" href="../../../generated/statsmodels.multivariate.factor.Factor.loglike.html#statsmodels.multivariate.factor.Factor.loglike">[docs]</a>    <span class="k">def</span> <span class="nf">loglike</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">par</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Evaluate the log-likelihood function.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        par : ndarray or tuple of 2 ndarray&#39;s</span>
+<span class="sd">            The model parameters, either a packed representation of</span>
+<span class="sd">            the model parameters or a 2-tuple containing a `k_endog x</span>
+<span class="sd">            n_factor` matrix of factor loadings and a `k_endog` vector</span>
+<span class="sd">            of uniquenesses.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        loglike : float</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="k">if</span> <span class="nb">type</span><span class="p">(</span><span class="n">par</span><span class="p">)</span> <span class="ow">is</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+            <span class="n">uniq</span><span class="p">,</span> <span class="n">load</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_unpack</span><span class="p">(</span><span class="n">par</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">load</span><span class="p">,</span> <span class="n">uniq</span> <span class="o">=</span> <span class="n">par</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">par</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+
+        <span class="n">loadu</span> <span class="o">=</span> <span class="n">load</span> <span class="o">/</span> <span class="n">uniq</span><span class="p">[:,</span> <span class="kc">None</span><span class="p">]</span>
+        <span class="n">lul</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">load</span><span class="o">.</span><span class="n">T</span><span class="p">,</span> <span class="n">loadu</span><span class="p">)</span>
+
+        <span class="c1"># log|GG&#39; + S|</span>
+        <span class="c1"># Using matrix determinant lemma:</span>
+        <span class="c1"># |GG&#39; + S| = |I + G&#39;S^{-1}G|*|S|</span>
+        <span class="n">lul</span><span class="o">.</span><span class="n">flat</span><span class="p">[::</span><span class="n">lul</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">+</span><span class="mi">1</span><span class="p">]</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="n">_</span><span class="p">,</span> <span class="n">ld</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">slogdet</span><span class="p">(</span><span class="n">lul</span><span class="p">)</span>
+        <span class="n">v</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">uniq</span><span class="p">))</span> <span class="o">+</span> <span class="n">ld</span>
+
+        <span class="c1"># tr((GG&#39; + S)^{-1}C)</span>
+        <span class="c1"># Using Sherman-Morrison-Woodbury</span>
+        <span class="n">w</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="mi">1</span> <span class="o">/</span> <span class="n">uniq</span><span class="p">)</span>
+        <span class="n">b</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">load</span><span class="o">.</span><span class="n">T</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">corr</span> <span class="o">/</span> <span class="n">uniq</span><span class="p">[:,</span> <span class="kc">None</span><span class="p">])</span>
+        <span class="n">b</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">solve</span><span class="p">(</span><span class="n">lul</span><span class="p">,</span> <span class="n">b</span><span class="p">)</span>
+        <span class="n">b</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">loadu</span><span class="p">,</span> <span class="n">b</span><span class="p">)</span>
+        <span class="n">w</span> <span class="o">-=</span> <span class="n">np</span><span class="o">.</span><span class="n">trace</span><span class="p">(</span><span class="n">b</span><span class="p">)</span>
+
+        <span class="c1"># Scaled log-likelihood</span>
+        <span class="k">return</span> <span class="o">-</span><span class="p">(</span><span class="n">v</span> <span class="o">+</span> <span class="n">w</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="mi">2</span><span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="Factor.score"><a class="viewcode-back" href="../../../generated/statsmodels.multivariate.factor.Factor.score.html#statsmodels.multivariate.factor.Factor.score">[docs]</a>    <span class="k">def</span> <span class="nf">score</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">par</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Evaluate the score function (first derivative of loglike).</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        par : ndarray or tuple of 2 ndarray&#39;s</span>
+<span class="sd">            The model parameters, either a packed representation of</span>
+<span class="sd">            the model parameters or a 2-tuple containing a `k_endog x</span>
+<span class="sd">            n_factor` matrix of factor loadings and a `k_endog` vector</span>
+<span class="sd">            of uniquenesses.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        score : ndarray</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="k">if</span> <span class="nb">type</span><span class="p">(</span><span class="n">par</span><span class="p">)</span> <span class="ow">is</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+            <span class="n">uniq</span><span class="p">,</span> <span class="n">load</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_unpack</span><span class="p">(</span><span class="n">par</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">load</span><span class="p">,</span> <span class="n">uniq</span> <span class="o">=</span> <span class="n">par</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">par</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+
+        <span class="c1"># Center term of SMW</span>
+        <span class="n">loadu</span> <span class="o">=</span> <span class="n">load</span> <span class="o">/</span> <span class="n">uniq</span><span class="p">[:,</span> <span class="kc">None</span><span class="p">]</span>
+        <span class="n">c</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">load</span><span class="o">.</span><span class="n">T</span><span class="p">,</span> <span class="n">loadu</span><span class="p">)</span>
+        <span class="n">c</span><span class="o">.</span><span class="n">flat</span><span class="p">[::</span><span class="n">c</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">+</span><span class="mi">1</span><span class="p">]</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="n">d</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">solve</span><span class="p">(</span><span class="n">c</span><span class="p">,</span> <span class="n">load</span><span class="o">.</span><span class="n">T</span><span class="p">)</span>
+
+        <span class="c1"># Precompute these terms</span>
+        <span class="n">lud</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">loadu</span><span class="p">,</span> <span class="n">d</span><span class="p">)</span>
+        <span class="n">cu</span> <span class="o">=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">corr</span> <span class="o">/</span> <span class="n">uniq</span><span class="p">)</span> <span class="o">/</span> <span class="n">uniq</span><span class="p">[:,</span> <span class="kc">None</span><span class="p">]</span>
+        <span class="n">r</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">cu</span><span class="p">,</span> <span class="n">load</span><span class="p">)</span>
+        <span class="n">lul</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">lud</span><span class="o">.</span><span class="n">T</span><span class="p">,</span> <span class="n">load</span><span class="p">)</span>
+        <span class="n">luz</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">cu</span><span class="p">,</span> <span class="n">lul</span><span class="p">)</span>
+
+        <span class="c1"># First term</span>
+        <span class="n">du</span> <span class="o">=</span> <span class="mi">2</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">uniq</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="mi">1</span><span class="o">/</span><span class="n">uniq</span> <span class="o">-</span> <span class="p">(</span><span class="n">d</span> <span class="o">*</span> <span class="n">load</span><span class="o">.</span><span class="n">T</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span> <span class="o">/</span> <span class="n">uniq</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span>
+        <span class="n">dl</span> <span class="o">=</span> <span class="mi">2</span><span class="o">*</span><span class="p">(</span><span class="n">loadu</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">lud</span><span class="p">,</span> <span class="n">loadu</span><span class="p">))</span>
+
+        <span class="c1"># Second term</span>
+        <span class="n">h</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">lud</span><span class="p">,</span> <span class="n">cu</span><span class="p">)</span>
+        <span class="n">f</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">h</span><span class="p">,</span> <span class="n">lud</span><span class="o">.</span><span class="n">T</span><span class="p">)</span>
+        <span class="n">du</span> <span class="o">-=</span> <span class="mi">2</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">uniq</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">diag</span><span class="p">(</span><span class="n">cu</span><span class="p">)</span> <span class="o">-</span> <span class="mi">2</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">diag</span><span class="p">(</span><span class="n">h</span><span class="p">)</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">diag</span><span class="p">(</span><span class="n">f</span><span class="p">))</span>
+        <span class="n">dl</span> <span class="o">-=</span> <span class="mi">2</span><span class="o">*</span><span class="n">r</span>
+        <span class="n">dl</span> <span class="o">+=</span> <span class="mi">2</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">lud</span><span class="p">,</span> <span class="n">r</span><span class="p">)</span>
+        <span class="n">dl</span> <span class="o">+=</span> <span class="mi">2</span><span class="o">*</span><span class="n">luz</span>
+        <span class="n">dl</span> <span class="o">-=</span> <span class="mi">2</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">lud</span><span class="p">,</span> <span class="n">luz</span><span class="p">)</span>
+
+        <span class="c1"># Can&#39;t use _pack because we are working with the square root</span>
+        <span class="c1"># uniquenesses directly.</span>
+        <span class="k">return</span> <span class="o">-</span><span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">((</span><span class="n">du</span><span class="p">,</span> <span class="n">dl</span><span class="o">.</span><span class="n">T</span><span class="o">.</span><span class="n">flat</span><span class="p">))</span> <span class="o">/</span> <span class="p">(</span><span class="mi">2</span><span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span><span class="p">)</span></div>
+
+    <span class="c1"># Maximum likelihood factor analysis.</span>
+    <span class="k">def</span> <span class="nf">_fit_ml</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">start</span><span class="p">,</span> <span class="n">em_iter</span><span class="p">,</span> <span class="n">opt_method</span><span class="p">,</span> <span class="n">opt</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;estimate Factor model using Maximum Likelihood</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="c1"># Starting values</span>
+        <span class="k">if</span> <span class="n">start</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">load</span><span class="p">,</span> <span class="n">uniq</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_fit_ml_em</span><span class="p">(</span><span class="n">em_iter</span><span class="p">)</span>
+            <span class="n">start</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_pack</span><span class="p">(</span><span class="n">load</span><span class="p">,</span> <span class="n">uniq</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="nb">len</span><span class="p">(</span><span class="n">start</span><span class="p">)</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">start</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span> <span class="o">!=</span> <span class="n">start</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]:</span>
+                <span class="n">msg</span> <span class="o">=</span> <span class="s2">&quot;Starting values have incompatible dimensions&quot;</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+            <span class="n">start</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_pack</span><span class="p">(</span><span class="n">start</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">start</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Invalid starting values&quot;</span><span class="p">)</span>
+
+        <span class="k">def</span> <span class="nf">nloglike</span><span class="p">(</span><span class="n">par</span><span class="p">):</span>
+            <span class="k">return</span> <span class="o">-</span><span class="bp">self</span><span class="o">.</span><span class="n">loglike</span><span class="p">(</span><span class="n">par</span><span class="p">)</span>
+
+        <span class="k">def</span> <span class="nf">nscore</span><span class="p">(</span><span class="n">par</span><span class="p">):</span>
+            <span class="k">return</span> <span class="o">-</span><span class="bp">self</span><span class="o">.</span><span class="n">score</span><span class="p">(</span><span class="n">par</span><span class="p">)</span>
+
+        <span class="c1"># Do the optimization</span>
+        <span class="k">if</span> <span class="n">opt</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">opt</span> <span class="o">=</span> <span class="n">_opt_defaults</span>
+        <span class="n">r</span> <span class="o">=</span> <span class="n">minimize</span><span class="p">(</span><span class="n">nloglike</span><span class="p">,</span> <span class="n">start</span><span class="p">,</span> <span class="n">jac</span><span class="o">=</span><span class="n">nscore</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="n">opt_method</span><span class="p">,</span>
+                     <span class="n">options</span><span class="o">=</span><span class="n">opt</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">r</span><span class="o">.</span><span class="n">success</span><span class="p">:</span>
+            <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="s2">&quot;Fitting did not converge&quot;</span><span class="p">)</span>
+        <span class="n">par</span> <span class="o">=</span> <span class="n">r</span><span class="o">.</span><span class="n">x</span>
+        <span class="n">uniq</span><span class="p">,</span> <span class="n">load</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_unpack</span><span class="p">(</span><span class="n">par</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">uniq</span><span class="o">.</span><span class="n">min</span><span class="p">()</span> <span class="o">&lt;</span> <span class="mf">1e-10</span><span class="p">:</span>
+            <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="s2">&quot;Some uniquenesses are nearly zero&quot;</span><span class="p">)</span>
+
+        <span class="c1"># Rotate solution to satisfy IC3 of Bai and Li</span>
+        <span class="n">load</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_rotate</span><span class="p">(</span><span class="n">load</span><span class="p">,</span> <span class="n">uniq</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">uniqueness</span> <span class="o">=</span> <span class="n">uniq</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">communality</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">-</span> <span class="n">uniq</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">loadings</span> <span class="o">=</span> <span class="n">load</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">mle_retvals</span> <span class="o">=</span> <span class="n">r</span>
+
+        <span class="k">return</span> <span class="n">FactorResults</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_fit_ml_em</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="nb">iter</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;estimate Factor model using EM algorithm</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Starting values</span>
+        <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">seed</span><span class="p">(</span><span class="mi">3427</span><span class="p">)</span>
+        <span class="n">load</span> <span class="o">=</span> <span class="mf">0.1</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="n">size</span><span class="o">=</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_factor</span><span class="p">))</span>
+        <span class="n">uniq</span> <span class="o">=</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span><span class="p">)</span>
+
+        <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">iter</span><span class="p">):</span>
+
+            <span class="n">loadu</span> <span class="o">=</span> <span class="n">load</span> <span class="o">/</span> <span class="n">uniq</span><span class="p">[:,</span> <span class="kc">None</span><span class="p">]</span>
+
+            <span class="n">f</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">load</span><span class="o">.</span><span class="n">T</span><span class="p">,</span> <span class="n">loadu</span><span class="p">)</span>
+            <span class="n">f</span><span class="o">.</span><span class="n">flat</span><span class="p">[::</span><span class="n">f</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">+</span><span class="mi">1</span><span class="p">]</span> <span class="o">+=</span> <span class="mi">1</span>
+
+            <span class="n">r</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">solve</span><span class="p">(</span><span class="n">f</span><span class="p">,</span> <span class="n">loadu</span><span class="o">.</span><span class="n">T</span><span class="p">)</span>
+            <span class="n">q</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">loadu</span><span class="o">.</span><span class="n">T</span><span class="p">,</span> <span class="n">load</span><span class="p">)</span>
+            <span class="n">h</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">r</span><span class="p">,</span> <span class="n">load</span><span class="p">)</span>
+
+            <span class="n">c</span> <span class="o">=</span> <span class="n">load</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">load</span><span class="p">,</span> <span class="n">h</span><span class="p">)</span>
+            <span class="n">c</span> <span class="o">/=</span> <span class="n">uniq</span><span class="p">[:,</span> <span class="kc">None</span><span class="p">]</span>
+
+            <span class="n">g</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">q</span><span class="p">,</span> <span class="n">r</span><span class="p">)</span>
+            <span class="n">e</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">g</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">corr</span><span class="p">)</span>
+            <span class="n">d</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">loadu</span><span class="o">.</span><span class="n">T</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">corr</span><span class="p">)</span> <span class="o">-</span> <span class="n">e</span>
+
+            <span class="n">a</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">d</span><span class="p">,</span> <span class="n">c</span><span class="p">)</span>
+            <span class="n">a</span> <span class="o">-=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">load</span><span class="o">.</span><span class="n">T</span><span class="p">,</span> <span class="n">c</span><span class="p">)</span>
+            <span class="n">a</span><span class="o">.</span><span class="n">flat</span><span class="p">[::</span><span class="n">a</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">+</span><span class="mi">1</span><span class="p">]</span> <span class="o">+=</span> <span class="mi">1</span>
+
+            <span class="n">b</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">corr</span><span class="p">,</span> <span class="n">c</span><span class="p">)</span>
+
+            <span class="n">load</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">solve</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="o">.</span><span class="n">T</span><span class="p">)</span><span class="o">.</span><span class="n">T</span>
+            <span class="n">uniq</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">diag</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">corr</span><span class="p">)</span> <span class="o">-</span> <span class="p">(</span><span class="n">load</span> <span class="o">*</span> <span class="n">d</span><span class="o">.</span><span class="n">T</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">load</span><span class="p">,</span> <span class="n">uniq</span>
+
+    <span class="k">def</span> <span class="nf">_rotate</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">load</span><span class="p">,</span> <span class="n">uniq</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;rotate loadings for MLE</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Rotations used in ML estimation.</span>
+        <span class="n">load</span><span class="p">,</span> <span class="n">s</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">svd</span><span class="p">(</span><span class="n">load</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+        <span class="n">load</span> <span class="o">*=</span> <span class="n">s</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">nobs</span> <span class="o">=</span> <span class="mi">1</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">nobs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span>
+
+        <span class="n">cm</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">load</span><span class="o">.</span><span class="n">T</span><span class="p">,</span> <span class="n">load</span> <span class="o">/</span> <span class="n">uniq</span><span class="p">[:,</span> <span class="kc">None</span><span class="p">])</span> <span class="o">/</span> <span class="n">nobs</span>
+        <span class="n">_</span><span class="p">,</span> <span class="n">f</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">eig</span><span class="p">(</span><span class="n">cm</span><span class="p">)</span>
+        <span class="n">load</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">load</span><span class="p">,</span> <span class="n">f</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">load</span></div>
+
+
+<div class="viewcode-block" id="FactorResults"><a class="viewcode-back" href="../../../generated/statsmodels.multivariate.factor.FactorResults.html#statsmodels.multivariate.factor.FactorResults">[docs]</a><span class="k">class</span> <span class="nc">FactorResults</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Factor results class</span>
+
+<span class="sd">    For result summary, scree/loading plots and factor rotations</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    factor : Factor</span>
+<span class="sd">        Fitted Factor class</span>
+
+<span class="sd">    Attributes</span>
+<span class="sd">    ----------</span>
+<span class="sd">    uniqueness: ndarray</span>
+<span class="sd">        The uniqueness (variance of uncorrelated errors unique to</span>
+<span class="sd">        each variable)</span>
+<span class="sd">    communality: ndarray</span>
+<span class="sd">        1 - uniqueness</span>
+<span class="sd">    loadings : ndarray</span>
+<span class="sd">        Each column is the loading vector for one factor</span>
+<span class="sd">    loadings_no_rot : ndarray</span>
+<span class="sd">        Unrotated loadings, not available under maximum likelihood</span>
+<span class="sd">        analyis.</span>
+<span class="sd">    eigenvalues : ndarray</span>
+<span class="sd">        The eigenvalues for a factor analysis obtained using</span>
+<span class="sd">        principal components; not available under ML estimation.</span>
+<span class="sd">    n_comp : int</span>
+<span class="sd">        Number of components (factors)</span>
+<span class="sd">    nbs : int</span>
+<span class="sd">        Number of observations</span>
+<span class="sd">    fa_method : string</span>
+<span class="sd">        The method used to obtain the decomposition, either &#39;pa&#39; for</span>
+<span class="sd">        &#39;principal axes&#39; or &#39;ml&#39; for maximum likelihood.</span>
+<span class="sd">    df : int</span>
+<span class="sd">        Degrees of freedom of the factor model.</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    Under ML estimation, the default rotation (used for `loadings`) is</span>
+<span class="sd">    condition IC3 of Bai and Li (2012).  Under this rotation, the</span>
+<span class="sd">    factor scores are iid and standardized.  If `G` is the canonical</span>
+<span class="sd">    loadings and `U` is the vector of uniquenesses, then the</span>
+<span class="sd">    covariance matrix implied by the factor analysis is `GG&#39; +</span>
+<span class="sd">    diag(U)`.</span>
+
+<span class="sd">    Status: experimental, Some refactoring will be necessary when new</span>
+<span class="sd">        features are added.</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">factor</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">model</span> <span class="o">=</span> <span class="n">factor</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">endog_names</span> <span class="o">=</span> <span class="n">factor</span><span class="o">.</span><span class="n">endog_names</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">loadings_no_rot</span> <span class="o">=</span> <span class="n">factor</span><span class="o">.</span><span class="n">loadings</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">factor</span><span class="p">,</span> <span class="s2">&quot;eigenvals&quot;</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">eigenvals</span> <span class="o">=</span> <span class="n">factor</span><span class="o">.</span><span class="n">eigenvals</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">communality</span> <span class="o">=</span> <span class="n">factor</span><span class="o">.</span><span class="n">communality</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">uniqueness</span> <span class="o">=</span> <span class="n">factor</span><span class="o">.</span><span class="n">uniqueness</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">rotation_method</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">fa_method</span> <span class="o">=</span> <span class="n">factor</span><span class="o">.</span><span class="n">method</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">n_comp</span> <span class="o">=</span> <span class="n">factor</span><span class="o">.</span><span class="n">loadings</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span> <span class="o">=</span> <span class="n">factor</span><span class="o">.</span><span class="n">nobs</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_factor</span> <span class="o">=</span> <span class="n">factor</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">factor</span><span class="p">,</span> <span class="s2">&quot;mle_retvals&quot;</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">mle_retvals</span> <span class="o">=</span> <span class="n">factor</span><span class="o">.</span><span class="n">mle_retvals</span>
+
+        <span class="n">p</span><span class="p">,</span> <span class="n">k</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">loadings_no_rot</span><span class="o">.</span><span class="n">shape</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">df</span> <span class="o">=</span> <span class="p">((</span><span class="n">p</span> <span class="o">-</span> <span class="n">k</span><span class="p">)</span><span class="o">**</span><span class="mi">2</span> <span class="o">-</span> <span class="p">(</span><span class="n">p</span> <span class="o">+</span> <span class="n">k</span><span class="p">))</span> <span class="o">//</span> <span class="mi">2</span>
+
+        <span class="c1"># no rotation, overwritten in `rotate`</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">loadings</span> <span class="o">=</span> <span class="n">factor</span><span class="o">.</span><span class="n">loadings</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">rotation_matrix</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">n_comp</span><span class="p">)</span>
+
+
+    <span class="k">def</span> <span class="nf">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">summary</span><span class="p">()</span><span class="o">.</span><span class="fm">__str__</span><span class="p">()</span>
+
+<div class="viewcode-block" id="FactorResults.rotate"><a class="viewcode-back" href="../../../generated/statsmodels.multivariate.factor.FactorResults.rotate.html#statsmodels.multivariate.factor.FactorResults.rotate">[docs]</a>    <span class="k">def</span> <span class="nf">rotate</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">method</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Apply rotation, inplace modification of this Results instance</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        method : string</span>
+<span class="sd">            Rotation to be applied.  Allowed methods are varimax,</span>
+<span class="sd">            quartimax, biquartimax, equamax, oblimin, parsimax,</span>
+<span class="sd">            parsimony, biquartimin, promax.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        None : nothing returned, modifications are inplace</span>
+
+
+<span class="sd">        Notes</span>
+<span class="sd">        -----</span>
+<span class="sd">        Warning: &#39;varimax&#39;, &#39;quartimax&#39; and &#39;oblimin&#39; are verified against R or</span>
+<span class="sd">        Stata. Some rotation methods such as promax do not produce the same</span>
+<span class="sd">        results as the R or Stata default functions.</span>
+
+<span class="sd">        See Also</span>
+<span class="sd">        --------</span>
+<span class="sd">        factor_rotation : subpackage that implements rotation methods</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">rotation_method</span> <span class="o">=</span> <span class="n">method</span>
+        <span class="k">if</span> <span class="n">method</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;varimax&#39;</span><span class="p">,</span> <span class="s1">&#39;quartimax&#39;</span><span class="p">,</span> <span class="s1">&#39;biquartimax&#39;</span><span class="p">,</span>
+                          <span class="s1">&#39;equamax&#39;</span><span class="p">,</span> <span class="s1">&#39;oblimin&#39;</span><span class="p">,</span> <span class="s1">&#39;parsimax&#39;</span><span class="p">,</span> <span class="s1">&#39;parsimony&#39;</span><span class="p">,</span>
+                          <span class="s1">&#39;biquartimin&#39;</span><span class="p">,</span> <span class="s1">&#39;promax&#39;</span><span class="p">]:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;Unknown rotation method </span><span class="si">%s</span><span class="s1">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">method</span><span class="p">))</span>
+
+        <span class="k">if</span> <span class="n">method</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;varimax&#39;</span><span class="p">,</span> <span class="s1">&#39;quartimax&#39;</span><span class="p">,</span> <span class="s1">&#39;biquartimax&#39;</span><span class="p">,</span> <span class="s1">&#39;equamax&#39;</span><span class="p">,</span>
+                      <span class="s1">&#39;parsimax&#39;</span><span class="p">,</span> <span class="s1">&#39;parsimony&#39;</span><span class="p">,</span> <span class="s1">&#39;biquartimin&#39;</span><span class="p">]:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">loadings</span><span class="p">,</span> <span class="n">T</span> <span class="o">=</span> <span class="n">rotate_factors</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">loadings_no_rot</span><span class="p">,</span> <span class="n">method</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">method</span> <span class="o">==</span> <span class="s1">&#39;oblimin&#39;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">loadings</span><span class="p">,</span> <span class="n">T</span> <span class="o">=</span> <span class="n">rotate_factors</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">loadings_no_rot</span><span class="p">,</span>
+                                              <span class="s1">&#39;quartimin&#39;</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">method</span> <span class="o">==</span> <span class="s1">&#39;promax&#39;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">loadings</span><span class="p">,</span> <span class="n">T</span> <span class="o">=</span> <span class="n">promax</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">loadings_no_rot</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;rotation method not recognized&#39;</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">rotation_matrix</span> <span class="o">=</span> <span class="n">T</span></div>
+
+    <span class="k">def</span> <span class="nf">_corr_factors</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;correlation of factors implied by rotation</span>
+
+<span class="sd">        If the rotation is oblique, then the factors are correlated.</span>
+
+<span class="sd">        currently not cached</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        corr_f : ndarray</span>
+<span class="sd">            correlation matrix of rotated factors, assuming initial factors are</span>
+<span class="sd">            orthogonal</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">T</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">rotation_matrix</span>
+        <span class="n">corr_f</span> <span class="o">=</span> <span class="n">T</span><span class="o">.</span><span class="n">T</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">T</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">corr_f</span>
+
+<div class="viewcode-block" id="FactorResults.factor_score_params"><a class="viewcode-back" href="../../../generated/statsmodels.multivariate.factor.FactorResults.factor_score_params.html#statsmodels.multivariate.factor.FactorResults.factor_score_params">[docs]</a>    <span class="k">def</span> <span class="nf">factor_score_params</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s1">&#39;bartlett&#39;</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Compute factor scoring coefficient matrix</span>
+
+<span class="sd">        The coefficient matrix is not cached.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        method : &#39;bartlett&#39; or &#39;regression&#39;</span>
+<span class="sd">            Method to use for factor scoring.</span>
+<span class="sd">            &#39;regression&#39; can be abbreviated to `reg`</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        coeff_matrix : ndarray</span>
+<span class="sd">            matrix s to compute factors f from a standardized endog ys.</span>
+<span class="sd">            ``f = ys dot s``</span>
+
+<span class="sd">        Notes</span>
+<span class="sd">        -----</span>
+<span class="sd">        The `regression` method follows the Stata definition.</span>
+<span class="sd">        Method bartlett and regression are verified against Stats.</span>
+<span class="sd">        Two unofficial methods, &#39;ols&#39; and &#39;gls&#39;, produce similar factor scores</span>
+<span class="sd">        but are not verified.</span>
+
+<span class="sd">        See Also</span>
+<span class="sd">        --------</span>
+<span class="sd">        statsmodels.multivariate.factor.FactorResults.factor_scoring</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">L</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">loadings</span>
+        <span class="n">T</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">rotation_matrix</span><span class="o">.</span><span class="n">T</span>
+        <span class="c1">#TODO: check row versus column convention for T</span>
+        <span class="n">uni</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">communality</span> <span class="c1">#self.uniqueness</span>
+
+        <span class="k">if</span> <span class="n">method</span> <span class="o">==</span> <span class="s1">&#39;bartlett&#39;</span><span class="p">:</span>
+            <span class="n">s_mat</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">inv</span><span class="p">(</span><span class="n">L</span><span class="o">.</span><span class="n">T</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">L</span><span class="o">/</span><span class="p">(</span><span class="n">uni</span><span class="p">[:,</span><span class="kc">None</span><span class="p">])))</span><span class="o">.</span><span class="n">dot</span><span class="p">((</span><span class="n">L</span><span class="o">.</span><span class="n">T</span> <span class="o">/</span> <span class="n">uni</span><span class="p">))</span><span class="o">.</span><span class="n">T</span>
+        <span class="k">elif</span> <span class="n">method</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s1">&#39;reg&#39;</span><span class="p">):</span>
+            <span class="n">corr</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">corr</span>
+            <span class="n">corr_f</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_corr_factors</span><span class="p">()</span>
+            <span class="c1"># if orthogonal then corr_f is just eye</span>
+            <span class="n">s_mat</span> <span class="o">=</span> <span class="n">corr_f</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">L</span><span class="o">.</span><span class="n">T</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">inv</span><span class="p">(</span><span class="n">corr</span><span class="p">)))</span><span class="o">.</span><span class="n">T</span>
+        <span class="k">elif</span> <span class="n">method</span> <span class="o">==</span> <span class="s1">&#39;ols&#39;</span><span class="p">:</span>
+            <span class="c1"># not verified</span>
+            <span class="n">corr</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">corr</span>
+            <span class="n">corr_f</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_corr_factors</span><span class="p">()</span>
+            <span class="n">s_mat</span> <span class="o">=</span> <span class="n">corr_f</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">pinv</span><span class="p">(</span><span class="n">L</span><span class="p">))</span><span class="o">.</span><span class="n">T</span>
+        <span class="k">elif</span> <span class="n">method</span> <span class="o">==</span> <span class="s1">&#39;gls&#39;</span><span class="p">:</span>
+            <span class="c1"># not verified</span>
+            <span class="c1">#s_mat = np.linalg.inv(1*np.eye(L.shape[1]) + L.T.dot(L/(uni[:,None])))</span>
+            <span class="n">corr</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">corr</span>
+            <span class="n">corr_f</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_corr_factors</span><span class="p">()</span>
+            <span class="n">s_mat</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">inv</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">inv</span><span class="p">(</span><span class="n">corr_f</span><span class="p">)</span> <span class="o">+</span> <span class="n">L</span><span class="o">.</span><span class="n">T</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">L</span><span class="o">/</span><span class="p">(</span><span class="n">uni</span><span class="p">[:,</span><span class="kc">None</span><span class="p">])))</span>
+            <span class="n">s_mat</span> <span class="o">=</span> <span class="n">s_mat</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">L</span><span class="o">.</span><span class="n">T</span> <span class="o">/</span> <span class="n">uni</span><span class="p">)</span><span class="o">.</span><span class="n">T</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;method not available, use &quot;bartlett &#39;</span> <span class="o">+</span>
+                             <span class="s1">&#39;or &quot;regression&quot;&#39;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">s_mat</span></div>
+
+<div class="viewcode-block" id="FactorResults.factor_scoring"><a class="viewcode-back" href="../../../generated/statsmodels.multivariate.factor.FactorResults.factor_scoring.html#statsmodels.multivariate.factor.FactorResults.factor_scoring">[docs]</a>    <span class="k">def</span> <span class="nf">factor_scoring</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">endog</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s1">&#39;bartlett&#39;</span><span class="p">,</span> <span class="n">transform</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        factor scoring: compute factors for endog</span>
+
+<span class="sd">        If endog was not provided when creating the factor class, then</span>
+<span class="sd">        a standarized endog needs to be provided here.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        method : &#39;bartlett&#39; or &#39;regression&#39;</span>
+<span class="sd">            Method to use for factor scoring.</span>
+<span class="sd">            &#39;regression&#39; can be abbreviated to `reg`</span>
+<span class="sd">        transform : bool</span>
+<span class="sd">            If transform is true and endog is provided, then it will be</span>
+<span class="sd">            standardized using mean and scale of original data, which has to</span>
+<span class="sd">            be available in this case.</span>
+<span class="sd">            If transform is False, then a provided endog will be used unchanged.</span>
+<span class="sd">            The original endog in the Factor class will</span>
+<span class="sd">            always be standardized if endog is None, independently of `transform`.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        factor_score : ndarray</span>
+<span class="sd">            estimated factors using scoring matrix s and standarized endog ys</span>
+<span class="sd">            ``f = ys dot s``</span>
+
+<span class="sd">        Notes</span>
+<span class="sd">        -----</span>
+<span class="sd">        Status: transform option is experimental and might change.</span>
+
+<span class="sd">        See Also</span>
+<span class="sd">        --------</span>
+<span class="sd">        statsmodels.multivariate.factor.FactorResults.factor_score_params</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="k">if</span> <span class="n">transform</span> <span class="ow">is</span> <span class="kc">False</span> <span class="ow">and</span> <span class="n">endog</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="c1"># no transformation in this case</span>
+            <span class="n">endog</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">endog</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># we need to standardize with the original mean and scale</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">endog</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">m</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">endog</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+                <span class="n">s</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">endog</span><span class="o">.</span><span class="n">std</span><span class="p">(</span><span class="n">ddof</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">endog</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                    <span class="n">endog</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">endog</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">endog</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">endog</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;If transform is True, then `endog` needs &#39;</span> <span class="o">+</span>
+                                 <span class="s1">&#39;to be available in the Factor instance.&#39;</span><span class="p">)</span>
+
+            <span class="n">endog</span> <span class="o">=</span> <span class="p">(</span><span class="n">endog</span> <span class="o">-</span> <span class="n">m</span><span class="p">)</span> <span class="o">/</span> <span class="n">s</span>
+
+        <span class="n">s_mat</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">factor_score_params</span><span class="p">(</span><span class="n">method</span><span class="o">=</span><span class="n">method</span><span class="p">)</span>
+        <span class="n">factors</span> <span class="o">=</span> <span class="n">endog</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">s_mat</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">factors</span></div>
+
+<div class="viewcode-block" id="FactorResults.summary"><a class="viewcode-back" href="../../../generated/statsmodels.multivariate.factor.FactorResults.summary.html#statsmodels.multivariate.factor.FactorResults.summary">[docs]</a>    <span class="k">def</span> <span class="nf">summary</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Summary&quot;&quot;&quot;</span>
+        <span class="n">summ</span> <span class="o">=</span> <span class="n">summary2</span><span class="o">.</span><span class="n">Summary</span><span class="p">()</span>
+        <span class="n">summ</span><span class="o">.</span><span class="n">add_title</span><span class="p">(</span><span class="s1">&#39;Factor analysis results&#39;</span><span class="p">)</span>
+        <span class="n">loadings_no_rot</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">loadings_no_rot</span><span class="p">,</span>
+            <span class="n">columns</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;factor </span><span class="si">%d</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">i</span><span class="p">)</span>
+                     <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">loadings_no_rot</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">])],</span>
+            <span class="n">index</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">endog_names</span>
+        <span class="p">)</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;eigenvals&quot;</span><span class="p">):</span>
+            <span class="c1"># eigenvals not available for ML method</span>
+            <span class="n">eigenvals</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span>
+                <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">eigenvals</span><span class="p">],</span> <span class="n">columns</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">endog_names</span><span class="p">,</span> <span class="n">index</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;&#39;</span><span class="p">])</span>
+            <span class="n">summ</span><span class="o">.</span><span class="n">add_dict</span><span class="p">({</span><span class="s1">&#39;&#39;</span><span class="p">:</span> <span class="s1">&#39;Eigenvalues&#39;</span><span class="p">})</span>
+            <span class="n">summ</span><span class="o">.</span><span class="n">add_df</span><span class="p">(</span><span class="n">eigenvals</span><span class="p">)</span>
+        <span class="n">communality</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">([</span><span class="bp">self</span><span class="o">.</span><span class="n">communality</span><span class="p">],</span>
+                                   <span class="n">columns</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">endog_names</span><span class="p">,</span> <span class="n">index</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;&#39;</span><span class="p">])</span>
+        <span class="n">summ</span><span class="o">.</span><span class="n">add_dict</span><span class="p">({</span><span class="s1">&#39;&#39;</span><span class="p">:</span> <span class="s1">&#39;&#39;</span><span class="p">})</span>
+        <span class="n">summ</span><span class="o">.</span><span class="n">add_dict</span><span class="p">({</span><span class="s1">&#39;&#39;</span><span class="p">:</span> <span class="s1">&#39;Communality&#39;</span><span class="p">})</span>
+        <span class="n">summ</span><span class="o">.</span><span class="n">add_df</span><span class="p">(</span><span class="n">communality</span><span class="p">)</span>
+        <span class="n">summ</span><span class="o">.</span><span class="n">add_dict</span><span class="p">({</span><span class="s1">&#39;&#39;</span><span class="p">:</span> <span class="s1">&#39;&#39;</span><span class="p">})</span>
+        <span class="n">summ</span><span class="o">.</span><span class="n">add_dict</span><span class="p">({</span><span class="s1">&#39;&#39;</span><span class="p">:</span> <span class="s1">&#39;Pre-rotated loadings&#39;</span><span class="p">})</span>
+        <span class="n">summ</span><span class="o">.</span><span class="n">add_df</span><span class="p">(</span><span class="n">loadings_no_rot</span><span class="p">)</span>
+        <span class="n">summ</span><span class="o">.</span><span class="n">add_dict</span><span class="p">({</span><span class="s1">&#39;&#39;</span><span class="p">:</span> <span class="s1">&#39;&#39;</span><span class="p">})</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">rotation_method</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">loadings</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">loadings</span><span class="p">,</span>
+                <span class="n">columns</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;factor </span><span class="si">%d</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">i</span><span class="p">)</span>
+                         <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">loadings</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">])],</span>
+                <span class="n">index</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">endog_names</span>
+            <span class="p">)</span>
+            <span class="n">summ</span><span class="o">.</span><span class="n">add_dict</span><span class="p">({</span><span class="s1">&#39;&#39;</span><span class="p">:</span> <span class="s1">&#39;</span><span class="si">%s</span><span class="s1"> rotated loadings&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">rotation_method</span><span class="p">)})</span>
+            <span class="n">summ</span><span class="o">.</span><span class="n">add_df</span><span class="p">(</span><span class="n">loadings</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">summ</span></div>
+
+<div class="viewcode-block" id="FactorResults.get_loadings_frame"><a class="viewcode-back" href="../../../generated/statsmodels.multivariate.factor.FactorResults.get_loadings_frame.html#statsmodels.multivariate.factor.FactorResults.get_loadings_frame">[docs]</a>    <span class="k">def</span> <span class="nf">get_loadings_frame</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">style</span><span class="o">=</span><span class="s1">&#39;display&#39;</span><span class="p">,</span> <span class="n">sort_</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">threshold</span><span class="o">=</span><span class="mf">0.3</span><span class="p">,</span>
+                           <span class="n">highlight_max</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">color_max</span><span class="o">=</span><span class="s1">&#39;yellow&#39;</span><span class="p">,</span>
+                           <span class="n">decimals</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;get loadings matrix as DataFrame or pandas Styler</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        style : &#39;display&#39; (default), &#39;raw&#39; or &#39;strings&#39;</span>
+<span class="sd">            Style to use for display</span>
+
+<span class="sd">            * &#39;raw&#39; returns just a DataFrame of the loadings matrix, no options are</span>
+<span class="sd">               applied</span>
+<span class="sd">            * &#39;display&#39; add sorting and styling as defined by other keywords</span>
+<span class="sd">            * &#39;strings&#39; returns a DataFrame with string elements with optional sorting</span>
+<span class="sd">               and surpressing small loading coefficients.</span>
+
+<span class="sd">        sort_ : boolean</span>
+<span class="sd">            If True, then the rows of the DataFrame is sorted by contribution of each</span>
+<span class="sd">            factor. applies if style is either &#39;display&#39; or &#39;strings&#39;</span>
+<span class="sd">        threshold : float</span>
+<span class="sd">            If the threshold is larger than zero, then loading coefficients are</span>
+<span class="sd">            either colored white (if style is &#39;display&#39;) or replace by empty</span>
+<span class="sd">            string (if style is &#39;strings&#39;).</span>
+<span class="sd">        highlight_max : boolean</span>
+<span class="sd">            This add a background color to the largest coefficient in each row.</span>
+<span class="sd">        color_max : html color</span>
+<span class="sd">            default is &#39;yellow&#39;. color for background of row maximum</span>
+<span class="sd">        decimals : None or int</span>
+<span class="sd">            If None, then pandas default precision applies. Otherwise values are</span>
+<span class="sd">            rounded to the specified decimals. If style is &#39;display&#39;, then the</span>
+<span class="sd">            underlying dataframe is not changed. If style is &#39;strings&#39;, then</span>
+<span class="sd">            values are rounded before conversion to strings.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        loadings : DataFrame or pandas Styler instance</span>
+<span class="sd">            The return is a pandas Styler instance, if style is &#39;display&#39; and</span>
+<span class="sd">            at least one of highlight_max, threshold or decimals is applied.</span>
+<span class="sd">            Otherwise, the returned loadings is a DataFrame.</span>
+
+<span class="sd">        Examples</span>
+<span class="sd">        --------</span>
+<span class="sd">        &gt;&gt;&gt; mod = Factor(df, 3, smc=True)</span>
+<span class="sd">        &gt;&gt;&gt; res = mod.fit()</span>
+<span class="sd">        &gt;&gt;&gt; res.get_loadings_frame(style=&#39;display&#39;, decimals=3, threshold=0.2)</span>
+
+<span class="sd">        To get a sorted DataFrame, all styling options need to be turned off:</span>
+
+<span class="sd">        &gt;&gt;&gt; df_sorted = res.get_loadings_frame(style=&#39;display&#39;,</span>
+<span class="sd">        ...             highlight_max=False, decimals=None, threshold=0)</span>
+
+<span class="sd">        Options except for highlighting are available for plain test or Latex</span>
+<span class="sd">        usage:</span>
+
+<span class="sd">        &gt;&gt;&gt; lds = res_u.get_loadings_frame(style=&#39;strings&#39;, decimals=3,</span>
+<span class="sd">        ...                                threshold=0.3)</span>
+<span class="sd">        &gt;&gt;&gt; print(lds.to_latex())</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="n">loadings_df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">loadings</span><span class="p">,</span>
+                <span class="n">columns</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;factor </span><span class="si">%d</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">i</span><span class="p">)</span>
+                         <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">loadings</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">])],</span>
+                <span class="n">index</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">endog_names</span>
+                <span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">style</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;raw&#39;</span><span class="p">,</span> <span class="s1">&#39;display&#39;</span><span class="p">,</span> <span class="s1">&#39;strings&#39;</span><span class="p">]:</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="s2">&quot;style has to be one of &#39;raw&#39;, &#39;display&#39;, &#39;strings&#39;&quot;</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">style</span> <span class="o">==</span> <span class="s1">&#39;raw&#39;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">loadings_df</span>
+
+        <span class="c1"># add sorting and some formatting</span>
+        <span class="k">if</span> <span class="n">sort_</span> <span class="ow">is</span> <span class="kc">True</span><span class="p">:</span>
+            <span class="n">loadings_df2</span> <span class="o">=</span> <span class="n">loadings_df</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+            <span class="n">n_f</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">loadings_df2</span><span class="p">)</span>
+            <span class="n">high</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">loadings_df2</span><span class="o">.</span><span class="n">values</span><span class="p">)</span><span class="o">.</span><span class="n">argmax</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+            <span class="n">loadings_df2</span><span class="p">[</span><span class="s1">&#39;high&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">high</span>
+            <span class="n">loadings_df2</span><span class="p">[</span><span class="s1">&#39;largest&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">loadings_df</span><span class="o">.</span><span class="n">values</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">n_f</span><span class="p">),</span> <span class="n">high</span><span class="p">])</span>
+            <span class="n">loadings_df2</span><span class="o">.</span><span class="n">sort_values</span><span class="p">(</span><span class="n">by</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;high&#39;</span><span class="p">,</span> <span class="s1">&#39;largest&#39;</span><span class="p">],</span> <span class="n">ascending</span><span class="o">=</span><span class="p">[</span><span class="kc">True</span><span class="p">,</span> <span class="kc">False</span><span class="p">],</span> <span class="n">inplace</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+            <span class="n">loadings_df</span> <span class="o">=</span> <span class="n">loadings_df2</span><span class="o">.</span><span class="n">drop</span><span class="p">([</span><span class="s1">&#39;high&#39;</span><span class="p">,</span> <span class="s1">&#39;largest&#39;</span><span class="p">],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">style</span> <span class="o">==</span> <span class="s1">&#39;display&#39;</span><span class="p">:</span>
+            <span class="n">sty</span> <span class="o">=</span> <span class="kc">None</span>
+            <span class="k">if</span> <span class="n">threshold</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="k">def</span> <span class="nf">color_white_small</span><span class="p">(</span><span class="n">val</span><span class="p">):</span>
+                    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">                    Takes a scalar and returns a string with</span>
+<span class="sd">                    the css property `&#39;color: white&#39;` for small values, black otherwise.</span>
+
+<span class="sd">                    takes threshold from outer scope</span>
+<span class="sd">                    &quot;&quot;&quot;</span>
+                    <span class="n">color</span> <span class="o">=</span> <span class="s1">&#39;white&#39;</span> <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">val</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">threshold</span> <span class="k">else</span> <span class="s1">&#39;black&#39;</span>
+                    <span class="k">return</span> <span class="s1">&#39;color: </span><span class="si">%s</span><span class="s1">&#39;</span> <span class="o">%</span> <span class="n">color</span>
+
+                <span class="n">sty</span> <span class="o">=</span> <span class="n">loadings_df</span><span class="o">.</span><span class="n">style</span><span class="o">.</span><span class="n">applymap</span><span class="p">(</span><span class="n">color_white_small</span><span class="p">)</span>
+
+            <span class="k">if</span> <span class="n">highlight_max</span> <span class="ow">is</span> <span class="kc">True</span><span class="p">:</span>
+                <span class="k">def</span> <span class="nf">highlight_max</span><span class="p">(</span><span class="n">s</span><span class="p">):</span>
+                    <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">                    highlight the maximum in a Series yellow.</span>
+<span class="sd">                    &#39;&#39;&#39;</span>
+                    <span class="n">s</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">s</span><span class="p">)</span>
+                    <span class="n">is_max</span> <span class="o">=</span> <span class="n">s</span> <span class="o">==</span> <span class="n">s</span><span class="o">.</span><span class="n">max</span><span class="p">()</span>
+                    <span class="k">return</span> <span class="p">[</span><span class="s1">&#39;background-color: &#39;</span><span class="o">+</span> <span class="n">color_max</span> <span class="k">if</span> <span class="n">v</span> <span class="k">else</span> <span class="s1">&#39;&#39;</span> <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">is_max</span><span class="p">]</span>
+
+                <span class="k">if</span> <span class="n">sty</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                    <span class="n">sty</span> <span class="o">=</span> <span class="n">loadings_df</span><span class="o">.</span><span class="n">style</span>
+
+                <span class="n">sty</span> <span class="o">=</span> <span class="n">sty</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span><span class="n">highlight_max</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+
+            <span class="k">if</span> <span class="n">decimals</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">sty</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                    <span class="n">sty</span> <span class="o">=</span> <span class="n">loadings_df</span><span class="o">.</span><span class="n">style</span>
+
+                <span class="n">sty</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="s2">&quot;{:.</span><span class="si">%s</span><span class="s2">f}&quot;</span> <span class="o">%</span> <span class="n">decimals</span><span class="p">)</span>
+
+            <span class="k">if</span> <span class="n">sty</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">loadings_df</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">sty</span>
+
+        <span class="k">if</span> <span class="n">style</span> <span class="o">==</span> <span class="s1">&#39;strings&#39;</span><span class="p">:</span>
+            <span class="n">ld</span> <span class="o">=</span> <span class="n">loadings_df</span>
+            <span class="k">if</span> <span class="n">decimals</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">ld</span> <span class="o">=</span> <span class="n">ld</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="n">decimals</span><span class="p">)</span>
+            <span class="n">ld</span> <span class="o">=</span> <span class="n">ld</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">str</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">threshold</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="n">ld</span><span class="p">[</span><span class="n">loadings_df</span><span class="o">.</span><span class="n">abs</span><span class="p">()</span> <span class="o">&lt;</span> <span class="n">threshold</span><span class="p">]</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span>
+            <span class="k">return</span> <span class="n">ld</span></div>
+
+<div class="viewcode-block" id="FactorResults.plot_scree"><a class="viewcode-back" href="../../../generated/statsmodels.multivariate.factor.FactorResults.plot_scree.html#statsmodels.multivariate.factor.FactorResults.plot_scree">[docs]</a>    <span class="k">def</span> <span class="nf">plot_scree</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ncomp</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Plot of the ordered eigenvalues and variance explained for the loadings</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        ncomp : int, optional</span>
+<span class="sd">            Number of loadings to include in the plot.  If None, will</span>
+<span class="sd">            included the same as the number of maximum possible loadings</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        fig : figure</span>
+<span class="sd">            Handle to the figure</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">_import_mpl</span><span class="p">()</span>
+        <span class="kn">from</span> <span class="nn">.plots</span> <span class="k">import</span> <span class="n">plot_scree</span>
+        <span class="k">return</span> <span class="n">plot_scree</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">eigenvals</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_comp</span><span class="p">,</span> <span class="n">ncomp</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="FactorResults.plot_loadings"><a class="viewcode-back" href="../../../generated/statsmodels.multivariate.factor.FactorResults.plot_loadings.html#statsmodels.multivariate.factor.FactorResults.plot_loadings">[docs]</a>    <span class="k">def</span> <span class="nf">plot_loadings</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">loading_pairs</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">plot_prerotated</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Plot factor loadings in 2-d plots</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        loading_pairs : None or a list of tuples</span>
+<span class="sd">            Specify plots. Each tuple (i, j) represent one figure, i and j is</span>
+<span class="sd">            the loading number for x-axis and y-axis, respectively. If `None`,</span>
+<span class="sd">            all combinations of the loadings will be plotted.</span>
+<span class="sd">        plot_prerotated : True or False</span>
+<span class="sd">            If True, the loadings before rotation applied will be plotted. If</span>
+<span class="sd">            False, rotated loadings will be plotted.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        figs : a list of figure handles</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">_import_mpl</span><span class="p">()</span>
+        <span class="kn">from</span> <span class="nn">.plots</span> <span class="k">import</span> <span class="n">plot_loadings</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">rotation_method</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">plot_prerotated</span> <span class="o">=</span> <span class="kc">True</span>
+        <span class="n">loadings</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">loadings_no_rot</span> <span class="k">if</span> <span class="n">plot_prerotated</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">loadings</span>
+        <span class="k">if</span> <span class="n">plot_prerotated</span><span class="p">:</span>
+            <span class="n">title</span> <span class="o">=</span> <span class="s1">&#39;Prerotated Factor Pattern&#39;</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">title</span> <span class="o">=</span> <span class="s1">&#39;</span><span class="si">%s</span><span class="s1"> Rotated Factor Pattern&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">rotation_method</span><span class="p">)</span>
+        <span class="n">var_explained</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">eigenvals</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_comp</span> <span class="o">*</span> <span class="mi">100</span>
+
+        <span class="k">return</span> <span class="n">plot_loadings</span><span class="p">(</span><span class="n">loadings</span><span class="p">,</span> <span class="n">loading_pairs</span><span class="o">=</span><span class="n">loading_pairs</span><span class="p">,</span>
+                             <span class="n">title</span><span class="o">=</span><span class="n">title</span><span class="p">,</span> <span class="n">row_names</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">endog_names</span><span class="p">,</span>
+                             <span class="n">percent_variance</span><span class="o">=</span><span class="n">var_explained</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="FactorResults.fitted_cov"><a class="viewcode-back" href="../../../generated/statsmodels.multivariate.factor.FactorResults.fitted_cov.html#statsmodels.multivariate.factor.FactorResults.fitted_cov">[docs]</a>    <span class="nd">@cache_readonly</span>
+    <span class="k">def</span> <span class="nf">fitted_cov</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Returns the fitted covariance matrix.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="n">c</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">loadings</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">loadings</span><span class="o">.</span><span class="n">T</span><span class="p">)</span>
+        <span class="n">c</span><span class="o">.</span><span class="n">flat</span><span class="p">[::</span><span class="n">c</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">+</span><span class="mi">1</span><span class="p">]</span> <span class="o">+=</span> <span class="bp">self</span><span class="o">.</span><span class="n">uniqueness</span>
+        <span class="k">return</span> <span class="n">c</span></div>
+
+<div class="viewcode-block" id="FactorResults.uniq_stderr"><a class="viewcode-back" href="../../../generated/statsmodels.multivariate.factor.FactorResults.uniq_stderr.html#statsmodels.multivariate.factor.FactorResults.uniq_stderr">[docs]</a>    <span class="nd">@cache_readonly</span>
+    <span class="k">def</span> <span class="nf">uniq_stderr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">kurt</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        The standard errors of the uniquenesses.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        kurt: float</span>
+<span class="sd">            Excess kurtosis</span>
+
+<span class="sd">        Notes</span>
+<span class="sd">        -----</span>
+<span class="sd">        If excess kurtosis is known, provide as `kurt`.  Standard</span>
+<span class="sd">        errors are only available if the model was fit using maximum</span>
+<span class="sd">        likelihood.  If `endog` is not provided, `nobs` must be</span>
+<span class="sd">        provided to obtain standard errors.</span>
+
+<span class="sd">        These are asymptotic standard errors.  See Bai and Li (2012)</span>
+<span class="sd">        for conditions under which the standard errors are valid.</span>
+
+<span class="sd">        The standard errors are only applicable to the original,</span>
+<span class="sd">        unrotated maximum likelihood solution.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">fa_method</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">!=</span> <span class="s2">&quot;ml&quot;</span><span class="p">:</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="s2">&quot;Standard errors only available under ML estimation&quot;</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="s2">&quot;nobs is required to obtain standard errors.&quot;</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+
+        <span class="n">v</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">uniqueness</span><span class="o">**</span><span class="mi">2</span> <span class="o">*</span> <span class="p">(</span><span class="mi">2</span> <span class="o">+</span> <span class="n">kurt</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">v</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="FactorResults.load_stderr"><a class="viewcode-back" href="../../../generated/statsmodels.multivariate.factor.FactorResults.load_stderr.html#statsmodels.multivariate.factor.FactorResults.load_stderr">[docs]</a>    <span class="nd">@cache_readonly</span>
+    <span class="k">def</span> <span class="nf">load_stderr</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        The standard errors of the loadings.</span>
+
+<span class="sd">        Standard errors are only available if the model was fit using</span>
+<span class="sd">        maximum likelihood.  If `endog` is not provided, `nobs` must be</span>
+<span class="sd">        provided to obtain standard errors.</span>
+
+<span class="sd">        These are asymptotic standard errors.  See Bai and Li (2012)</span>
+<span class="sd">        for conditions under which the standard errors are valid.</span>
+
+<span class="sd">        The standard errors are only applicable to the original,</span>
+<span class="sd">        unrotated maximum likelihood solution.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">fa_method</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">!=</span> <span class="s2">&quot;ml&quot;</span><span class="p">:</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="s2">&quot;Standard errors only available under ML estimation&quot;</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="s2">&quot;nobs is required to obtain standard errors.&quot;</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+
+        <span class="n">v</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">outer</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">uniqueness</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">loadings</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]))</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">v</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span><span class="p">)</span></div></div>
+</pre></div>
+
+
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../../../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" />
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer" role="contentinfo">
+        &#169; Copyright 2009-2018, Josef Perktold, Skipper Seabold, Jonathan Taylor, statsmodels-developers.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 2.1.2.
+    </div>
+  </body>
+</html>

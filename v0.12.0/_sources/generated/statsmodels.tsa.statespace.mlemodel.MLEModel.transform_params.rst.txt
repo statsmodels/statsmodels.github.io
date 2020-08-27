@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.tsa.statespace.mlemodel.MLEModel.transform\_params
+==============================================================
+
+.. currentmodule:: statsmodels.tsa.statespace.mlemodel
+
+.. automethod:: MLEModel.transform_params

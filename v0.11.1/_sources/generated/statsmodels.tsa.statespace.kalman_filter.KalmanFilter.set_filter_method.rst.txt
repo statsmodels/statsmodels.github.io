@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.tsa.statespace.kalman\_filter.KalmanFilter.set\_filter\_method
+==========================================================================
+
+.. currentmodule:: statsmodels.tsa.statespace.kalman_filter
+
+.. automethod:: KalmanFilter.set_filter_method

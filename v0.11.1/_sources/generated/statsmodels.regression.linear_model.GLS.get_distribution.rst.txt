@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.regression.linear\_model.GLS.get\_distribution
+==========================================================
+
+.. currentmodule:: statsmodels.regression.linear_model
+
+.. automethod:: GLS.get_distribution

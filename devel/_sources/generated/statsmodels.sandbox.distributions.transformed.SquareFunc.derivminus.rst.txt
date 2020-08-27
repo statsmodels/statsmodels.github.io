@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.sandbox.distributions.transformed.SquareFunc.derivminus
+===================================================================
+
+.. currentmodule:: statsmodels.sandbox.distributions.transformed
+
+.. automethod:: SquareFunc.derivminus

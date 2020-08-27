@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.tsa.arima\_model.ARIMAResults.save
+==============================================
+
+.. currentmodule:: statsmodels.tsa.arima_model
+
+.. automethod:: ARIMAResults.save

@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.discrete.discrete\_model.MultinomialResults.get\_margeff
+====================================================================
+
+.. currentmodule:: statsmodels.discrete.discrete_model
+
+.. automethod:: MultinomialResults.get_margeff

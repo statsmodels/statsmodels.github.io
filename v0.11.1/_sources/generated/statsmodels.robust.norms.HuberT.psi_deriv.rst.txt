@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.robust.norms.HuberT.psi\_deriv
+==========================================
+
+.. currentmodule:: statsmodels.robust.norms
+
+.. automethod:: HuberT.psi_deriv

@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.tsa.statespace.mlemodel.MLEModel.score\_obs
+=======================================================
+
+.. currentmodule:: statsmodels.tsa.statespace.mlemodel
+
+.. automethod:: MLEModel.score_obs

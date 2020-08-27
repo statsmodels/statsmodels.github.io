@@ -1,0 +1,6 @@
+statsmodels.stats.outliers\_influence.OLSInfluence.det\_cov\_params\_not\_obsi
+==============================================================================
+
+.. currentmodule:: statsmodels.stats.outliers_influence
+
+.. autoproperty:: OLSInfluence.det_cov_params_not_obsi

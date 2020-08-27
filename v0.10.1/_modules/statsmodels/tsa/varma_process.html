@@ -1,0 +1,851 @@
+
+
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta charset="utf-8" />
+    <title>statsmodels.tsa.varma_process &#8212; statsmodels v0.10.1 documentation</title>
+    <link rel="stylesheet" href="../../../_static/nature.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css" />
+    <script type="text/javascript" id="documentation_options" data-url_root="../../../" src="../../../_static/documentation_options.js"></script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <script type="text/javascript" src="../../../_static/language_data.js"></script>
+    <script async="async" type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/latest.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="shortcut icon" href="../../../_static/statsmodels_hybi_favico.ico"/>
+    <link rel="author" title="About these documents" href="../../../about.html" />
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+<link rel="stylesheet" href="../../../_static/examples.css" type="text/css" />
+<link rel="stylesheet" href="../../../_static/facebox.css" type="text/css" />
+<script type="text/javascript" src="../../../_static/scripts.js">
+</script>
+<script type="text/javascript" src="../../../_static/facebox.js">
+</script>
+<script type="text/javascript">
+$.facebox.settings.closeImage = "../../../_static/closelabel.png"
+$.facebox.settings.loadingImage = "../../../_static/loading.gif"
+</script>
+
+<script>
+$(document).ready(function() {
+  $.getJSON("../../../../versions.json", function(versions) {
+    var dropdown = document.createElement("div");
+    dropdown.className = "dropdown";
+    var button = document.createElement("button");
+    button.className = "dropbtn";
+    button.innerHTML = "Other Versions";
+    var content = document.createElement("div");
+    content.className = "dropdown-content";
+    dropdown.appendChild(button);
+    dropdown.appendChild(content);
+    $(".header").prepend(dropdown);
+    for (var i = 0; i < versions.length; i++) {
+      if (versions[i].substring(0, 1) == "v") {
+        versions[i] = [versions[i], versions[i].substring(1)];
+      } else {
+        versions[i] = [versions[i], versions[i]];
+      };
+    };
+    for (var i = 0; i < versions.length; i++) {
+      var a = document.createElement("a");
+      a.innerHTML = versions[i][1];
+      a.href = "../../../../" + versions[i][0] + "/index.html";
+      a.title = versions[i][1];
+      $(".dropdown-content").append(a);
+    };
+  });
+});
+</script>
+
+
+  </head><body>
+<div class="headerwrap">
+    <div class = "header">
+        
+        <a href = "../../../index.html">
+<img src="../../../_static/statsmodels_hybi_banner.png" alt="Logo"
+    style="padding-left: 15px"/></a>
+        
+    </div>
+</div>
+
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+<li><a href ="../../../install.html">Install</a></li> &nbsp;|&nbsp;
+<li><a href="https://groups.google.com/forum/?hl=en#!forum/pystatsmodels">Support</a></li> &nbsp;|&nbsp;
+<li><a href="https://github.com/statsmodels/statsmodels/issues">Bugs</a></li> &nbsp;|&nbsp;
+<li><a href="../../../dev/index.html">Develop</a></li> &nbsp;|&nbsp;
+<li><a href="../../../examples/index.html">Examples</a></li> &nbsp;|&nbsp;
+<li><a href="../../../faq.html">FAQ</a></li> &nbsp;|&nbsp;
+
+          <li class="nav-item nav-item-1"><a href="../../index.html" accesskey="U">Module code</a> |</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+
+
+
+
+  <h1>Source code for statsmodels.tsa.varma_process</h1><div class="highlight"><pre>
+<span></span><span class="c1"># -*- coding: utf-8 -*-</span>
+<span class="sd">&quot;&quot;&quot; Helper and filter functions for VAR and VARMA, and basic VAR class</span>
+
+<span class="sd">Created on Mon Jan 11 11:04:23 2010</span>
+<span class="sd">Author: josef-pktd</span>
+<span class="sd">License: BSD</span>
+
+<span class="sd">This is a new version, I didn&#39;t look at the old version again, but similar</span>
+<span class="sd">ideas.</span>
+
+<span class="sd">not copied/cleaned yet:</span>
+<span class="sd"> * fftn based filtering, creating samples with fft</span>
+<span class="sd"> * Tests: I ran examples but did not convert them to tests</span>
+<span class="sd">   examples look good for parameter estimate and forecast, and filter functions</span>
+
+<span class="sd">main TODOs:</span>
+<span class="sd">* result statistics</span>
+<span class="sd">* see whether Bayesian dummy observation can be included without changing</span>
+<span class="sd">  the single call to linalg.lstsq</span>
+<span class="sd">* impulse response function does not treat correlation, see Hamilton and jplv</span>
+
+<span class="sd">Extensions</span>
+<span class="sd">* constraints, Bayesian priors/penalization</span>
+<span class="sd">* Error Correction Form and Cointegration</span>
+<span class="sd">* Factor Models Stock-Watson,  ???</span>
+
+
+<span class="sd">see also VAR section in Notes.txt</span>
+
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="kn">from</span> <span class="nn">__future__</span> <span class="k">import</span> <span class="n">print_function</span>
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+<span class="kn">from</span> <span class="nn">scipy</span> <span class="k">import</span> <span class="n">signal</span>
+
+<span class="kn">from</span> <span class="nn">statsmodels.tsa.tsatools</span> <span class="k">import</span> <span class="n">lagmat</span>
+
+
+<span class="k">def</span> <span class="nf">varfilter</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">a</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;apply an autoregressive filter to a series x</span>
+
+<span class="sd">    Warning: I just found out that convolve doesn&#39;t work as I</span>
+<span class="sd">       thought, this likely doesn&#39;t work correctly for</span>
+<span class="sd">       nvars&gt;3</span>
+
+
+<span class="sd">    x can be 2d, a can be 1d, 2d, or 3d</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    x : array_like</span>
+<span class="sd">        data array, 1d or 2d, if 2d then observations in rows</span>
+<span class="sd">    a : array_like</span>
+<span class="sd">        autoregressive filter coefficients, ar lag polynomial</span>
+<span class="sd">        see Notes</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    y : ndarray, 2d</span>
+<span class="sd">        filtered array, number of columns determined by x and a</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+
+<span class="sd">    In general form this uses the linear filter ::</span>
+
+<span class="sd">        y = a(L)x</span>
+
+<span class="sd">    where</span>
+<span class="sd">    x : nobs, nvars</span>
+<span class="sd">    a : nlags, nvars, npoly</span>
+
+<span class="sd">    Depending on the shape and dimension of a this uses different</span>
+<span class="sd">    Lag polynomial arrays</span>
+
+<span class="sd">    case 1 : a is 1d or (nlags,1)</span>
+<span class="sd">        one lag polynomial is applied to all variables (columns of x)</span>
+<span class="sd">    case 2 : a is 2d, (nlags, nvars)</span>
+<span class="sd">        each series is independently filtered with its own</span>
+<span class="sd">        lag polynomial, uses loop over nvar</span>
+<span class="sd">    case 3 : a is 3d, (nlags, nvars, npoly)</span>
+<span class="sd">        the ith column of the output array is given by the linear filter</span>
+<span class="sd">        defined by the 2d array a[:,:,i], i.e. ::</span>
+
+<span class="sd">            y[:,i] = a(.,.,i)(L) * x</span>
+<span class="sd">            y[t,i] = sum_p sum_j a(p,j,i)*x(t-p,j)</span>
+<span class="sd">                     for p = 0,...nlags-1, j = 0,...nvars-1,</span>
+<span class="sd">                     for all t &gt;= nlags</span>
+
+
+<span class="sd">    Note: maybe convert to axis=1, Not</span>
+
+<span class="sd">    TODO: initial conditions</span>
+
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+    <span class="n">a</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">a</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">x</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="n">x</span> <span class="o">=</span> <span class="n">x</span><span class="p">[:,</span><span class="kc">None</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">x</span><span class="o">.</span><span class="n">ndim</span> <span class="o">&gt;</span> <span class="mi">2</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;x array has to be 1d or 2d&#39;</span><span class="p">)</span>
+    <span class="n">nvar</span> <span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+    <span class="n">nlags</span> <span class="o">=</span> <span class="n">a</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">ntrim</span> <span class="o">=</span> <span class="n">nlags</span><span class="o">//</span><span class="mi">2</span>
+    <span class="c1"># for x is 2d with ncols &gt;1</span>
+
+    <span class="k">if</span> <span class="n">a</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="c1"># case: identical ar filter (lag polynomial)</span>
+        <span class="k">return</span> <span class="n">signal</span><span class="o">.</span><span class="n">convolve</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">a</span><span class="p">[:,</span><span class="kc">None</span><span class="p">],</span> <span class="n">mode</span><span class="o">=</span><span class="s1">&#39;valid&#39;</span><span class="p">)</span>
+        <span class="c1"># alternative:</span>
+        <span class="c1">#return signal.lfilter(a,[1],x.astype(float),axis=0)</span>
+    <span class="k">elif</span> <span class="n">a</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
+        <span class="k">if</span> <span class="nb">min</span><span class="p">(</span><span class="n">a</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="c1"># case: identical ar filter (lag polynomial)</span>
+            <span class="k">return</span> <span class="n">signal</span><span class="o">.</span><span class="n">convolve</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">a</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s1">&#39;valid&#39;</span><span class="p">)</span>
+
+        <span class="c1"># case: independent ar</span>
+        <span class="c1">#(a bit like recserar in gauss, but no x yet)</span>
+        <span class="c1">#(no, reserar is inverse filter)</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">-</span><span class="n">nlags</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span> <span class="n">nvar</span><span class="p">))</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nvar</span><span class="p">):</span>
+            <span class="c1"># could also use np.convolve, but easier for swiching to fft</span>
+            <span class="n">result</span><span class="p">[:,</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">signal</span><span class="o">.</span><span class="n">convolve</span><span class="p">(</span><span class="n">x</span><span class="p">[:,</span><span class="n">i</span><span class="p">],</span> <span class="n">a</span><span class="p">[:,</span><span class="n">i</span><span class="p">],</span> <span class="n">mode</span><span class="o">=</span><span class="s1">&#39;valid&#39;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">result</span>
+
+    <span class="k">elif</span> <span class="n">a</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">3</span><span class="p">:</span>
+        <span class="c1"># case: vector autoregressive with lag matrices</span>
+        <span class="c1"># Note: we must have shape[1] == shape[2] == nvar</span>
+        <span class="n">yf</span> <span class="o">=</span> <span class="n">signal</span><span class="o">.</span><span class="n">convolve</span><span class="p">(</span><span class="n">x</span><span class="p">[:,:,</span><span class="kc">None</span><span class="p">],</span> <span class="n">a</span><span class="p">)</span>
+        <span class="n">yvalid</span> <span class="o">=</span> <span class="n">yf</span><span class="p">[</span><span class="n">ntrim</span><span class="p">:</span><span class="o">-</span><span class="n">ntrim</span><span class="p">,</span> <span class="n">yf</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">//</span><span class="mi">2</span><span class="p">,:]</span>
+        <span class="k">return</span> <span class="n">yvalid</span>
+
+
+<span class="k">def</span> <span class="nf">varinversefilter</span><span class="p">(</span><span class="n">ar</span><span class="p">,</span> <span class="n">nobs</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="mi">1</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;creates inverse ar filter (MA representation) recursively</span>
+
+<span class="sd">    The VAR lag polynomial is defined by ::</span>
+
+<span class="sd">        ar(L) y_t = u_t  or</span>
+<span class="sd">        y_t = -ar_{-1}(L) y_{t-1} + u_t</span>
+
+<span class="sd">    the returned lagpolynomial is arinv(L)=ar^{-1}(L) in ::</span>
+
+<span class="sd">        y_t = arinv(L) u_t</span>
+
+
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    ar : array, (nlags,nvars,nvars)</span>
+<span class="sd">        matrix lagpolynomial, currently no exog</span>
+<span class="sd">        first row should be identity</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    arinv : array, (nobs,nvars,nvars)</span>
+
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="n">nlags</span><span class="p">,</span> <span class="n">nvars</span><span class="p">,</span> <span class="n">nvarsex</span> <span class="o">=</span> <span class="n">ar</span><span class="o">.</span><span class="n">shape</span>
+    <span class="k">if</span> <span class="n">nvars</span> <span class="o">!=</span> <span class="n">nvarsex</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;exogenous variables not implemented not tested&#39;</span><span class="p">)</span>
+    <span class="n">arinv</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">nobs</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span> <span class="n">nvarsex</span><span class="p">,</span> <span class="n">nvars</span><span class="p">))</span>
+    <span class="n">arinv</span><span class="p">[</span><span class="mi">0</span><span class="p">,:,:]</span> <span class="o">=</span> <span class="n">ar</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">arinv</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="n">nlags</span><span class="p">,:,:]</span> <span class="o">=</span> <span class="o">-</span><span class="n">ar</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span>
+    <span class="k">if</span> <span class="n">version</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span><span class="n">nobs</span><span class="o">+</span><span class="mi">1</span><span class="p">):</span>
+            <span class="n">tmp</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">nvars</span><span class="p">,</span><span class="n">nvars</span><span class="p">))</span>
+            <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="n">nlags</span><span class="p">):</span>
+                <span class="n">tmp</span> <span class="o">+=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="o">-</span><span class="n">ar</span><span class="p">[</span><span class="n">p</span><span class="p">],</span><span class="n">arinv</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="n">p</span><span class="p">,:,:])</span>
+            <span class="n">arinv</span><span class="p">[</span><span class="n">i</span><span class="p">,:,:]</span> <span class="o">=</span> <span class="n">tmp</span>
+    <span class="k">if</span> <span class="n">version</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nlags</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span><span class="n">nobs</span><span class="o">+</span><span class="mi">1</span><span class="p">):</span>
+            <span class="nb">print</span><span class="p">(</span><span class="n">ar</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span><span class="o">.</span><span class="n">shape</span><span class="p">,</span> <span class="n">arinv</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="mi">1</span><span class="p">:</span><span class="n">i</span><span class="o">-</span><span class="n">nlags</span><span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">,:,:]</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
+            <span class="c1">#arinv[i,:,:] = np.dot(-ar[1:],arinv[i-1:i-nlags:-1,:,:])</span>
+            <span class="c1">#print(np.tensordot(-ar[1:],arinv[i-1:i-nlags:-1,:,:],axes=([2],[1])).shape</span>
+            <span class="c1">#arinv[i,:,:] = np.tensordot(-ar[1:],arinv[i-1:i-nlags:-1,:,:],axes=([2],[1]))</span>
+            <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span><span class="s1">&#39;waiting for generalized ufuncs or something&#39;</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">arinv</span>
+
+
+<span class="k">def</span> <span class="nf">vargenerate</span><span class="p">(</span><span class="n">ar</span><span class="p">,</span> <span class="n">u</span><span class="p">,</span> <span class="n">initvalues</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;generate an VAR process with errors u</span>
+
+<span class="sd">    similar to gauss</span>
+<span class="sd">    uses loop</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    ar : array (nlags,nvars,nvars)</span>
+<span class="sd">        matrix lagpolynomial</span>
+<span class="sd">    u : array (nobs,nvars)</span>
+<span class="sd">        exogenous variable, error term for VAR</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    sar : array (1+nobs,nvars)</span>
+<span class="sd">        sample of var process, inverse filtered u</span>
+<span class="sd">        does not trim initial condition y_0 = 0</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    # generate random sample of VAR</span>
+<span class="sd">    nobs, nvars = 10, 2</span>
+<span class="sd">    u = numpy.random.randn(nobs,nvars)</span>
+<span class="sd">    a21 = np.array([[[ 1. ,  0. ],</span>
+<span class="sd">                     [ 0. ,  1. ]],</span>
+
+<span class="sd">                    [[-0.8,  0. ],</span>
+<span class="sd">                     [ 0.,  -0.6]]])</span>
+<span class="sd">    vargenerate(a21,u)</span>
+
+<span class="sd">    # Impulse Response to an initial shock to the first variable</span>
+<span class="sd">    imp = np.zeros((nobs, nvars))</span>
+<span class="sd">    imp[0,0] = 1</span>
+<span class="sd">    vargenerate(a21,imp)</span>
+
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="n">nlags</span><span class="p">,</span> <span class="n">nvars</span><span class="p">,</span> <span class="n">nvarsex</span> <span class="o">=</span> <span class="n">ar</span><span class="o">.</span><span class="n">shape</span>
+    <span class="n">nlagsm1</span> <span class="o">=</span> <span class="n">nlags</span> <span class="o">-</span> <span class="mi">1</span>
+    <span class="n">nobs</span> <span class="o">=</span> <span class="n">u</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">nvars</span> <span class="o">!=</span> <span class="n">nvarsex</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;exogenous variables not implemented not tested&#39;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">u</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">!=</span> <span class="n">nvars</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;u needs to have nvars columns&#39;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">initvalues</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">sar</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">nobs</span><span class="o">+</span><span class="n">nlagsm1</span><span class="p">,</span> <span class="n">nvars</span><span class="p">))</span>
+        <span class="n">start</span> <span class="o">=</span> <span class="n">nlagsm1</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">start</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">nlagsm1</span><span class="p">,</span> <span class="n">initvalues</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+        <span class="n">sar</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">nobs</span><span class="o">+</span><span class="n">start</span><span class="p">,</span> <span class="n">nvars</span><span class="p">))</span>
+        <span class="n">sar</span><span class="p">[</span><span class="n">start</span><span class="o">-</span><span class="n">initvalues</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]:</span><span class="n">start</span><span class="p">]</span> <span class="o">=</span> <span class="n">initvalues</span>
+    <span class="c1">#sar[nlagsm1:] = u</span>
+    <span class="n">sar</span><span class="p">[</span><span class="n">start</span><span class="p">:]</span> <span class="o">=</span> <span class="n">u</span>
+    <span class="c1">#if version == 1:</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">start</span><span class="p">,</span><span class="n">start</span><span class="o">+</span><span class="n">nobs</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="n">nlags</span><span class="p">):</span>
+            <span class="n">sar</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">+=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">sar</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="n">p</span><span class="p">,:],</span><span class="o">-</span><span class="n">ar</span><span class="p">[</span><span class="n">p</span><span class="p">])</span>
+
+    <span class="k">return</span> <span class="n">sar</span>
+
+
+<span class="k">def</span> <span class="nf">padone</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">front</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">back</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">fillvalue</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;pad with zeros along one axis, currently only axis=0</span>
+
+
+<span class="sd">    can be used sequentially to pad several axis</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    &gt;&gt;&gt; padone(np.ones((2,3)),1,3,axis=1)</span>
+<span class="sd">    array([[ 0.,  1.,  1.,  1.,  0.,  0.,  0.],</span>
+<span class="sd">           [ 0.,  1.,  1.,  1.,  0.,  0.,  0.]])</span>
+
+<span class="sd">    &gt;&gt;&gt; padone(np.ones((2,3)),1,1, fillvalue=np.nan)</span>
+<span class="sd">    array([[ NaN,  NaN,  NaN],</span>
+<span class="sd">           [  1.,   1.,   1.],</span>
+<span class="sd">           [  1.,   1.,   1.],</span>
+<span class="sd">           [ NaN,  NaN,  NaN]])</span>
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="c1">#primitive version</span>
+    <span class="n">shape</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
+    <span class="n">shape</span><span class="p">[</span><span class="n">axis</span><span class="p">]</span> <span class="o">+=</span> <span class="p">(</span><span class="n">front</span> <span class="o">+</span> <span class="n">back</span><span class="p">)</span>
+    <span class="n">shapearr</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
+    <span class="n">out</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">(</span><span class="n">shape</span><span class="p">)</span>
+    <span class="n">out</span><span class="o">.</span><span class="n">fill</span><span class="p">(</span><span class="n">fillvalue</span><span class="p">)</span>
+    <span class="n">startind</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">x</span><span class="o">.</span><span class="n">ndim</span><span class="p">)</span>
+    <span class="n">startind</span><span class="p">[</span><span class="n">axis</span><span class="p">]</span> <span class="o">=</span> <span class="n">front</span>
+    <span class="n">endind</span> <span class="o">=</span> <span class="n">startind</span> <span class="o">+</span> <span class="n">shapearr</span>
+    <span class="n">myslice</span> <span class="o">=</span> <span class="p">[</span><span class="nb">slice</span><span class="p">(</span><span class="n">startind</span><span class="p">[</span><span class="n">k</span><span class="p">],</span> <span class="n">endind</span><span class="p">[</span><span class="n">k</span><span class="p">])</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">endind</span><span class="p">))]</span>
+    <span class="c1">#print(myslice</span>
+    <span class="c1">#print(out.shape</span>
+    <span class="c1">#print(out[tuple(myslice)].shape</span>
+    <span class="n">out</span><span class="p">[</span><span class="nb">tuple</span><span class="p">(</span><span class="n">myslice</span><span class="p">)]</span> <span class="o">=</span> <span class="n">x</span>
+    <span class="k">return</span> <span class="n">out</span>
+
+
+<span class="k">def</span> <span class="nf">trimone</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">front</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">back</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;trim number of array elements along one axis</span>
+
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    &gt;&gt;&gt; xp = padone(np.ones((2,3)),1,3,axis=1)</span>
+<span class="sd">    &gt;&gt;&gt; xp</span>
+<span class="sd">    array([[ 0.,  1.,  1.,  1.,  0.,  0.,  0.],</span>
+<span class="sd">           [ 0.,  1.,  1.,  1.,  0.,  0.,  0.]])</span>
+<span class="sd">    &gt;&gt;&gt; trimone(xp,1,3,1)</span>
+<span class="sd">    array([[ 1.,  1.,  1.],</span>
+<span class="sd">           [ 1.,  1.,  1.]])</span>
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="n">shape</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
+    <span class="n">shape</span><span class="p">[</span><span class="n">axis</span><span class="p">]</span> <span class="o">-=</span> <span class="p">(</span><span class="n">front</span> <span class="o">+</span> <span class="n">back</span><span class="p">)</span>
+    <span class="c1">#print(shape, front, back</span>
+    <span class="n">shapearr</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
+    <span class="n">startind</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">x</span><span class="o">.</span><span class="n">ndim</span><span class="p">)</span>
+    <span class="n">startind</span><span class="p">[</span><span class="n">axis</span><span class="p">]</span> <span class="o">=</span> <span class="n">front</span>
+    <span class="n">endind</span> <span class="o">=</span> <span class="n">startind</span> <span class="o">+</span> <span class="n">shape</span>
+    <span class="n">myslice</span> <span class="o">=</span> <span class="p">[</span><span class="nb">slice</span><span class="p">(</span><span class="n">startind</span><span class="p">[</span><span class="n">k</span><span class="p">],</span> <span class="n">endind</span><span class="p">[</span><span class="n">k</span><span class="p">])</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">endind</span><span class="p">))]</span>
+    <span class="c1">#print(myslice</span>
+    <span class="c1">#print(shape, endind</span>
+    <span class="c1">#print(x[tuple(myslice)].shape</span>
+    <span class="k">return</span> <span class="n">x</span><span class="p">[</span><span class="nb">tuple</span><span class="p">(</span><span class="n">myslice</span><span class="p">)]</span>
+
+
+<span class="k">def</span> <span class="nf">ar2full</span><span class="p">(</span><span class="n">ar</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;make reduced lagpolynomial into a right side lagpoly array</span>
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="n">nlags</span><span class="p">,</span> <span class="n">nvar</span><span class="p">,</span><span class="n">nvarex</span> <span class="o">=</span> <span class="n">ar</span><span class="o">.</span><span class="n">shape</span>
+    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">r_</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="n">nvar</span><span class="p">,</span><span class="n">nvarex</span><span class="p">)[</span><span class="kc">None</span><span class="p">,:,:],</span><span class="o">-</span><span class="n">ar</span><span class="p">]</span>
+
+
+<span class="k">def</span> <span class="nf">ar2lhs</span><span class="p">(</span><span class="n">ar</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;convert full (rhs) lagpolynomial into a reduced, left side lagpoly array</span>
+
+<span class="sd">    this is mainly a reminder about the definition</span>
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="k">return</span> <span class="o">-</span><span class="n">ar</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span>
+
+
+<span class="k">class</span> <span class="nc">_Var</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;obsolete VAR class, use tsa.VAR instead, for internal use only</span>
+
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+
+<span class="sd">    &gt;&gt;&gt; v = Var(ar2s)</span>
+<span class="sd">    &gt;&gt;&gt; v.fit(1)</span>
+<span class="sd">    &gt;&gt;&gt; v.arhat</span>
+<span class="sd">    array([[[ 1.        ,  0.        ],</span>
+<span class="sd">            [ 0.        ,  1.        ]],</span>
+
+<span class="sd">           [[-0.77784898,  0.01726193],</span>
+<span class="sd">            [ 0.10733009, -0.78665335]]])</span>
+
+<span class="sd">    &#39;&#39;&#39;</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">y</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">y</span> <span class="o">=</span> <span class="n">y</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">nvars</span> <span class="o">=</span> <span class="n">y</span><span class="o">.</span><span class="n">shape</span>
+
+    <span class="k">def</span> <span class="nf">fit</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">nlags</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;estimate parameters using ols</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        nlags : integer</span>
+<span class="sd">            number of lags to include in regression, same for all variables</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        None, but attaches</span>
+
+<span class="sd">        arhat : array (nlags, nvar, nvar)</span>
+<span class="sd">            full lag polynomial array</span>
+<span class="sd">        arlhs : array (nlags-1, nvar, nvar)</span>
+<span class="sd">            reduced lag polynomial for left hand side</span>
+<span class="sd">        other statistics as returned by linalg.lstsq : need to be completed</span>
+
+
+
+<span class="sd">        This currently assumes all parameters are estimated without restrictions.</span>
+<span class="sd">        In this case SUR is identical to OLS</span>
+
+<span class="sd">        estimation results are attached to the class instance</span>
+
+
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">nlags</span> <span class="o">=</span> <span class="n">nlags</span> <span class="c1"># without current period</span>
+        <span class="n">nvars</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">nvars</span>
+        <span class="c1">#TODO: ar2s looks like a module variable, bug?</span>
+        <span class="c1">#lmat = lagmat(ar2s, nlags, trim=&#39;both&#39;, original=&#39;in&#39;)</span>
+        <span class="n">lmat</span> <span class="o">=</span> <span class="n">lagmat</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">y</span><span class="p">,</span> <span class="n">nlags</span><span class="p">,</span> <span class="n">trim</span><span class="o">=</span><span class="s1">&#39;both&#39;</span><span class="p">,</span> <span class="n">original</span><span class="o">=</span><span class="s1">&#39;in&#39;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">yred</span> <span class="o">=</span> <span class="n">lmat</span><span class="p">[:,:</span><span class="n">nvars</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">xred</span> <span class="o">=</span> <span class="n">lmat</span><span class="p">[:,</span><span class="n">nvars</span><span class="p">:]</span>
+        <span class="n">res</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">lstsq</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">xred</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">yred</span><span class="p">,</span> <span class="n">rcond</span><span class="o">=-</span><span class="mi">1</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">estresults</span> <span class="o">=</span> <span class="n">res</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">arlhs</span> <span class="o">=</span> <span class="n">res</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">nlags</span><span class="p">,</span> <span class="n">nvars</span><span class="p">,</span> <span class="n">nvars</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">arhat</span> <span class="o">=</span> <span class="n">ar2full</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">arlhs</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">rss</span> <span class="o">=</span> <span class="n">res</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">xredrank</span> <span class="o">=</span> <span class="n">res</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span>
+
+    <span class="k">def</span> <span class="nf">predict</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;calculate estimated timeseries (yhat) for sample</span>
+
+<span class="sd">        &#39;&#39;&#39;</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s1">&#39;yhat&#39;</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">yhat</span> <span class="o">=</span> <span class="n">varfilter</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">y</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">arhat</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">yhat</span>
+
+    <span class="k">def</span> <span class="nf">covmat</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39; covariance matrix of estimate</span>
+<span class="sd">        # not sure it&#39;s correct, need to check orientation everywhere</span>
+<span class="sd">        # looks ok, display needs getting used to</span>
+<span class="sd">        &gt;&gt;&gt; v.rss[None,None,:]*np.linalg.inv(np.dot(v.xred.T,v.xred))[:,:,None]</span>
+<span class="sd">        array([[[ 0.37247445,  0.32210609],</span>
+<span class="sd">                [ 0.1002642 ,  0.08670584]],</span>
+
+<span class="sd">               [[ 0.1002642 ,  0.08670584],</span>
+<span class="sd">                [ 0.45903637,  0.39696255]]])</span>
+<span class="sd">        &gt;&gt;&gt;</span>
+<span class="sd">        &gt;&gt;&gt; v.rss[0]*np.linalg.inv(np.dot(v.xred.T,v.xred))</span>
+<span class="sd">        array([[ 0.37247445,  0.1002642 ],</span>
+<span class="sd">               [ 0.1002642 ,  0.45903637]])</span>
+<span class="sd">        &gt;&gt;&gt; v.rss[1]*np.linalg.inv(np.dot(v.xred.T,v.xred))</span>
+<span class="sd">        array([[ 0.32210609,  0.08670584],</span>
+<span class="sd">               [ 0.08670584,  0.39696255]])</span>
+<span class="sd">       &#39;&#39;&#39;</span>
+
+        <span class="c1">#check if orientation is same as self.arhat</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">paramcov</span> <span class="o">=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">rss</span><span class="p">[</span><span class="kc">None</span><span class="p">,</span><span class="kc">None</span><span class="p">,:]</span> <span class="o">*</span>
+            <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">inv</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">xred</span><span class="o">.</span><span class="n">T</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">xred</span><span class="p">))[:,:,</span><span class="kc">None</span><span class="p">])</span>
+
+    <span class="k">def</span> <span class="nf">forecast</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">horiz</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">u</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;calculates forcast for horiz number of periods at end of sample</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        horiz : int (optional, default=1)</span>
+<span class="sd">            forecast horizon</span>
+<span class="sd">        u : array (horiz, nvars)</span>
+<span class="sd">            error term for forecast periods. If None, then u is zero.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        yforecast : array (nobs+horiz, nvars)</span>
+<span class="sd">            this includes the sample and the forecasts</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">if</span> <span class="n">u</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">u</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">horiz</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">nvars</span><span class="p">))</span>
+        <span class="k">return</span> <span class="n">vargenerate</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">arhat</span><span class="p">,</span> <span class="n">u</span><span class="p">,</span> <span class="n">initvalues</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">y</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="VarmaPoly"><a class="viewcode-back" href="../../../generated/statsmodels.tsa.varma_process.VarmaPoly.html#statsmodels.tsa.varma_process.VarmaPoly">[docs]</a><span class="k">class</span> <span class="nc">VarmaPoly</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;class to keep track of Varma polynomial format</span>
+
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+
+<span class="sd">    ar23 = np.array([[[ 1. ,  0. ],</span>
+<span class="sd">                     [ 0. ,  1. ]],</span>
+
+<span class="sd">                    [[-0.6,  0. ],</span>
+<span class="sd">                     [ 0.2, -0.6]],</span>
+
+<span class="sd">                    [[-0.1,  0. ],</span>
+<span class="sd">                     [ 0.1, -0.1]]])</span>
+
+<span class="sd">    ma22 = np.array([[[ 1. ,  0. ],</span>
+<span class="sd">                     [ 0. ,  1. ]],</span>
+
+<span class="sd">                    [[ 0.4,  0. ],</span>
+<span class="sd">                     [ 0.2, 0.3]]])</span>
+
+
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ar</span><span class="p">,</span> <span class="n">ma</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">ar</span> <span class="o">=</span> <span class="n">ar</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">ma</span> <span class="o">=</span> <span class="n">ma</span>
+        <span class="n">nlags</span><span class="p">,</span> <span class="n">nvarall</span><span class="p">,</span> <span class="n">nvars</span> <span class="o">=</span> <span class="n">ar</span><span class="o">.</span><span class="n">shape</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">nlags</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">nvarall</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">nvars</span> <span class="o">=</span> <span class="n">nlags</span><span class="p">,</span> <span class="n">nvarall</span><span class="p">,</span> <span class="n">nvars</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">isstructured</span> <span class="o">=</span> <span class="ow">not</span> <span class="p">(</span><span class="n">ar</span><span class="p">[</span><span class="mi">0</span><span class="p">,:</span><span class="n">nvars</span><span class="p">]</span> <span class="o">==</span> <span class="n">np</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="n">nvars</span><span class="p">))</span><span class="o">.</span><span class="n">all</span><span class="p">()</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">ma</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">ma</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="n">nvars</span><span class="p">)[</span><span class="kc">None</span><span class="p">,</span><span class="o">...</span><span class="p">]</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">isindependent</span> <span class="o">=</span> <span class="kc">True</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">isindependent</span> <span class="o">=</span> <span class="ow">not</span> <span class="p">(</span><span class="n">ma</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="n">np</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="n">nvars</span><span class="p">))</span><span class="o">.</span><span class="n">all</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">malags</span> <span class="o">=</span> <span class="n">ar</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">hasexog</span> <span class="o">=</span> <span class="n">nvarall</span> <span class="o">&gt;</span> <span class="n">nvars</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">arm1</span> <span class="o">=</span> <span class="o">-</span><span class="n">ar</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span>
+
+    <span class="c1">#@property</span>
+<div class="viewcode-block" id="VarmaPoly.vstack"><a class="viewcode-back" href="../../../generated/statsmodels.tsa.varma_process.VarmaPoly.vstack.html#statsmodels.tsa.varma_process.VarmaPoly.vstack">[docs]</a>    <span class="k">def</span> <span class="nf">vstack</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">a</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s1">&#39;ar&#39;</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;stack lagpolynomial vertically in 2d array</span>
+
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">if</span> <span class="n">a</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">a</span> <span class="o">=</span> <span class="n">a</span>
+        <span class="k">elif</span> <span class="n">name</span> <span class="o">==</span> <span class="s1">&#39;ar&#39;</span><span class="p">:</span>
+            <span class="n">a</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ar</span>
+        <span class="k">elif</span> <span class="n">name</span> <span class="o">==</span> <span class="s1">&#39;ma&#39;</span><span class="p">:</span>
+            <span class="n">a</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ma</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;no array or name given&#39;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">a</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">nvarall</span><span class="p">)</span></div>
+
+    <span class="c1">#@property</span>
+<div class="viewcode-block" id="VarmaPoly.hstack"><a class="viewcode-back" href="../../../generated/statsmodels.tsa.varma_process.VarmaPoly.hstack.html#statsmodels.tsa.varma_process.VarmaPoly.hstack">[docs]</a>    <span class="k">def</span> <span class="nf">hstack</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">a</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s1">&#39;ar&#39;</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;stack lagpolynomial horizontally in 2d array</span>
+
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">if</span> <span class="n">a</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">a</span> <span class="o">=</span> <span class="n">a</span>
+        <span class="k">elif</span> <span class="n">name</span> <span class="o">==</span> <span class="s1">&#39;ar&#39;</span><span class="p">:</span>
+            <span class="n">a</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ar</span>
+        <span class="k">elif</span> <span class="n">name</span> <span class="o">==</span> <span class="s1">&#39;ma&#39;</span><span class="p">:</span>
+            <span class="n">a</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ma</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;no array or name given&#39;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">a</span><span class="o">.</span><span class="n">swapaxes</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="mi">2</span><span class="p">)</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">nvarall</span><span class="p">)</span><span class="o">.</span><span class="n">T</span></div>
+
+    <span class="c1">#@property</span>
+<div class="viewcode-block" id="VarmaPoly.stacksquare"><a class="viewcode-back" href="../../../generated/statsmodels.tsa.varma_process.VarmaPoly.stacksquare.html#statsmodels.tsa.varma_process.VarmaPoly.stacksquare">[docs]</a>    <span class="k">def</span> <span class="nf">stacksquare</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">a</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s1">&#39;ar&#39;</span><span class="p">,</span> <span class="n">orientation</span><span class="o">=</span><span class="s1">&#39;vertical&#39;</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;stack lagpolynomial vertically in 2d square array with eye</span>
+
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">if</span> <span class="n">a</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">a</span> <span class="o">=</span> <span class="n">a</span>
+        <span class="k">elif</span> <span class="n">name</span> <span class="o">==</span> <span class="s1">&#39;ar&#39;</span><span class="p">:</span>
+            <span class="n">a</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ar</span>
+        <span class="k">elif</span> <span class="n">name</span> <span class="o">==</span> <span class="s1">&#39;ma&#39;</span><span class="p">:</span>
+            <span class="n">a</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ma</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;no array or name given&#39;</span><span class="p">)</span>
+        <span class="n">astacked</span> <span class="o">=</span> <span class="n">a</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">nvarall</span><span class="p">)</span>
+        <span class="n">lenpk</span><span class="p">,</span> <span class="n">nvars</span> <span class="o">=</span> <span class="n">astacked</span><span class="o">.</span><span class="n">shape</span> <span class="c1">#[0]</span>
+        <span class="n">amat</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="n">lenpk</span><span class="p">,</span> <span class="n">k</span><span class="o">=</span><span class="n">nvars</span><span class="p">)</span>
+        <span class="n">amat</span><span class="p">[:,:</span><span class="n">nvars</span><span class="p">]</span> <span class="o">=</span> <span class="n">astacked</span>
+        <span class="k">return</span> <span class="n">amat</span></div>
+
+    <span class="c1">#@property</span>
+<div class="viewcode-block" id="VarmaPoly.vstackarma_minus1"><a class="viewcode-back" href="../../../generated/statsmodels.tsa.varma_process.VarmaPoly.vstackarma_minus1.html#statsmodels.tsa.varma_process.VarmaPoly.vstackarma_minus1">[docs]</a>    <span class="k">def</span> <span class="nf">vstackarma_minus1</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;stack ar and lagpolynomial vertically in 2d array</span>
+
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="n">a</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">((</span><span class="bp">self</span><span class="o">.</span><span class="n">ar</span><span class="p">[</span><span class="mi">1</span><span class="p">:],</span> <span class="bp">self</span><span class="o">.</span><span class="n">ma</span><span class="p">[</span><span class="mi">1</span><span class="p">:]),</span><span class="mi">0</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">a</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">nvarall</span><span class="p">)</span></div>
+
+    <span class="c1">#@property</span>
+<div class="viewcode-block" id="VarmaPoly.hstackarma_minus1"><a class="viewcode-back" href="../../../generated/statsmodels.tsa.varma_process.VarmaPoly.hstackarma_minus1.html#statsmodels.tsa.varma_process.VarmaPoly.hstackarma_minus1">[docs]</a>    <span class="k">def</span> <span class="nf">hstackarma_minus1</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;stack ar and lagpolynomial vertically in 2d array</span>
+
+<span class="sd">        this is the Kalman Filter representation, I think</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="n">a</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">((</span><span class="bp">self</span><span class="o">.</span><span class="n">ar</span><span class="p">[</span><span class="mi">1</span><span class="p">:],</span> <span class="bp">self</span><span class="o">.</span><span class="n">ma</span><span class="p">[</span><span class="mi">1</span><span class="p">:]),</span><span class="mi">0</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">a</span><span class="o">.</span><span class="n">swapaxes</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="mi">2</span><span class="p">)</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">nvarall</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="VarmaPoly.getisstationary"><a class="viewcode-back" href="../../../generated/statsmodels.tsa.varma_process.VarmaPoly.getisstationary.html#statsmodels.tsa.varma_process.VarmaPoly.getisstationary">[docs]</a>    <span class="k">def</span> <span class="nf">getisstationary</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">a</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;check whether the auto-regressive lag-polynomial is stationary</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        isstationary : boolean</span>
+
+<span class="sd">        *attaches*</span>
+
+<span class="sd">        areigenvalues : complex array</span>
+<span class="sd">            eigenvalues sorted by absolute value</span>
+
+<span class="sd">        References</span>
+<span class="sd">        ----------</span>
+<span class="sd">        formula taken from NAG manual</span>
+
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">if</span> <span class="n">a</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">a</span> <span class="o">=</span> <span class="n">a</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">isstructured</span><span class="p">:</span>
+                <span class="n">a</span> <span class="o">=</span> <span class="o">-</span><span class="bp">self</span><span class="o">.</span><span class="n">reduceform</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ar</span><span class="p">)[</span><span class="mi">1</span><span class="p">:]</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">a</span> <span class="o">=</span> <span class="o">-</span><span class="bp">self</span><span class="o">.</span><span class="n">ar</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span>
+        <span class="n">amat</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">stacksquare</span><span class="p">(</span><span class="n">a</span><span class="p">)</span>
+        <span class="n">ev</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">eigvals</span><span class="p">(</span><span class="n">amat</span><span class="p">))[::</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">areigenvalues</span> <span class="o">=</span> <span class="n">ev</span>
+        <span class="k">return</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">ev</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">all</span><span class="p">()</span></div>
+
+<div class="viewcode-block" id="VarmaPoly.getisinvertible"><a class="viewcode-back" href="../../../generated/statsmodels.tsa.varma_process.VarmaPoly.getisinvertible.html#statsmodels.tsa.varma_process.VarmaPoly.getisinvertible">[docs]</a>    <span class="k">def</span> <span class="nf">getisinvertible</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">a</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;check whether the auto-regressive lag-polynomial is stationary</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        isinvertible : boolean</span>
+
+<span class="sd">        *attaches*</span>
+
+<span class="sd">        maeigenvalues : complex array</span>
+<span class="sd">            eigenvalues sorted by absolute value</span>
+
+<span class="sd">        References</span>
+<span class="sd">        ----------</span>
+<span class="sd">        formula taken from NAG manual</span>
+
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">if</span> <span class="n">a</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">a</span> <span class="o">=</span> <span class="n">a</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">isindependent</span><span class="p">:</span>
+                <span class="n">a</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">reduceform</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ma</span><span class="p">)[</span><span class="mi">1</span><span class="p">:]</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">a</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ma</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span>
+        <span class="k">if</span> <span class="n">a</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="c1"># no ma lags</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">maeigenvalues</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([],</span> <span class="n">np</span><span class="o">.</span><span class="n">complex</span><span class="p">)</span>
+            <span class="k">return</span> <span class="kc">True</span>
+
+        <span class="n">amat</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">stacksquare</span><span class="p">(</span><span class="n">a</span><span class="p">)</span>
+        <span class="n">ev</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">eigvals</span><span class="p">(</span><span class="n">amat</span><span class="p">))[::</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">maeigenvalues</span> <span class="o">=</span> <span class="n">ev</span>
+        <span class="k">return</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">ev</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">all</span><span class="p">()</span></div>
+
+<div class="viewcode-block" id="VarmaPoly.reduceform"><a class="viewcode-back" href="../../../generated/statsmodels.tsa.varma_process.VarmaPoly.reduceform.html#statsmodels.tsa.varma_process.VarmaPoly.reduceform">[docs]</a>    <span class="k">def</span> <span class="nf">reduceform</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">apoly</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+
+<span class="sd">        this assumes no exog, todo</span>
+
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">if</span> <span class="n">apoly</span><span class="o">.</span><span class="n">ndim</span> <span class="o">!=</span> <span class="mi">3</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;apoly needs to be 3d&#39;</span><span class="p">)</span>
+        <span class="n">nlags</span><span class="p">,</span> <span class="n">nvarsex</span><span class="p">,</span> <span class="n">nvars</span> <span class="o">=</span> <span class="n">apoly</span><span class="o">.</span><span class="n">shape</span>
+
+        <span class="n">a</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty_like</span><span class="p">(</span><span class="n">apoly</span><span class="p">)</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">a0inv</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">inv</span><span class="p">(</span><span class="n">a</span><span class="p">[</span><span class="mi">0</span><span class="p">,:</span><span class="n">nvars</span><span class="p">,</span> <span class="p">:])</span>
+        <span class="k">except</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">LinAlgError</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;matrix not invertible&#39;</span><span class="p">,</span>
+                             <span class="s1">&#39;ask for implementation of pinv&#39;</span><span class="p">)</span>
+
+        <span class="k">for</span> <span class="n">lag</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nlags</span><span class="p">):</span>
+            <span class="n">a</span><span class="p">[</span><span class="n">lag</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">a0inv</span><span class="p">,</span> <span class="n">apoly</span><span class="p">[</span><span class="n">lag</span><span class="p">])</span>
+
+        <span class="k">return</span> <span class="n">a</span></div></div>
+
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="c1"># some example lag polynomials</span>
+    <span class="n">a21</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([[[</span> <span class="mf">1.</span> <span class="p">,</span>  <span class="mf">0.</span> <span class="p">],</span>
+                     <span class="p">[</span> <span class="mf">0.</span> <span class="p">,</span>  <span class="mf">1.</span> <span class="p">]],</span>
+
+                    <span class="p">[[</span><span class="o">-</span><span class="mf">0.8</span><span class="p">,</span>  <span class="mf">0.</span> <span class="p">],</span>
+                     <span class="p">[</span> <span class="mf">0.</span><span class="p">,</span>  <span class="o">-</span><span class="mf">0.6</span><span class="p">]]])</span>
+
+    <span class="n">a22</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([[[</span> <span class="mf">1.</span> <span class="p">,</span>  <span class="mf">0.</span> <span class="p">],</span>
+                     <span class="p">[</span> <span class="mf">0.</span> <span class="p">,</span>  <span class="mf">1.</span> <span class="p">]],</span>
+
+                    <span class="p">[[</span><span class="o">-</span><span class="mf">0.8</span><span class="p">,</span>  <span class="mf">0.</span> <span class="p">],</span>
+                     <span class="p">[</span> <span class="mf">0.1</span><span class="p">,</span> <span class="o">-</span><span class="mf">0.8</span><span class="p">]]])</span>
+
+    <span class="n">a23</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([[[</span> <span class="mf">1.</span> <span class="p">,</span>  <span class="mf">0.</span> <span class="p">],</span>
+                     <span class="p">[</span> <span class="mf">0.</span> <span class="p">,</span>  <span class="mf">1.</span> <span class="p">]],</span>
+
+                    <span class="p">[[</span><span class="o">-</span><span class="mf">0.8</span><span class="p">,</span>  <span class="mf">0.2</span><span class="p">],</span>
+                     <span class="p">[</span> <span class="mf">0.1</span><span class="p">,</span> <span class="o">-</span><span class="mf">0.6</span><span class="p">]]])</span>
+
+    <span class="n">a24</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([[[</span> <span class="mf">1.</span> <span class="p">,</span>  <span class="mf">0.</span> <span class="p">],</span>
+                     <span class="p">[</span> <span class="mf">0.</span> <span class="p">,</span>  <span class="mf">1.</span> <span class="p">]],</span>
+
+                    <span class="p">[[</span><span class="o">-</span><span class="mf">0.6</span><span class="p">,</span>  <span class="mf">0.</span> <span class="p">],</span>
+                     <span class="p">[</span> <span class="mf">0.2</span><span class="p">,</span> <span class="o">-</span><span class="mf">0.6</span><span class="p">]],</span>
+
+                    <span class="p">[[</span><span class="o">-</span><span class="mf">0.1</span><span class="p">,</span>  <span class="mf">0.</span> <span class="p">],</span>
+                     <span class="p">[</span> <span class="mf">0.1</span><span class="p">,</span> <span class="o">-</span><span class="mf">0.1</span><span class="p">]]])</span>
+
+    <span class="n">a31</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">r_</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="mi">3</span><span class="p">)[</span><span class="kc">None</span><span class="p">,:,:],</span> <span class="mf">0.8</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="mi">3</span><span class="p">)[</span><span class="kc">None</span><span class="p">,:,:]]</span>
+    <span class="n">a32</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([[[</span> <span class="mf">1.</span> <span class="p">,</span>  <span class="mf">0.</span> <span class="p">,</span>  <span class="mf">0.</span> <span class="p">],</span>
+                     <span class="p">[</span> <span class="mf">0.</span> <span class="p">,</span>  <span class="mf">1.</span> <span class="p">,</span>  <span class="mf">0.</span> <span class="p">],</span>
+                     <span class="p">[</span> <span class="mf">0.</span> <span class="p">,</span>  <span class="mf">0.</span> <span class="p">,</span>  <span class="mf">1.</span> <span class="p">]],</span>
+
+                    <span class="p">[[</span> <span class="mf">0.8</span><span class="p">,</span>  <span class="mf">0.</span> <span class="p">,</span>  <span class="mf">0.</span> <span class="p">],</span>
+                     <span class="p">[</span> <span class="mf">0.1</span><span class="p">,</span>  <span class="mf">0.6</span><span class="p">,</span>  <span class="mf">0.</span> <span class="p">],</span>
+                     <span class="p">[</span> <span class="mf">0.</span> <span class="p">,</span>  <span class="mf">0.</span> <span class="p">,</span>  <span class="mf">0.9</span><span class="p">]]])</span>
+
+    <span class="c1">########</span>
+    <span class="n">ut</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randn</span><span class="p">(</span><span class="mi">1000</span><span class="p">,</span><span class="mi">2</span><span class="p">)</span>
+    <span class="n">ar2s</span> <span class="o">=</span> <span class="n">vargenerate</span><span class="p">(</span><span class="n">a22</span><span class="p">,</span><span class="n">ut</span><span class="p">)</span>
+    <span class="c1">#res = np.linalg.lstsq(lagmat(ar2s,1)[:,1:], ar2s)</span>
+    <span class="n">res</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">lstsq</span><span class="p">(</span><span class="n">lagmat</span><span class="p">(</span><span class="n">ar2s</span><span class="p">,</span><span class="mi">1</span><span class="p">),</span> <span class="n">ar2s</span><span class="p">,</span> <span class="n">rcond</span><span class="o">=-</span><span class="mi">1</span><span class="p">)</span>
+    <span class="n">bhat</span> <span class="o">=</span> <span class="n">res</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="mi">2</span><span class="p">,</span><span class="mi">2</span><span class="p">)</span>
+    <span class="n">arhat</span> <span class="o">=</span> <span class="n">ar2full</span><span class="p">(</span><span class="n">bhat</span><span class="p">)</span>
+    <span class="c1">#print(maxabs(arhat - a22)</span>
+
+    <span class="n">v</span> <span class="o">=</span> <span class="n">_Var</span><span class="p">(</span><span class="n">ar2s</span><span class="p">)</span>
+    <span class="n">v</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+    <span class="n">v</span><span class="o">.</span><span class="n">forecast</span><span class="p">()</span>
+    <span class="n">v</span><span class="o">.</span><span class="n">forecast</span><span class="p">(</span><span class="mi">25</span><span class="p">)[</span><span class="o">-</span><span class="mi">30</span><span class="p">:]</span>
+
+    <span class="n">ar23</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([[[</span> <span class="mf">1.</span> <span class="p">,</span>  <span class="mf">0.</span> <span class="p">],</span>
+                     <span class="p">[</span> <span class="mf">0.</span> <span class="p">,</span>  <span class="mf">1.</span> <span class="p">]],</span>
+
+                    <span class="p">[[</span><span class="o">-</span><span class="mf">0.6</span><span class="p">,</span>  <span class="mf">0.</span> <span class="p">],</span>
+                     <span class="p">[</span> <span class="mf">0.2</span><span class="p">,</span> <span class="o">-</span><span class="mf">0.6</span><span class="p">]],</span>
+
+                    <span class="p">[[</span><span class="o">-</span><span class="mf">0.1</span><span class="p">,</span>  <span class="mf">0.</span> <span class="p">],</span>
+                     <span class="p">[</span> <span class="mf">0.1</span><span class="p">,</span> <span class="o">-</span><span class="mf">0.1</span><span class="p">]]])</span>
+
+    <span class="n">ma22</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([[[</span> <span class="mf">1.</span> <span class="p">,</span>  <span class="mf">0.</span> <span class="p">],</span>
+                     <span class="p">[</span> <span class="mf">0.</span> <span class="p">,</span>  <span class="mf">1.</span> <span class="p">]],</span>
+
+                    <span class="p">[[</span> <span class="mf">0.4</span><span class="p">,</span>  <span class="mf">0.</span> <span class="p">],</span>
+                     <span class="p">[</span> <span class="mf">0.2</span><span class="p">,</span> <span class="mf">0.3</span><span class="p">]]])</span>
+
+    <span class="n">ar23ns</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([[[</span> <span class="mf">1.</span> <span class="p">,</span>  <span class="mf">0.</span> <span class="p">],</span>
+                     <span class="p">[</span> <span class="mf">0.</span> <span class="p">,</span>  <span class="mf">1.</span> <span class="p">]],</span>
+
+                    <span class="p">[[</span><span class="o">-</span><span class="mf">1.9</span><span class="p">,</span>  <span class="mf">0.</span> <span class="p">],</span>
+                     <span class="p">[</span> <span class="mf">0.4</span><span class="p">,</span> <span class="o">-</span><span class="mf">0.6</span><span class="p">]],</span>
+
+                    <span class="p">[[</span> <span class="mf">0.3</span><span class="p">,</span>  <span class="mf">0.</span> <span class="p">],</span>
+                     <span class="p">[</span> <span class="mf">0.1</span><span class="p">,</span> <span class="o">-</span><span class="mf">0.1</span><span class="p">]]])</span>
+
+    <span class="n">vp</span> <span class="o">=</span> <span class="n">VarmaPoly</span><span class="p">(</span><span class="n">ar23</span><span class="p">,</span> <span class="n">ma22</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="nb">vars</span><span class="p">(</span><span class="n">vp</span><span class="p">))</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">vp</span><span class="o">.</span><span class="n">vstack</span><span class="p">())</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">vp</span><span class="o">.</span><span class="n">vstack</span><span class="p">(</span><span class="n">a24</span><span class="p">))</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">vp</span><span class="o">.</span><span class="n">hstackarma_minus1</span><span class="p">())</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">vp</span><span class="o">.</span><span class="n">getisstationary</span><span class="p">())</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">vp</span><span class="o">.</span><span class="n">getisinvertible</span><span class="p">())</span>
+
+    <span class="n">vp2</span> <span class="o">=</span> <span class="n">VarmaPoly</span><span class="p">(</span><span class="n">ar23ns</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">vp2</span><span class="o">.</span><span class="n">getisstationary</span><span class="p">())</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">vp2</span><span class="o">.</span><span class="n">getisinvertible</span><span class="p">())</span> <span class="c1"># no ma lags</span>
+</pre></div>
+
+
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../../../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" />
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer" role="contentinfo">
+        &#169; Copyright 2009-2018, Josef Perktold, Skipper Seabold, Jonathan Taylor, statsmodels-developers.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 2.1.2.
+    </div>
+  </body>
+</html>

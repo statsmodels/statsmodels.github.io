@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.miscmodels.count.PoissonZiGMLE.loglike
+==================================================
+
+.. currentmodule:: statsmodels.miscmodels.count
+
+.. automethod:: PoissonZiGMLE.loglike

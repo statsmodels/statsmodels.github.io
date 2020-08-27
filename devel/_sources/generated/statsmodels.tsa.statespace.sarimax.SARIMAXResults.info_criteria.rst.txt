@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.tsa.statespace.sarimax.SARIMAXResults.info\_criteria
+================================================================
+
+.. currentmodule:: statsmodels.tsa.statespace.sarimax
+
+.. automethod:: SARIMAXResults.info_criteria

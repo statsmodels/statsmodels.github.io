@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.discrete.discrete\_model.NegativeBinomialP.information
+==================================================================
+
+.. currentmodule:: statsmodels.discrete.discrete_model
+
+.. automethod:: NegativeBinomialP.information

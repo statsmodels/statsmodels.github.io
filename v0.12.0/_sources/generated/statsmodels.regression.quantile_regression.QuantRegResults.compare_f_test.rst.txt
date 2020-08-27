@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.regression.quantile\_regression.QuantRegResults.compare\_f\_test
+============================================================================
+
+.. currentmodule:: statsmodels.regression.quantile_regression
+
+.. automethod:: QuantRegResults.compare_f_test

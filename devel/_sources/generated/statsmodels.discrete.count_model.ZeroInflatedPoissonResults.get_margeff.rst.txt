@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.discrete.count\_model.ZeroInflatedPoissonResults.get\_margeff
+=========================================================================
+
+.. currentmodule:: statsmodels.discrete.count_model
+
+.. automethod:: ZeroInflatedPoissonResults.get_margeff

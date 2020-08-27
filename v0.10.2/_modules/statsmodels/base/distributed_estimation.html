@@ -1,0 +1,812 @@
+
+
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta charset="utf-8" />
+    <title>statsmodels.base.distributed_estimation &#8212; statsmodels v0.10.2 documentation</title>
+    <link rel="stylesheet" href="../../../_static/nature.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css" />
+    <script type="text/javascript" id="documentation_options" data-url_root="../../../" src="../../../_static/documentation_options.js"></script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <script type="text/javascript" src="../../../_static/language_data.js"></script>
+    <script async="async" type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/latest.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="shortcut icon" href="../../../_static/statsmodels_hybi_favico.ico"/>
+    <link rel="author" title="About these documents" href="../../../about.html" />
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+<link rel="stylesheet" href="../../../_static/examples.css" type="text/css" />
+<link rel="stylesheet" href="../../../_static/facebox.css" type="text/css" />
+<script type="text/javascript" src="../../../_static/scripts.js">
+</script>
+<script type="text/javascript" src="../../../_static/facebox.js">
+</script>
+<script type="text/javascript">
+$.facebox.settings.closeImage = "../../../_static/closelabel.png"
+$.facebox.settings.loadingImage = "../../../_static/loading.gif"
+</script>
+
+<script>
+$(document).ready(function() {
+  $.getJSON("../../../../versions.json", function(versions) {
+    var dropdown = document.createElement("div");
+    dropdown.className = "dropdown";
+    var button = document.createElement("button");
+    button.className = "dropbtn";
+    button.innerHTML = "Other Versions";
+    var content = document.createElement("div");
+    content.className = "dropdown-content";
+    dropdown.appendChild(button);
+    dropdown.appendChild(content);
+    $(".header").prepend(dropdown);
+    for (var i = 0; i < versions.length; i++) {
+      if (versions[i].substring(0, 1) == "v") {
+        versions[i] = [versions[i], versions[i].substring(1)];
+      } else {
+        versions[i] = [versions[i], versions[i]];
+      };
+    };
+    for (var i = 0; i < versions.length; i++) {
+      var a = document.createElement("a");
+      a.innerHTML = versions[i][1];
+      a.href = "../../../../" + versions[i][0] + "/index.html";
+      a.title = versions[i][1];
+      $(".dropdown-content").append(a);
+    };
+  });
+});
+</script>
+
+
+  </head><body>
+<div class="headerwrap">
+    <div class = "header">
+        
+        <a href = "../../../index.html">
+<img src="../../../_static/statsmodels_hybi_banner.png" alt="Logo"
+    style="padding-left: 15px"/></a>
+        
+    </div>
+</div>
+
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+<li><a href ="../../../install.html">Install</a></li> &nbsp;|&nbsp;
+<li><a href="https://groups.google.com/forum/?hl=en#!forum/pystatsmodels">Support</a></li> &nbsp;|&nbsp;
+<li><a href="https://github.com/statsmodels/statsmodels/issues">Bugs</a></li> &nbsp;|&nbsp;
+<li><a href="../../../dev/index.html">Develop</a></li> &nbsp;|&nbsp;
+<li><a href="../../../examples/index.html">Examples</a></li> &nbsp;|&nbsp;
+<li><a href="../../../faq.html">FAQ</a></li> &nbsp;|&nbsp;
+
+          <li class="nav-item nav-item-1"><a href="../../index.html" accesskey="U">Module code</a> |</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+
+
+
+
+  <h1>Source code for statsmodels.base.distributed_estimation</h1><div class="highlight"><pre>
+<span></span><span class="kn">from</span> <span class="nn">statsmodels.base.elastic_net</span> <span class="k">import</span> <span class="n">RegularizedResults</span>
+<span class="kn">from</span> <span class="nn">statsmodels.stats.regularized_covariance</span> <span class="k">import</span> <span class="n">_calc_nodewise_row</span><span class="p">,</span> \
+    <span class="n">_calc_nodewise_weight</span><span class="p">,</span> <span class="n">_calc_approx_inv_cov</span>
+<span class="kn">from</span> <span class="nn">statsmodels.base.model</span> <span class="k">import</span> <span class="n">LikelihoodModelResults</span>
+<span class="kn">from</span> <span class="nn">statsmodels.regression.linear_model</span> <span class="k">import</span> <span class="n">OLS</span>
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Distributed estimation routines. Currently, we support several</span>
+<span class="sd">methods of distribution</span>
+
+<span class="sd">- sequential, has no extra dependencies</span>
+<span class="sd">- parallel</span>
+<span class="sd">    - with joblib</span>
+<span class="sd">        A variety of backends are supported through joblib</span>
+<span class="sd">        This allows for different types of clusters besides</span>
+<span class="sd">        standard local clusters.  Some examples of</span>
+<span class="sd">        backends supported by joblib are</span>
+<span class="sd">          - dask.distributed</span>
+<span class="sd">          - yarn</span>
+<span class="sd">          - ipyparallel</span>
+
+<span class="sd">The framework is very general and allows for a variety of</span>
+<span class="sd">estimation methods.  Currently, these include</span>
+
+<span class="sd">- debiased regularized estimation</span>
+<span class="sd">- simple coefficient averaging (naive)</span>
+<span class="sd">    - regularized</span>
+<span class="sd">    - unregularized</span>
+
+<span class="sd">Currently, the default is regularized estimation with debiasing</span>
+<span class="sd">which follows the methods outlined in</span>
+
+<span class="sd">Jason D. Lee, Qiang Liu, Yuekai Sun and Jonathan E. Taylor.</span>
+<span class="sd">&quot;Communication-Efficient Sparse Regression: A One-Shot Approach.&quot;</span>
+<span class="sd">arXiv:1503.04337. 2015. http://arxiv.org/abs/1503.04337.</span>
+
+<span class="sd">There are several variables that are taken from the source paper</span>
+<span class="sd">for which the interpretation may not be directly clear from the</span>
+<span class="sd">code, these are mostly used to help form the estimate of the</span>
+<span class="sd">approximate inverse covariance matrix as part of the</span>
+<span class="sd">debiasing procedure.</span>
+
+<span class="sd">    wexog</span>
+
+<span class="sd">    A weighted design matrix used to perform the node-wise</span>
+<span class="sd">    regression procedure.</span>
+
+<span class="sd">    nodewise_row</span>
+
+<span class="sd">    nodewise_row is produced as part of the node-wise regression</span>
+<span class="sd">    procedure used to produce the approximate inverse covariance</span>
+<span class="sd">    matrix.  One is produced for each variable using the</span>
+<span class="sd">    LASSO.</span>
+
+<span class="sd">    nodewise_weight</span>
+
+<span class="sd">    nodewise_weight is produced using the gamma_hat values for</span>
+<span class="sd">    each p to produce weights to reweight the gamma_hat values which</span>
+<span class="sd">    are ultimately used to form approx_inv_cov.</span>
+
+<span class="sd">    approx_inv_cov</span>
+
+<span class="sd">    This is the estimate of the approximate inverse covariance</span>
+<span class="sd">    matrix.  This is used to debiase the coefficient average</span>
+<span class="sd">    along with the average gradient.  For the OLS case,</span>
+<span class="sd">    approx_inv_cov is an approximation for</span>
+
+<span class="sd">        n * (X^T X)^{-1}</span>
+
+<span class="sd">    formed by node-wise regression.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+
+<span class="k">def</span> <span class="nf">_est_regularized_naive</span><span class="p">(</span><span class="n">mod</span><span class="p">,</span> <span class="n">pnum</span><span class="p">,</span> <span class="n">partitions</span><span class="p">,</span> <span class="n">fit_kwds</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;estimates the regularized fitted parameters.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    mod : statsmodels model class instance</span>
+<span class="sd">        The model for the current partition.</span>
+<span class="sd">    pnum : scalar</span>
+<span class="sd">        Index of current partition</span>
+<span class="sd">    partitions : scalar</span>
+<span class="sd">        Total number of partitions</span>
+<span class="sd">    fit_kwds : dict-like or None</span>
+<span class="sd">        Keyword arguments to be given to fit_regularized</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    An array of the paramters for the regularized fit</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">if</span> <span class="n">fit_kwds</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;_est_regularized_naive currently &quot;</span> <span class="o">+</span>
+                         <span class="s2">&quot;requires that fit_kwds not be None.&quot;</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">mod</span><span class="o">.</span><span class="n">fit_regularized</span><span class="p">(</span><span class="o">**</span><span class="n">fit_kwds</span><span class="p">)</span><span class="o">.</span><span class="n">params</span>
+
+
+<span class="k">def</span> <span class="nf">_est_unregularized_naive</span><span class="p">(</span><span class="n">mod</span><span class="p">,</span> <span class="n">pnum</span><span class="p">,</span> <span class="n">partitions</span><span class="p">,</span> <span class="n">fit_kwds</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;estimates the unregularized fitted parameters.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    mod : statsmodels model class instance</span>
+<span class="sd">        The model for the current partition.</span>
+<span class="sd">    pnum : scalar</span>
+<span class="sd">        Index of current partition</span>
+<span class="sd">    partitions : scalar</span>
+<span class="sd">        Total number of partitions</span>
+<span class="sd">    fit_kwds : dict-like or None</span>
+<span class="sd">        Keyword arguments to be given to fit</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    An array of the parameters for the fit</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">if</span> <span class="n">fit_kwds</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;_est_unregularized_naive currently &quot;</span> <span class="o">+</span>
+                         <span class="s2">&quot;requires that fit_kwds not be None.&quot;</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">mod</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="o">**</span><span class="n">fit_kwds</span><span class="p">)</span><span class="o">.</span><span class="n">params</span>
+
+
+<span class="k">def</span> <span class="nf">_join_naive</span><span class="p">(</span><span class="n">params_l</span><span class="p">,</span> <span class="n">threshold</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;joins the results from each run of _est_&lt;type&gt;_naive</span>
+<span class="sd">    and returns the mean estimate of the coefficients</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    params_l : list</span>
+<span class="sd">        A list of arrays of coefficients.</span>
+<span class="sd">    threshold : scalar</span>
+<span class="sd">        The threshold at which the coefficients will be cut.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">p</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">params_l</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+    <span class="n">partitions</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">params_l</span><span class="p">)</span>
+
+    <span class="n">params_mn</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">p</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">params</span> <span class="ow">in</span> <span class="n">params_l</span><span class="p">:</span>
+        <span class="n">params_mn</span> <span class="o">+=</span> <span class="n">params</span>
+    <span class="n">params_mn</span> <span class="o">/=</span> <span class="n">partitions</span>
+
+    <span class="n">params_mn</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">params_mn</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">threshold</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
+
+    <span class="k">return</span> <span class="n">params_mn</span>
+
+
+<span class="k">def</span> <span class="nf">_calc_grad</span><span class="p">(</span><span class="n">mod</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">alpha</span><span class="p">,</span> <span class="n">L1_wt</span><span class="p">,</span> <span class="n">score_kwds</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;calculates the log-likelihood gradient for the debiasing</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    mod : statsmodels model class instance</span>
+<span class="sd">        The model for the current partition.</span>
+<span class="sd">    params : array-like</span>
+<span class="sd">        The estimated coefficients for the current partition.</span>
+<span class="sd">    alpha : scalar or array-like</span>
+<span class="sd">        The penalty weight.  If a scalar, the same penalty weight</span>
+<span class="sd">        applies to all variables in the model.  If a vector, it</span>
+<span class="sd">        must have the same length as `params`, and contains a</span>
+<span class="sd">        penalty weight for each coefficient.</span>
+<span class="sd">    L1_wt : scalar</span>
+<span class="sd">        The fraction of the penalty given to the L1 penalty term.</span>
+<span class="sd">        Must be between 0 and 1 (inclusive).  If 0, the fit is</span>
+<span class="sd">        a ridge fit, if 1 it is a lasso fit.</span>
+<span class="sd">    score_kwds : dict-like or None</span>
+<span class="sd">        Keyword arguments for the score function.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    An array-like object of the same dimension as params</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    In general:</span>
+
+<span class="sd">    gradient l_k(params)</span>
+
+<span class="sd">    where k corresponds to the index of the partition</span>
+
+<span class="sd">    For OLS:</span>
+
+<span class="sd">    X^T(y - X^T params)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">grad</span> <span class="o">=</span> <span class="o">-</span><span class="n">mod</span><span class="o">.</span><span class="n">score</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">params</span><span class="p">),</span> <span class="o">**</span><span class="n">score_kwds</span><span class="p">)</span>
+    <span class="n">grad</span> <span class="o">+=</span> <span class="n">alpha</span> <span class="o">*</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">L1_wt</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">grad</span>
+
+
+<span class="k">def</span> <span class="nf">_calc_wdesign_mat</span><span class="p">(</span><span class="n">mod</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">hess_kwds</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;calculates the weighted design matrix necessary to generate</span>
+<span class="sd">    the approximate inverse covariance matrix</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    mod : statsmodels model class instance</span>
+<span class="sd">        The model for the current partition.</span>
+<span class="sd">    params : array-like</span>
+<span class="sd">        The estimated coefficients for the current partition.</span>
+<span class="sd">    hess_kwds : dict-like or None</span>
+<span class="sd">        Keyword arguments for the hessian function.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    An array-like object, updated design matrix, same dimension</span>
+<span class="sd">    as mod.exog</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">rhess</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">mod</span><span class="o">.</span><span class="n">hessian_factor</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">params</span><span class="p">),</span> <span class="o">**</span><span class="n">hess_kwds</span><span class="p">))</span>
+    <span class="k">return</span> <span class="n">rhess</span><span class="p">[:,</span> <span class="kc">None</span><span class="p">]</span> <span class="o">*</span> <span class="n">mod</span><span class="o">.</span><span class="n">exog</span>
+
+
+<span class="k">def</span> <span class="nf">_est_regularized_debiased</span><span class="p">(</span><span class="n">mod</span><span class="p">,</span> <span class="n">mnum</span><span class="p">,</span> <span class="n">partitions</span><span class="p">,</span> <span class="n">fit_kwds</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                              <span class="n">score_kwds</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">hess_kwds</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;estimates the regularized fitted parameters, is the default</span>
+<span class="sd">    estimation_method for class DistributedModel.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    mod : statsmodels model class instance</span>
+<span class="sd">        The model for the current partition.</span>
+<span class="sd">    mnum : scalar</span>
+<span class="sd">        Index of current partition.</span>
+<span class="sd">    partitions : scalar</span>
+<span class="sd">        Total number of partitions.</span>
+<span class="sd">    fit_kwds : dict-like or None</span>
+<span class="sd">        Keyword arguments to be given to fit_regularized</span>
+<span class="sd">    score_kwds : dict-like or None</span>
+<span class="sd">        Keyword arguments for the score function.</span>
+<span class="sd">    hess_kwds : dict-like or None</span>
+<span class="sd">        Keyword arguments for the Hessian function.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    A tuple of parameters for regularized fit</span>
+<span class="sd">        An array-like object of the fitted parameters, params</span>
+<span class="sd">        An array-like object for the gradient</span>
+<span class="sd">        A list of array like objects for nodewise_row</span>
+<span class="sd">        A list of array like objects for nodewise_weight</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">score_kwds</span> <span class="o">=</span> <span class="p">{}</span> <span class="k">if</span> <span class="n">score_kwds</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">score_kwds</span>
+    <span class="n">hess_kwds</span> <span class="o">=</span> <span class="p">{}</span> <span class="k">if</span> <span class="n">hess_kwds</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">hess_kwds</span>
+
+    <span class="k">if</span> <span class="n">fit_kwds</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;_est_regularized_debiased currently &quot;</span> <span class="o">+</span>
+                         <span class="s2">&quot;requires that fit_kwds not be None.&quot;</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">alpha</span> <span class="o">=</span> <span class="n">fit_kwds</span><span class="p">[</span><span class="s2">&quot;alpha&quot;</span><span class="p">]</span>
+
+    <span class="k">if</span> <span class="s2">&quot;L1_wt&quot;</span> <span class="ow">in</span> <span class="n">fit_kwds</span><span class="p">:</span>
+        <span class="n">L1_wt</span> <span class="o">=</span> <span class="n">fit_kwds</span><span class="p">[</span><span class="s2">&quot;L1_wt&quot;</span><span class="p">]</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">L1_wt</span> <span class="o">=</span> <span class="mi">1</span>
+
+    <span class="n">nobs</span><span class="p">,</span> <span class="n">p</span> <span class="o">=</span> <span class="n">mod</span><span class="o">.</span><span class="n">exog</span><span class="o">.</span><span class="n">shape</span>
+    <span class="n">p_part</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">ceil</span><span class="p">((</span><span class="mf">1.</span> <span class="o">*</span> <span class="n">p</span><span class="p">)</span> <span class="o">/</span> <span class="n">partitions</span><span class="p">))</span>
+
+    <span class="n">params</span> <span class="o">=</span> <span class="n">mod</span><span class="o">.</span><span class="n">fit_regularized</span><span class="p">(</span><span class="o">**</span><span class="n">fit_kwds</span><span class="p">)</span><span class="o">.</span><span class="n">params</span>
+    <span class="n">grad</span> <span class="o">=</span> <span class="n">_calc_grad</span><span class="p">(</span><span class="n">mod</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">alpha</span><span class="p">,</span> <span class="n">L1_wt</span><span class="p">,</span> <span class="n">score_kwds</span><span class="p">)</span> <span class="o">/</span> <span class="n">nobs</span>
+
+    <span class="n">wexog</span> <span class="o">=</span> <span class="n">_calc_wdesign_mat</span><span class="p">(</span><span class="n">mod</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">hess_kwds</span><span class="p">)</span>
+
+    <span class="n">nodewise_row_l</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">nodewise_weight_l</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">idx</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">mnum</span> <span class="o">*</span> <span class="n">p_part</span><span class="p">,</span> <span class="nb">min</span><span class="p">((</span><span class="n">mnum</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="o">*</span> <span class="n">p_part</span><span class="p">,</span> <span class="n">p</span><span class="p">)):</span>
+
+        <span class="n">nodewise_row</span> <span class="o">=</span> <span class="n">_calc_nodewise_row</span><span class="p">(</span><span class="n">wexog</span><span class="p">,</span> <span class="n">idx</span><span class="p">,</span> <span class="n">alpha</span><span class="p">)</span>
+        <span class="n">nodewise_row_l</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">nodewise_row</span><span class="p">)</span>
+
+        <span class="n">nodewise_weight</span> <span class="o">=</span> <span class="n">_calc_nodewise_weight</span><span class="p">(</span><span class="n">wexog</span><span class="p">,</span> <span class="n">nodewise_row</span><span class="p">,</span> <span class="n">idx</span><span class="p">,</span>
+                                                <span class="n">alpha</span><span class="p">)</span>
+        <span class="n">nodewise_weight_l</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">nodewise_weight</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">params</span><span class="p">,</span> <span class="n">grad</span><span class="p">,</span> <span class="n">nodewise_row_l</span><span class="p">,</span> <span class="n">nodewise_weight_l</span>
+
+
+<span class="k">def</span> <span class="nf">_join_debiased</span><span class="p">(</span><span class="n">results_l</span><span class="p">,</span> <span class="n">threshold</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;joins the results from each run of _est_regularized_debiased</span>
+<span class="sd">    and returns the debiased estimate of the coefficients</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    results_l : list</span>
+<span class="sd">        A list of tuples each one containing the params, grad,</span>
+<span class="sd">        nodewise_row and nodewise_weight values for each partition.</span>
+<span class="sd">    threshold : scalar</span>
+<span class="sd">        The threshold at which the coefficients will be cut.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">p</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">results_l</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">0</span><span class="p">])</span>
+    <span class="n">partitions</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">results_l</span><span class="p">)</span>
+
+    <span class="n">params_mn</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">p</span><span class="p">)</span>
+    <span class="n">grad_mn</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">p</span><span class="p">)</span>
+
+    <span class="n">nodewise_row_l</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">nodewise_weight_l</span> <span class="o">=</span> <span class="p">[]</span>
+
+    <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">results_l</span><span class="p">:</span>
+
+        <span class="n">params_mn</span> <span class="o">+=</span> <span class="n">r</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">grad_mn</span> <span class="o">+=</span> <span class="n">r</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+
+        <span class="n">nodewise_row_l</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">r</span><span class="p">[</span><span class="mi">2</span><span class="p">])</span>
+        <span class="n">nodewise_weight_l</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">r</span><span class="p">[</span><span class="mi">3</span><span class="p">])</span>
+
+    <span class="n">nodewise_row_l</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">nodewise_row_l</span><span class="p">)</span>
+    <span class="n">nodewise_weight_l</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">nodewise_weight_l</span><span class="p">)</span>
+
+    <span class="n">params_mn</span> <span class="o">/=</span> <span class="n">partitions</span>
+    <span class="n">grad_mn</span> <span class="o">*=</span> <span class="o">-</span><span class="mf">1.</span> <span class="o">/</span> <span class="n">partitions</span>
+
+    <span class="n">approx_inv_cov</span> <span class="o">=</span> <span class="n">_calc_approx_inv_cov</span><span class="p">(</span><span class="n">nodewise_row_l</span><span class="p">,</span> <span class="n">nodewise_weight_l</span><span class="p">)</span>
+
+    <span class="n">debiased_params</span> <span class="o">=</span> <span class="n">params_mn</span> <span class="o">+</span> <span class="n">approx_inv_cov</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">grad_mn</span><span class="p">)</span>
+
+    <span class="n">debiased_params</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">debiased_params</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">threshold</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
+
+    <span class="k">return</span> <span class="n">debiased_params</span>
+
+
+<span class="k">def</span> <span class="nf">_helper_fit_partition</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">pnum</span><span class="p">,</span> <span class="n">endog</span><span class="p">,</span> <span class="n">exog</span><span class="p">,</span> <span class="n">fit_kwds</span><span class="p">,</span>
+                          <span class="n">init_kwds_e</span><span class="o">=</span><span class="p">{}):</span>
+    <span class="sd">&quot;&quot;&quot;handles the model fitting for each machine. NOTE: this</span>
+<span class="sd">    is primarily handled outside of DistributedModel because</span>
+<span class="sd">    joblib can&#39;t handle class methods.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    self : DistributedModel class instance</span>
+<span class="sd">        An instance of DistributedModel.</span>
+<span class="sd">    pnum : scalar</span>
+<span class="sd">        index of current partition.</span>
+<span class="sd">    endog : array-like</span>
+<span class="sd">        endogenous data for current partition.</span>
+<span class="sd">    exog : array-like</span>
+<span class="sd">        exogenous data for current partition.</span>
+<span class="sd">    fit_kwds : dict-like</span>
+<span class="sd">        Keywords needed for the model fitting.</span>
+<span class="sd">    init_kwds_e : dict-like</span>
+<span class="sd">        Additional init_kwds to add for each partition.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    estimation_method result.  For the default,</span>
+<span class="sd">    _est_regularized_debiased, a tuple.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">temp_init_kwds</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">init_kwds</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+    <span class="n">temp_init_kwds</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">init_kwds_e</span><span class="p">)</span>
+
+    <span class="n">model</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model_class</span><span class="p">(</span><span class="n">endog</span><span class="p">,</span> <span class="n">exog</span><span class="p">,</span> <span class="o">**</span><span class="n">temp_init_kwds</span><span class="p">)</span>
+    <span class="n">results</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">estimation_method</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">pnum</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">partitions</span><span class="p">,</span>
+                                     <span class="n">fit_kwds</span><span class="o">=</span><span class="n">fit_kwds</span><span class="p">,</span>
+                                     <span class="o">**</span><span class="bp">self</span><span class="o">.</span><span class="n">estimation_kwds</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">results</span>
+
+
+<div class="viewcode-block" id="DistributedModel"><a class="viewcode-back" href="../../../generated/statsmodels.base.distributed_estimation.DistributedModel.html#statsmodels.base.distributed_estimation.DistributedModel">[docs]</a><span class="k">class</span> <span class="nc">DistributedModel</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="vm">__doc__</span> <span class="o">=</span> <span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">    Distributed model class</span>
+
+<span class="s2">    Parameters</span>
+<span class="s2">    ----------</span>
+<span class="s2">    partitions : scalar</span>
+<span class="s2">        The number of partitions that the data will be split into.</span>
+<span class="s2">    model_class : statsmodels model class</span>
+<span class="s2">        The model class which will be used for estimation. If None</span>
+<span class="s2">        this defaults to OLS.</span>
+<span class="s2">    init_kwds : dict-like or None</span>
+<span class="s2">        Keywords needed for initializing the model, in addition to</span>
+<span class="s2">        endog and exog.</span>
+<span class="s2">    init_kwds_generator : generator or None</span>
+<span class="s2">        Additional keyword generator that produces model init_kwds</span>
+<span class="s2">        that may vary based on data partition.  The current usecase</span>
+<span class="s2">        is for WLS and GLS</span>
+<span class="s2">    estimation_method : function or None</span>
+<span class="s2">        The method that performs the estimation for each partition.</span>
+<span class="s2">        If None this defaults to _est_regularized_debiased.</span>
+<span class="s2">    estimation_kwds : dict-like or None</span>
+<span class="s2">        Keywords to be passed to estimation_method.</span>
+<span class="s2">    join_method : function or None</span>
+<span class="s2">        The method used to recombine the results from each partition.</span>
+<span class="s2">        If None this defaults to _join_debiased.</span>
+<span class="s2">    join_kwds : dict-like or None</span>
+<span class="s2">        Keywords to be passed to join_method.</span>
+<span class="s2">    results_class : results class or None</span>
+<span class="s2">        The class of results that should be returned.  If None this</span>
+<span class="s2">        defaults to RegularizedResults.</span>
+<span class="s2">    results_kwds : dict-like or None</span>
+<span class="s2">        Keywords to be passed to results class.</span>
+
+<span class="s2">    Attributes</span>
+<span class="s2">    ----------</span>
+<span class="s2">    partitions : scalar</span>
+<span class="s2">        See Parameters.</span>
+<span class="s2">    model_class : statsmodels model class</span>
+<span class="s2">        See Parameters.</span>
+<span class="s2">    init_kwds : dict-like</span>
+<span class="s2">        See Parameters.</span>
+<span class="s2">    init_kwds_generator : generator or None</span>
+<span class="s2">        See Parameters.</span>
+<span class="s2">    estimation_method : function</span>
+<span class="s2">        See Parameters.</span>
+<span class="s2">    estimation_kwds : dict-like</span>
+<span class="s2">        See Parameters.</span>
+<span class="s2">    join_method : function</span>
+<span class="s2">        See Parameters.</span>
+<span class="s2">    join_kwds : dict-like</span>
+<span class="s2">        See Parameters.</span>
+<span class="s2">    results_class : results class</span>
+<span class="s2">        See Parameters.</span>
+<span class="s2">    results_kwds : dict-like</span>
+<span class="s2">        See Parameters.</span>
+
+<span class="s2">    Examples</span>
+<span class="s2">    --------</span>
+
+<span class="s2">    Notes</span>
+<span class="s2">    -----</span>
+<span class="s2">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">partitions</span><span class="p">,</span> <span class="n">model_class</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                 <span class="n">init_kwds</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">estimation_method</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                 <span class="n">estimation_kwds</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">join_method</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">join_kwds</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                 <span class="n">results_class</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">results_kwds</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">partitions</span> <span class="o">=</span> <span class="n">partitions</span>
+
+        <span class="k">if</span> <span class="n">model_class</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">model_class</span> <span class="o">=</span> <span class="n">OLS</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">model_class</span> <span class="o">=</span> <span class="n">model_class</span>
+
+        <span class="k">if</span> <span class="n">init_kwds</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">init_kwds</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">init_kwds</span> <span class="o">=</span> <span class="n">init_kwds</span>
+
+        <span class="k">if</span> <span class="n">estimation_method</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">estimation_method</span> <span class="o">=</span> <span class="n">_est_regularized_debiased</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">estimation_method</span> <span class="o">=</span> <span class="n">estimation_method</span>
+
+        <span class="k">if</span> <span class="n">estimation_kwds</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">estimation_kwds</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">estimation_kwds</span> <span class="o">=</span> <span class="n">estimation_kwds</span>
+
+        <span class="k">if</span> <span class="n">join_method</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">join_method</span> <span class="o">=</span> <span class="n">_join_debiased</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">join_method</span> <span class="o">=</span> <span class="n">join_method</span>
+
+        <span class="k">if</span> <span class="n">join_kwds</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">join_kwds</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">join_kwds</span> <span class="o">=</span> <span class="n">join_kwds</span>
+
+        <span class="k">if</span> <span class="n">results_class</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">results_class</span> <span class="o">=</span> <span class="n">RegularizedResults</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">results_class</span> <span class="o">=</span> <span class="n">results_class</span>
+
+        <span class="k">if</span> <span class="n">results_kwds</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">results_kwds</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">results_kwds</span> <span class="o">=</span> <span class="n">results_kwds</span>
+
+<div class="viewcode-block" id="DistributedModel.fit"><a class="viewcode-back" href="../../../generated/statsmodels.base.distributed_estimation.DistributedModel.fit.html#statsmodels.base.distributed_estimation.DistributedModel.fit">[docs]</a>    <span class="k">def</span> <span class="nf">fit</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data_generator</span><span class="p">,</span> <span class="n">fit_kwds</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">parallel_method</span><span class="o">=</span><span class="s2">&quot;sequential&quot;</span><span class="p">,</span>
+            <span class="n">parallel_backend</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">init_kwds_generator</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Performs the distributed estimation using the corresponding</span>
+<span class="sd">        DistributedModel</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        data_generator : generator</span>
+<span class="sd">            A generator that produces a sequence of tuples where the first</span>
+<span class="sd">            element in the tuple corresponds to an endog array and the</span>
+<span class="sd">            element corresponds to an exog array.</span>
+<span class="sd">        fit_kwds : dict-like or None</span>
+<span class="sd">            Keywords needed for the model fitting.</span>
+<span class="sd">        parallel_method : str</span>
+<span class="sd">            type of distributed estimation to be used, currently</span>
+<span class="sd">            &quot;sequential&quot;, &quot;joblib&quot; and &quot;dask&quot; are supported.</span>
+<span class="sd">        parallel_backend : None or joblib parallel_backend object</span>
+<span class="sd">            used to allow support for more complicated backends,</span>
+<span class="sd">            ex: dask.distributed</span>
+<span class="sd">        init_kwds_generator : generator or None</span>
+<span class="sd">            Additional keyword generator that produces model init_kwds</span>
+<span class="sd">            that may vary based on data partition.  The current usecase</span>
+<span class="sd">            is for WLS and GLS</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        join_method result.  For the default, _join_debiased, it returns a</span>
+<span class="sd">        p length array.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="k">if</span> <span class="n">fit_kwds</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">fit_kwds</span> <span class="o">=</span> <span class="p">{}</span>
+
+        <span class="k">if</span> <span class="n">parallel_method</span> <span class="o">==</span> <span class="s2">&quot;sequential&quot;</span><span class="p">:</span>
+            <span class="n">results_l</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">fit_sequential</span><span class="p">(</span><span class="n">data_generator</span><span class="p">,</span> <span class="n">fit_kwds</span><span class="p">,</span>
+                                            <span class="n">init_kwds_generator</span><span class="p">)</span>
+
+        <span class="k">elif</span> <span class="n">parallel_method</span> <span class="o">==</span> <span class="s2">&quot;joblib&quot;</span><span class="p">:</span>
+            <span class="n">results_l</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">fit_joblib</span><span class="p">(</span><span class="n">data_generator</span><span class="p">,</span> <span class="n">fit_kwds</span><span class="p">,</span>
+                                        <span class="n">parallel_backend</span><span class="p">,</span>
+                                        <span class="n">init_kwds_generator</span><span class="p">)</span>
+
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;parallel_method: </span><span class="si">%s</span><span class="s2"> is currently not supported&quot;</span>
+                             <span class="o">%</span> <span class="n">parallel_method</span><span class="p">)</span>
+
+        <span class="n">params</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">join_method</span><span class="p">(</span><span class="n">results_l</span><span class="p">,</span> <span class="o">**</span><span class="bp">self</span><span class="o">.</span><span class="n">join_kwds</span><span class="p">)</span>
+
+        <span class="c1"># NOTE that currently, the dummy result model that is initialized</span>
+        <span class="c1"># here does not use any init_kwds from the init_kwds_generator event</span>
+        <span class="c1"># if it is provided.  It is possible to imagine an edge case where</span>
+        <span class="c1"># this might be a problem but given that the results model instance</span>
+        <span class="c1"># does not correspond to any data partition this seems reasonable.</span>
+        <span class="n">res_mod</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model_class</span><span class="p">([</span><span class="mi">0</span><span class="p">],</span> <span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="o">**</span><span class="bp">self</span><span class="o">.</span><span class="n">init_kwds</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">results_class</span><span class="p">(</span><span class="n">res_mod</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="o">**</span><span class="bp">self</span><span class="o">.</span><span class="n">results_kwds</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="DistributedModel.fit_sequential"><a class="viewcode-back" href="../../../generated/statsmodels.base.distributed_estimation.DistributedModel.fit_sequential.html#statsmodels.base.distributed_estimation.DistributedModel.fit_sequential">[docs]</a>    <span class="k">def</span> <span class="nf">fit_sequential</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data_generator</span><span class="p">,</span> <span class="n">fit_kwds</span><span class="p">,</span>
+                       <span class="n">init_kwds_generator</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Sequentially performs the distributed estimation using</span>
+<span class="sd">        the corresponding DistributedModel</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        data_generator : generator</span>
+<span class="sd">            A generator that produces a sequence of tuples where the first</span>
+<span class="sd">            element in the tuple corresponds to an endog array and the</span>
+<span class="sd">            element corresponds to an exog array.</span>
+<span class="sd">        fit_kwds : dict-like</span>
+<span class="sd">            Keywords needed for the model fitting.</span>
+<span class="sd">        init_kwds_generator : generator or None</span>
+<span class="sd">            Additional keyword generator that produces model init_kwds</span>
+<span class="sd">            that may vary based on data partition.  The current usecase</span>
+<span class="sd">            is for WLS and GLS</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        join_method result.  For the default, _join_debiased, it returns a</span>
+<span class="sd">        p length array.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="n">results_l</span> <span class="o">=</span> <span class="p">[]</span>
+
+        <span class="k">if</span> <span class="n">init_kwds_generator</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+
+            <span class="k">for</span> <span class="n">pnum</span><span class="p">,</span> <span class="p">(</span><span class="n">endog</span><span class="p">,</span> <span class="n">exog</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">data_generator</span><span class="p">):</span>
+
+                <span class="n">results</span> <span class="o">=</span> <span class="n">_helper_fit_partition</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">pnum</span><span class="p">,</span> <span class="n">endog</span><span class="p">,</span> <span class="n">exog</span><span class="p">,</span>
+                                                <span class="n">fit_kwds</span><span class="p">)</span>
+                <span class="n">results_l</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">results</span><span class="p">)</span>
+
+        <span class="k">else</span><span class="p">:</span>
+
+            <span class="n">tup_gen</span> <span class="o">=</span> <span class="nb">enumerate</span><span class="p">(</span><span class="nb">zip</span><span class="p">(</span><span class="n">data_generator</span><span class="p">,</span>
+                                    <span class="n">init_kwds_generator</span><span class="p">))</span>
+
+            <span class="k">for</span> <span class="n">pnum</span><span class="p">,</span> <span class="p">((</span><span class="n">endog</span><span class="p">,</span> <span class="n">exog</span><span class="p">),</span> <span class="n">init_kwds_e</span><span class="p">)</span> <span class="ow">in</span> <span class="n">tup_gen</span><span class="p">:</span>
+
+                <span class="n">results</span> <span class="o">=</span> <span class="n">_helper_fit_partition</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">pnum</span><span class="p">,</span> <span class="n">endog</span><span class="p">,</span> <span class="n">exog</span><span class="p">,</span>
+                                                <span class="n">fit_kwds</span><span class="p">,</span> <span class="n">init_kwds_e</span><span class="p">)</span>
+                <span class="n">results_l</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">results</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">results_l</span></div>
+
+<div class="viewcode-block" id="DistributedModel.fit_joblib"><a class="viewcode-back" href="../../../generated/statsmodels.base.distributed_estimation.DistributedModel.fit_joblib.html#statsmodels.base.distributed_estimation.DistributedModel.fit_joblib">[docs]</a>    <span class="k">def</span> <span class="nf">fit_joblib</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data_generator</span><span class="p">,</span> <span class="n">fit_kwds</span><span class="p">,</span> <span class="n">parallel_backend</span><span class="p">,</span>
+                   <span class="n">init_kwds_generator</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Performs the distributed estimation in parallel using joblib</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        data_generator : generator</span>
+<span class="sd">            A generator that produces a sequence of tuples where the first</span>
+<span class="sd">            element in the tuple corresponds to an endog array and the</span>
+<span class="sd">            element corresponds to an exog array.</span>
+<span class="sd">        fit_kwds : dict-like</span>
+<span class="sd">            Keywords needed for the model fitting.</span>
+<span class="sd">        parallel_backend : None or joblib parallel_backend object</span>
+<span class="sd">            used to allow support for more complicated backends,</span>
+<span class="sd">            ex: dask.distributed</span>
+<span class="sd">        init_kwds_generator : generator or None</span>
+<span class="sd">            Additional keyword generator that produces model init_kwds</span>
+<span class="sd">            that may vary based on data partition.  The current usecase</span>
+<span class="sd">            is for WLS and GLS</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        join_method result.  For the default, _join_debiased, it returns a</span>
+<span class="sd">        p length array.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="kn">from</span> <span class="nn">statsmodels.tools.parallel</span> <span class="k">import</span> <span class="n">parallel_func</span>
+
+        <span class="n">par</span><span class="p">,</span> <span class="n">f</span><span class="p">,</span> <span class="n">n_jobs</span> <span class="o">=</span> <span class="n">parallel_func</span><span class="p">(</span><span class="n">_helper_fit_partition</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">partitions</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">parallel_backend</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">init_kwds_generator</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">results_l</span> <span class="o">=</span> <span class="n">par</span><span class="p">(</span><span class="n">f</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">pnum</span><span class="p">,</span> <span class="n">endog</span><span class="p">,</span> <span class="n">exog</span><span class="p">,</span> <span class="n">fit_kwds</span><span class="p">)</span>
+                            <span class="k">for</span> <span class="n">pnum</span><span class="p">,</span> <span class="p">(</span><span class="n">endog</span><span class="p">,</span> <span class="n">exog</span><span class="p">)</span>
+                            <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">data_generator</span><span class="p">))</span>
+
+        <span class="k">elif</span> <span class="n">parallel_backend</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">init_kwds_generator</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">with</span> <span class="n">parallel_backend</span><span class="p">:</span>
+                <span class="n">results_l</span> <span class="o">=</span> <span class="n">par</span><span class="p">(</span><span class="n">f</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">pnum</span><span class="p">,</span> <span class="n">endog</span><span class="p">,</span> <span class="n">exog</span><span class="p">,</span> <span class="n">fit_kwds</span><span class="p">)</span>
+                                <span class="k">for</span> <span class="n">pnum</span><span class="p">,</span> <span class="p">(</span><span class="n">endog</span><span class="p">,</span> <span class="n">exog</span><span class="p">)</span>
+                                <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">data_generator</span><span class="p">))</span>
+
+        <span class="k">elif</span> <span class="n">parallel_backend</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">init_kwds_generator</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">tup_gen</span> <span class="o">=</span> <span class="nb">enumerate</span><span class="p">(</span><span class="nb">zip</span><span class="p">(</span><span class="n">data_generator</span><span class="p">,</span> <span class="n">init_kwds_generator</span><span class="p">))</span>
+            <span class="n">results_l</span> <span class="o">=</span> <span class="n">par</span><span class="p">(</span><span class="n">f</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">pnum</span><span class="p">,</span> <span class="n">endog</span><span class="p">,</span> <span class="n">exog</span><span class="p">,</span> <span class="n">fit_kwds</span><span class="p">,</span> <span class="n">init_kwds</span><span class="p">)</span>
+                            <span class="k">for</span> <span class="n">pnum</span><span class="p">,</span> <span class="p">((</span><span class="n">endog</span><span class="p">,</span> <span class="n">exog</span><span class="p">),</span> <span class="n">init_kwds</span><span class="p">)</span>
+                            <span class="ow">in</span> <span class="n">tup_gen</span><span class="p">)</span>
+
+        <span class="k">elif</span> <span class="n">parallel_backend</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">init_kwds_generator</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">tup_gen</span> <span class="o">=</span> <span class="nb">enumerate</span><span class="p">(</span><span class="nb">zip</span><span class="p">(</span><span class="n">data_generator</span><span class="p">,</span> <span class="n">init_kwds_generator</span><span class="p">))</span>
+            <span class="k">with</span> <span class="n">parallel_backend</span><span class="p">:</span>
+                <span class="n">results_l</span> <span class="o">=</span> <span class="n">par</span><span class="p">(</span><span class="n">f</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">pnum</span><span class="p">,</span> <span class="n">endog</span><span class="p">,</span> <span class="n">exog</span><span class="p">,</span> <span class="n">fit_kwds</span><span class="p">,</span> <span class="n">init_kwds</span><span class="p">)</span>
+                                <span class="k">for</span> <span class="n">pnum</span><span class="p">,</span> <span class="p">((</span><span class="n">endog</span><span class="p">,</span> <span class="n">exog</span><span class="p">),</span> <span class="n">init_kwds</span><span class="p">)</span>
+                                <span class="ow">in</span> <span class="n">tup_gen</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">results_l</span></div></div>
+
+
+<div class="viewcode-block" id="DistributedResults"><a class="viewcode-back" href="../../../generated/statsmodels.base.distributed_estimation.DistributedResults.html#statsmodels.base.distributed_estimation.DistributedResults">[docs]</a><span class="k">class</span> <span class="nc">DistributedResults</span><span class="p">(</span><span class="n">LikelihoodModelResults</span><span class="p">):</span>
+
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Class to contain model results</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    model : class instance</span>
+<span class="sd">        class instance for model used for distributed data,</span>
+<span class="sd">        this particular instance uses fake data and is really</span>
+<span class="sd">        only to allow use of methods like predict.</span>
+<span class="sd">    params : array</span>
+<span class="sd">        parameter estimates from the fit model.</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">params</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">DistributedResults</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">params</span><span class="p">)</span>
+
+<div class="viewcode-block" id="DistributedResults.predict"><a class="viewcode-back" href="../../../generated/statsmodels.base.distributed_estimation.DistributedResults.predict.html#statsmodels.base.distributed_estimation.DistributedResults.predict">[docs]</a>    <span class="k">def</span> <span class="nf">predict</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">exog</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Calls self.model.predict for the provided exog.  See</span>
+<span class="sd">        Results.predict.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        exog : array-like NOT optional</span>
+<span class="sd">            The values for which we want to predict, unlike standard</span>
+<span class="sd">            predict this is NOT optional since the data in self.model</span>
+<span class="sd">            is fake.</span>
+<span class="sd">        args, kwargs :</span>
+<span class="sd">            Some models can take additional arguments or keywords, see the</span>
+<span class="sd">            predict method of the model for the details.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">            prediction : ndarray, pandas.Series or pandas.DataFrame</span>
+<span class="sd">            See self.model.predict</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">predict</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">params</span><span class="p">,</span> <span class="n">exog</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span></div></div>
+</pre></div>
+
+
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../../../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" />
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer" role="contentinfo">
+        &#169; Copyright 2009-2018, Josef Perktold, Skipper Seabold, Jonathan Taylor, statsmodels-developers.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 2.2.1.
+    </div>
+  </body>
+</html>

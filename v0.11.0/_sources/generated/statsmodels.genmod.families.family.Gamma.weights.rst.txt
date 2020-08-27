@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.genmod.families.family.Gamma.weights
+================================================
+
+.. currentmodule:: statsmodels.genmod.families.family
+
+.. automethod:: Gamma.weights

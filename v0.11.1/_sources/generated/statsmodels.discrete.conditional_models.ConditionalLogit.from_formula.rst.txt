@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.discrete.conditional\_models.ConditionalLogit.from\_formula
+=======================================================================
+
+.. currentmodule:: statsmodels.discrete.conditional_models
+
+.. automethod:: ConditionalLogit.from_formula

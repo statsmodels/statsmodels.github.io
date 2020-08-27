@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.regression.linear\_model.RegressionResults.wald\_test\_terms
+========================================================================
+
+.. currentmodule:: statsmodels.regression.linear_model
+
+.. automethod:: RegressionResults.wald_test_terms

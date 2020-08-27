@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.regression.linear\_model.RegressionResults.save
+===========================================================
+
+.. currentmodule:: statsmodels.regression.linear_model
+
+.. automethod:: RegressionResults.save

@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.genmod.families.family.Family.starting\_mu
+======================================================
+
+.. currentmodule:: statsmodels.genmod.families.family
+
+.. automethod:: Family.starting_mu

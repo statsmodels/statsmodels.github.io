@@ -1,0 +1,489 @@
+
+
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta charset="utf-8" />
+    <title>statsmodels.tools.numdiff &#8212; statsmodels v0.10.1 documentation</title>
+    <link rel="stylesheet" href="../../../_static/nature.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css" />
+    <script type="text/javascript" id="documentation_options" data-url_root="../../../" src="../../../_static/documentation_options.js"></script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <script type="text/javascript" src="../../../_static/language_data.js"></script>
+    <script async="async" type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/latest.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="shortcut icon" href="../../../_static/statsmodels_hybi_favico.ico"/>
+    <link rel="author" title="About these documents" href="../../../about.html" />
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+<link rel="stylesheet" href="../../../_static/examples.css" type="text/css" />
+<link rel="stylesheet" href="../../../_static/facebox.css" type="text/css" />
+<script type="text/javascript" src="../../../_static/scripts.js">
+</script>
+<script type="text/javascript" src="../../../_static/facebox.js">
+</script>
+<script type="text/javascript">
+$.facebox.settings.closeImage = "../../../_static/closelabel.png"
+$.facebox.settings.loadingImage = "../../../_static/loading.gif"
+</script>
+
+<script>
+$(document).ready(function() {
+  $.getJSON("../../../../versions.json", function(versions) {
+    var dropdown = document.createElement("div");
+    dropdown.className = "dropdown";
+    var button = document.createElement("button");
+    button.className = "dropbtn";
+    button.innerHTML = "Other Versions";
+    var content = document.createElement("div");
+    content.className = "dropdown-content";
+    dropdown.appendChild(button);
+    dropdown.appendChild(content);
+    $(".header").prepend(dropdown);
+    for (var i = 0; i < versions.length; i++) {
+      if (versions[i].substring(0, 1) == "v") {
+        versions[i] = [versions[i], versions[i].substring(1)];
+      } else {
+        versions[i] = [versions[i], versions[i]];
+      };
+    };
+    for (var i = 0; i < versions.length; i++) {
+      var a = document.createElement("a");
+      a.innerHTML = versions[i][1];
+      a.href = "../../../../" + versions[i][0] + "/index.html";
+      a.title = versions[i][1];
+      $(".dropdown-content").append(a);
+    };
+  });
+});
+</script>
+
+
+  </head><body>
+<div class="headerwrap">
+    <div class = "header">
+        
+        <a href = "../../../index.html">
+<img src="../../../_static/statsmodels_hybi_banner.png" alt="Logo"
+    style="padding-left: 15px"/></a>
+        
+    </div>
+</div>
+
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+<li><a href ="../../../install.html">Install</a></li> &nbsp;|&nbsp;
+<li><a href="https://groups.google.com/forum/?hl=en#!forum/pystatsmodels">Support</a></li> &nbsp;|&nbsp;
+<li><a href="https://github.com/statsmodels/statsmodels/issues">Bugs</a></li> &nbsp;|&nbsp;
+<li><a href="../../../dev/index.html">Develop</a></li> &nbsp;|&nbsp;
+<li><a href="../../../examples/index.html">Examples</a></li> &nbsp;|&nbsp;
+<li><a href="../../../faq.html">FAQ</a></li> &nbsp;|&nbsp;
+
+          <li class="nav-item nav-item-1"><a href="../../index.html" accesskey="U">Module code</a> |</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+
+
+
+
+  <h1>Source code for statsmodels.tools.numdiff</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;numerical differentiation function, gradient, Jacobian, and Hessian</span>
+
+<span class="sd">Author : josef-pkt</span>
+<span class="sd">License : BSD</span>
+
+<span class="sd">Notes</span>
+<span class="sd">-----</span>
+<span class="sd">These are simple forward differentiation, so that we have them available</span>
+<span class="sd">without dependencies.</span>
+
+<span class="sd">* Jacobian should be faster than numdifftools because it doesn&#39;t use loop over</span>
+<span class="sd">  observations.</span>
+<span class="sd">* numerical precision will vary and depend on the choice of stepsizes</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="c1"># TODO:</span>
+<span class="c1"># * some cleanup</span>
+<span class="c1"># * check numerical accuracy (and bugs) with numdifftools and analytical</span>
+<span class="c1">#   derivatives</span>
+<span class="c1">#   - linear least squares case: (hess - 2*X&#39;X) is 1e-8 or so</span>
+<span class="c1">#   - gradient and Hessian agree with numdifftools when evaluated away from</span>
+<span class="c1">#     minimum</span>
+<span class="c1">#   - forward gradient, Jacobian evaluated at minimum is inaccurate, centered</span>
+<span class="c1">#     (+/- epsilon) is ok</span>
+<span class="c1"># * dot product of Jacobian is different from Hessian, either wrong example or</span>
+<span class="c1">#   a bug (unlikely), or a real difference</span>
+<span class="c1">#</span>
+<span class="c1">#</span>
+<span class="c1"># What are the conditions that Jacobian dotproduct and Hessian are the same?</span>
+<span class="c1">#</span>
+<span class="c1"># See also:</span>
+<span class="c1">#</span>
+<span class="c1"># BHHH: Greene p481 17.4.6,  MLE Jacobian = d loglike / d beta , where loglike</span>
+<span class="c1"># is vector for each observation</span>
+<span class="c1">#    see also example 17.4 when J&#39;J is very different from Hessian</span>
+<span class="c1">#    also does it hold only at the minimum, what&#39;s relationship to covariance</span>
+<span class="c1">#    of Jacobian matrix</span>
+<span class="c1"># http://projects.scipy.org/scipy/ticket/1157</span>
+<span class="c1"># http://en.wikipedia.org/wiki/Levenberg%E2%80%93Marquardt_algorithm</span>
+<span class="c1">#    objective: sum((y-f(beta,x)**2),   Jacobian = d f/d beta</span>
+<span class="c1">#    and not d objective/d beta as in MLE Greene</span>
+<span class="c1">#    similar: http://crsouza.blogspot.com/2009/11/neural-network-learning-by-levenberg_18.html#hessian</span>
+<span class="c1">#</span>
+<span class="c1"># in example: if J = d x*beta / d beta then J&#39;J == X&#39;X</span>
+<span class="c1">#    similar to http://en.wikipedia.org/wiki/Levenberg%E2%80%93Marquardt_algorithm</span>
+<span class="kn">from</span> <span class="nn">__future__</span> <span class="k">import</span> <span class="n">print_function</span>
+<span class="kn">from</span> <span class="nn">statsmodels.compat.python</span> <span class="k">import</span> <span class="nb">range</span>
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+
+<span class="c1"># NOTE: we only do double precision internally so far</span>
+<span class="n">EPS</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">MachAr</span><span class="p">()</span><span class="o">.</span><span class="n">eps</span>
+
+<span class="n">_hessian_docs</span> <span class="o">=</span> <span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">    Calculate Hessian with finite difference derivative approximation</span>
+
+<span class="s2">    Parameters</span>
+<span class="s2">    ----------</span>
+<span class="s2">    x : array_like</span>
+<span class="s2">       value at which function derivative is evaluated</span>
+<span class="s2">    f : function</span>
+<span class="s2">       function of one array f(x, `*args`, `**kwargs`)</span>
+<span class="s2">    epsilon : float or array-like, optional</span>
+<span class="s2">       Stepsize used, if None, then stepsize is automatically chosen</span>
+<span class="s2">       according to EPS**(1/</span><span class="si">%(scale)s</span><span class="s2">)*x.</span>
+<span class="s2">    args : tuple</span>
+<span class="s2">        Arguments for function `f`.</span>
+<span class="s2">    kwargs : dict</span>
+<span class="s2">        Keyword arguments for function `f`.</span>
+<span class="s2">    </span><span class="si">%(extra_params)s</span><span class="s2"></span>
+
+<span class="s2">    Returns</span>
+<span class="s2">    -------</span>
+<span class="s2">    hess : ndarray</span>
+<span class="s2">       array of partial second derivatives, Hessian</span>
+<span class="s2">    </span><span class="si">%(extra_returns)s</span><span class="s2"></span>
+
+<span class="s2">    Notes</span>
+<span class="s2">    -----</span>
+<span class="s2">    Equation (</span><span class="si">%(equation_number)s</span><span class="s2">) in Ridout. Computes the Hessian as::</span>
+
+<span class="s2">      </span><span class="si">%(equation)s</span><span class="s2"></span>
+
+<span class="s2">    where e[j] is a vector with element j == 1 and the rest are zero and</span>
+<span class="s2">    d[i] is epsilon[i].</span>
+
+<span class="s2">    References</span>
+<span class="s2">    ----------:</span>
+
+<span class="s2">    Ridout, M.S. (2009) Statistical applications of the complex-step method</span>
+<span class="s2">        of numerical differentiation. The American Statistician, 63, 66-74</span>
+<span class="s2">&quot;&quot;&quot;</span>
+
+
+<span class="k">def</span> <span class="nf">_get_epsilon</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">s</span><span class="p">,</span> <span class="n">epsilon</span><span class="p">,</span> <span class="n">n</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">epsilon</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">h</span> <span class="o">=</span> <span class="n">EPS</span><span class="o">**</span><span class="p">(</span><span class="mf">1.</span> <span class="o">/</span> <span class="n">s</span><span class="p">)</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">x</span><span class="p">),</span> <span class="mf">0.1</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">isscalar</span><span class="p">(</span><span class="n">epsilon</span><span class="p">):</span>
+            <span class="n">h</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">(</span><span class="n">n</span><span class="p">)</span>
+            <span class="n">h</span><span class="o">.</span><span class="n">fill</span><span class="p">(</span><span class="n">epsilon</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>  <span class="c1"># pragma : no cover</span>
+            <span class="n">h</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">epsilon</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">h</span><span class="o">.</span><span class="n">shape</span> <span class="o">!=</span> <span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;If h is not a scalar it must have the same&quot;</span>
+                                 <span class="s2">&quot; shape as x.&quot;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">h</span>
+
+
+<div class="viewcode-block" id="approx_fprime"><a class="viewcode-back" href="../../../generated/statsmodels.tools.numdiff.approx_fprime.html#statsmodels.tools.numdiff.approx_fprime">[docs]</a><span class="k">def</span> <span class="nf">approx_fprime</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">f</span><span class="p">,</span> <span class="n">epsilon</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="p">(),</span> <span class="n">kwargs</span><span class="o">=</span><span class="p">{},</span> <span class="n">centered</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">    Gradient of function, or Jacobian if function f returns 1d array</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    x : array</span>
+<span class="sd">        parameters at which the derivative is evaluated</span>
+<span class="sd">    f : function</span>
+<span class="sd">        `f(*((x,)+args), **kwargs)` returning either one value or 1d array</span>
+<span class="sd">    epsilon : float, optional</span>
+<span class="sd">        Stepsize, if None, optimal stepsize is used. This is EPS**(1/2)*x for</span>
+<span class="sd">        `centered` == False and EPS**(1/3)*x for `centered` == True.</span>
+<span class="sd">    args : tuple</span>
+<span class="sd">        Tuple of additional arguments for function `f`.</span>
+<span class="sd">    kwargs : dict</span>
+<span class="sd">        Dictionary of additional keyword arguments for function `f`.</span>
+<span class="sd">    centered : bool</span>
+<span class="sd">        Whether central difference should be returned. If not, does forward</span>
+<span class="sd">        differencing.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    grad : array</span>
+<span class="sd">        gradient or Jacobian</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    If f returns a 1d array, it returns a Jacobian. If a 2d array is returned</span>
+<span class="sd">    by f (e.g., with a value for each observation), it returns a 3d array</span>
+<span class="sd">    with the Jacobian of each observation with shape xk x nobs x xk. I.e.,</span>
+<span class="sd">    the Jacobian of the first observation would be [:, 0, :]</span>
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="n">n</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+    <span class="c1"># TODO:  add scaled stepsize</span>
+    <span class="n">f0</span> <span class="o">=</span> <span class="n">f</span><span class="p">(</span><span class="o">*</span><span class="p">((</span><span class="n">x</span><span class="p">,)</span><span class="o">+</span><span class="n">args</span><span class="p">),</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+    <span class="n">dim</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">atleast_1d</span><span class="p">(</span><span class="n">f0</span><span class="p">)</span><span class="o">.</span><span class="n">shape</span>  <span class="c1"># it could be a scalar</span>
+    <span class="n">grad</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n</span><span class="p">,)</span> <span class="o">+</span> <span class="n">dim</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">promote_types</span><span class="p">(</span><span class="nb">float</span><span class="p">,</span> <span class="n">x</span><span class="o">.</span><span class="n">dtype</span><span class="p">))</span>
+    <span class="n">ei</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n</span><span class="p">,),</span> <span class="nb">float</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">centered</span><span class="p">:</span>
+        <span class="n">epsilon</span> <span class="o">=</span> <span class="n">_get_epsilon</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="n">epsilon</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n</span><span class="p">):</span>
+            <span class="n">ei</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="n">epsilon</span><span class="p">[</span><span class="n">k</span><span class="p">]</span>
+            <span class="n">grad</span><span class="p">[</span><span class="n">k</span><span class="p">,</span> <span class="p">:]</span> <span class="o">=</span> <span class="p">(</span><span class="n">f</span><span class="p">(</span><span class="o">*</span><span class="p">((</span><span class="n">x</span><span class="o">+</span><span class="n">ei</span><span class="p">,)</span> <span class="o">+</span> <span class="n">args</span><span class="p">),</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-</span> <span class="n">f0</span><span class="p">)</span><span class="o">/</span><span class="n">epsilon</span><span class="p">[</span><span class="n">k</span><span class="p">]</span>
+            <span class="n">ei</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.0</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">epsilon</span> <span class="o">=</span> <span class="n">_get_epsilon</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="n">epsilon</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span> <span class="o">/</span> <span class="mf">2.</span>
+        <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">x</span><span class="p">)):</span>
+            <span class="n">ei</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="n">epsilon</span><span class="p">[</span><span class="n">k</span><span class="p">]</span>
+            <span class="n">grad</span><span class="p">[</span><span class="n">k</span><span class="p">,</span> <span class="p">:]</span> <span class="o">=</span> <span class="p">(</span><span class="n">f</span><span class="p">(</span><span class="o">*</span><span class="p">((</span><span class="n">x</span><span class="o">+</span><span class="n">ei</span><span class="p">,)</span><span class="o">+</span><span class="n">args</span><span class="p">),</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-</span>
+                          <span class="n">f</span><span class="p">(</span><span class="o">*</span><span class="p">((</span><span class="n">x</span><span class="o">-</span><span class="n">ei</span><span class="p">,)</span><span class="o">+</span><span class="n">args</span><span class="p">),</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">))</span><span class="o">/</span><span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">epsilon</span><span class="p">[</span><span class="n">k</span><span class="p">])</span>
+            <span class="n">ei</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.0</span>
+    <span class="k">return</span> <span class="n">grad</span><span class="o">.</span><span class="n">squeeze</span><span class="p">()</span><span class="o">.</span><span class="n">T</span></div>
+
+
+<div class="viewcode-block" id="approx_fprime_cs"><a class="viewcode-back" href="../../../generated/statsmodels.tools.numdiff.approx_fprime_cs.html#statsmodels.tools.numdiff.approx_fprime_cs">[docs]</a><span class="k">def</span> <span class="nf">approx_fprime_cs</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">f</span><span class="p">,</span> <span class="n">epsilon</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="p">(),</span> <span class="n">kwargs</span><span class="o">=</span><span class="p">{}):</span>
+    <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">    Calculate gradient or Jacobian with complex step derivative approximation</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    x : array</span>
+<span class="sd">        parameters at which the derivative is evaluated</span>
+<span class="sd">    f : function</span>
+<span class="sd">        `f(*((x,)+args), **kwargs)` returning either one value or 1d array</span>
+<span class="sd">    epsilon : float, optional</span>
+<span class="sd">        Stepsize, if None, optimal stepsize is used. Optimal step-size is</span>
+<span class="sd">        EPS*x. See note.</span>
+<span class="sd">    args : tuple</span>
+<span class="sd">        Tuple of additional arguments for function `f`.</span>
+<span class="sd">    kwargs : dict</span>
+<span class="sd">        Dictionary of additional keyword arguments for function `f`.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    partials : ndarray</span>
+<span class="sd">       array of partial derivatives, Gradient or Jacobian</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    The complex-step derivative has truncation error O(epsilon**2), so</span>
+<span class="sd">    truncation error can be eliminated by choosing epsilon to be very small.</span>
+<span class="sd">    The complex-step derivative avoids the problem of round-off error with</span>
+<span class="sd">    small epsilon because there is no subtraction.</span>
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="c1"># From Guilherme P. de Freitas, numpy mailing list</span>
+    <span class="c1"># May 04 2010 thread &quot;Improvement of performance&quot;</span>
+    <span class="c1"># http://mail.scipy.org/pipermail/numpy-discussion/2010-May/050250.html</span>
+    <span class="n">n</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+    <span class="n">epsilon</span> <span class="o">=</span> <span class="n">_get_epsilon</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">epsilon</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span>
+    <span class="n">increments</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">identity</span><span class="p">(</span><span class="n">n</span><span class="p">)</span> <span class="o">*</span> <span class="mi">1</span><span class="n">j</span> <span class="o">*</span> <span class="n">epsilon</span>
+    <span class="c1"># TODO: see if this can be vectorized, but usually dim is small</span>
+    <span class="n">partials</span> <span class="o">=</span> <span class="p">[</span><span class="n">f</span><span class="p">(</span><span class="n">x</span><span class="o">+</span><span class="n">ih</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span><span class="o">.</span><span class="n">imag</span> <span class="o">/</span> <span class="n">epsilon</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+                <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">ih</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">increments</span><span class="p">)]</span>
+    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">partials</span><span class="p">)</span><span class="o">.</span><span class="n">T</span></div>
+
+
+<div class="viewcode-block" id="approx_hess_cs"><a class="viewcode-back" href="../../../generated/statsmodels.tools.numdiff.approx_hess_cs.html#statsmodels.tools.numdiff.approx_hess_cs">[docs]</a><span class="k">def</span> <span class="nf">approx_hess_cs</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">f</span><span class="p">,</span> <span class="n">epsilon</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="p">(),</span> <span class="n">kwargs</span><span class="o">=</span><span class="p">{}):</span>
+    <span class="sd">&#39;&#39;&#39;Calculate Hessian with complex-step derivative approximation</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    x : array_like</span>
+<span class="sd">       value at which function derivative is evaluated</span>
+<span class="sd">    f : function</span>
+<span class="sd">       function of one array f(x)</span>
+<span class="sd">    epsilon : float</span>
+<span class="sd">       stepsize, if None, then stepsize is automatically chosen</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    hess : ndarray</span>
+<span class="sd">       array of partial second derivatives, Hessian</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    based on equation 10 in</span>
+<span class="sd">    M. S. RIDOUT: Statistical Applications of the Complex-step Method</span>
+<span class="sd">    of Numerical Differentiation, University of Kent, Canterbury, Kent, U.K.</span>
+
+<span class="sd">    The stepsize is the same for the complex and the finite difference part.</span>
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="c1"># TODO: might want to consider lowering the step for pure derivatives</span>
+    <span class="n">n</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+    <span class="n">h</span> <span class="o">=</span> <span class="n">_get_epsilon</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="n">epsilon</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span>
+    <span class="n">ee</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">diag</span><span class="p">(</span><span class="n">h</span><span class="p">)</span>
+    <span class="n">hess</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">outer</span><span class="p">(</span><span class="n">h</span><span class="p">,</span> <span class="n">h</span><span class="p">)</span>
+
+    <span class="n">n</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">n</span><span class="p">):</span>
+            <span class="n">hess</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">f</span><span class="p">(</span><span class="o">*</span><span class="p">((</span><span class="n">x</span> <span class="o">+</span> <span class="mi">1</span><span class="n">j</span><span class="o">*</span><span class="n">ee</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="p">:]</span> <span class="o">+</span> <span class="n">ee</span><span class="p">[</span><span class="n">j</span><span class="p">,</span> <span class="p">:],)</span> <span class="o">+</span> <span class="n">args</span><span class="p">),</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+                          <span class="o">-</span> <span class="n">f</span><span class="p">(</span><span class="o">*</span><span class="p">((</span><span class="n">x</span> <span class="o">+</span> <span class="mi">1</span><span class="n">j</span><span class="o">*</span><span class="n">ee</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="p">:]</span> <span class="o">-</span> <span class="n">ee</span><span class="p">[</span><span class="n">j</span><span class="p">,</span> <span class="p">:],)</span><span class="o">+</span><span class="n">args</span><span class="p">),</span>
+                              <span class="o">**</span><span class="n">kwargs</span><span class="p">))</span><span class="o">.</span><span class="n">imag</span><span class="o">/</span><span class="mf">2.</span><span class="o">/</span><span class="n">hess</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="n">j</span><span class="p">]</span>
+            <span class="n">hess</span><span class="p">[</span><span class="n">j</span><span class="p">,</span> <span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">hess</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="n">j</span><span class="p">]</span>
+
+    <span class="k">return</span> <span class="n">hess</span></div>
+
+
+<div class="viewcode-block" id="approx_hess1"><a class="viewcode-back" href="../../../generated/statsmodels.tools.numdiff.approx_hess1.html#statsmodels.tools.numdiff.approx_hess1">[docs]</a><span class="k">def</span> <span class="nf">approx_hess1</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">f</span><span class="p">,</span> <span class="n">epsilon</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="p">(),</span> <span class="n">kwargs</span><span class="o">=</span><span class="p">{},</span> <span class="n">return_grad</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+    <span class="n">n</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+    <span class="n">h</span> <span class="o">=</span> <span class="n">_get_epsilon</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="n">epsilon</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span>
+    <span class="n">ee</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">diag</span><span class="p">(</span><span class="n">h</span><span class="p">)</span>
+
+    <span class="n">f0</span> <span class="o">=</span> <span class="n">f</span><span class="p">(</span><span class="o">*</span><span class="p">((</span><span class="n">x</span><span class="p">,)</span><span class="o">+</span><span class="n">args</span><span class="p">),</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+    <span class="c1"># Compute forward step</span>
+    <span class="n">g</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">n</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n</span><span class="p">):</span>
+        <span class="n">g</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">f</span><span class="p">(</span><span class="o">*</span><span class="p">((</span><span class="n">x</span><span class="o">+</span><span class="n">ee</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="p">:],)</span><span class="o">+</span><span class="n">args</span><span class="p">),</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+    <span class="n">hess</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">outer</span><span class="p">(</span><span class="n">h</span><span class="p">,</span> <span class="n">h</span><span class="p">)</span>  <span class="c1"># this is now epsilon**2</span>
+    <span class="c1"># Compute &quot;double&quot; forward step</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">n</span><span class="p">):</span>
+            <span class="n">hess</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">f</span><span class="p">(</span><span class="o">*</span><span class="p">((</span><span class="n">x</span> <span class="o">+</span> <span class="n">ee</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="p">:]</span> <span class="o">+</span> <span class="n">ee</span><span class="p">[</span><span class="n">j</span><span class="p">,</span> <span class="p">:],)</span> <span class="o">+</span> <span class="n">args</span><span class="p">),</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-</span>
+                          <span class="n">g</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">-</span> <span class="n">g</span><span class="p">[</span><span class="n">j</span><span class="p">]</span> <span class="o">+</span> <span class="n">f0</span><span class="p">)</span><span class="o">/</span><span class="n">hess</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="n">j</span><span class="p">]</span>
+            <span class="n">hess</span><span class="p">[</span><span class="n">j</span><span class="p">,</span> <span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">hess</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="n">j</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">return_grad</span><span class="p">:</span>
+        <span class="n">grad</span> <span class="o">=</span> <span class="p">(</span><span class="n">g</span> <span class="o">-</span> <span class="n">f0</span><span class="p">)</span><span class="o">/</span><span class="n">h</span>
+        <span class="k">return</span> <span class="n">hess</span><span class="p">,</span> <span class="n">grad</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">hess</span></div>
+
+<span class="n">approx_hess1</span><span class="o">.</span><span class="vm">__doc__</span> <span class="o">=</span> <span class="n">_hessian_docs</span> <span class="o">%</span> <span class="nb">dict</span><span class="p">(</span><span class="n">scale</span><span class="o">=</span><span class="s2">&quot;3&quot;</span><span class="p">,</span>
+<span class="n">extra_params</span><span class="o">=</span><span class="s2">&quot;&quot;&quot;return_grad : bool</span>
+<span class="s2">        Whether or not to also return the gradient</span>
+<span class="s2">&quot;&quot;&quot;</span><span class="p">,</span>
+<span class="n">extra_returns</span><span class="o">=</span><span class="s2">&quot;&quot;&quot;grad : nparray</span>
+<span class="s2">        Gradient if return_grad == True</span>
+<span class="s2">&quot;&quot;&quot;</span><span class="p">,</span>
+<span class="n">equation_number</span><span class="o">=</span><span class="s2">&quot;7&quot;</span><span class="p">,</span>
+<span class="n">equation</span><span class="o">=</span><span class="s2">&quot;&quot;&quot;1/(d_j*d_k) * ((f(x + d[j]*e[j] + d[k]*e[k]) - f(x + d[j]*e[j])))</span>
+<span class="s2">&quot;&quot;&quot;</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="approx_hess2"><a class="viewcode-back" href="../../../generated/statsmodels.tools.numdiff.approx_hess2.html#statsmodels.tools.numdiff.approx_hess2">[docs]</a><span class="k">def</span> <span class="nf">approx_hess2</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">f</span><span class="p">,</span> <span class="n">epsilon</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="p">(),</span> <span class="n">kwargs</span><span class="o">=</span><span class="p">{},</span> <span class="n">return_grad</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+    <span class="c1">#</span>
+    <span class="n">n</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+    <span class="c1"># NOTE: ridout suggesting using eps**(1/4)*theta</span>
+    <span class="n">h</span> <span class="o">=</span> <span class="n">_get_epsilon</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="n">epsilon</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span>
+    <span class="n">ee</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">diag</span><span class="p">(</span><span class="n">h</span><span class="p">)</span>
+    <span class="n">f0</span> <span class="o">=</span> <span class="n">f</span><span class="p">(</span><span class="o">*</span><span class="p">((</span><span class="n">x</span><span class="p">,)</span><span class="o">+</span><span class="n">args</span><span class="p">),</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+    <span class="c1"># Compute forward step</span>
+    <span class="n">g</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">n</span><span class="p">)</span>
+    <span class="n">gg</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">n</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n</span><span class="p">):</span>
+        <span class="n">g</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">f</span><span class="p">(</span><span class="o">*</span><span class="p">((</span><span class="n">x</span><span class="o">+</span><span class="n">ee</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="p">:],)</span><span class="o">+</span><span class="n">args</span><span class="p">),</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="n">gg</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">f</span><span class="p">(</span><span class="o">*</span><span class="p">((</span><span class="n">x</span><span class="o">-</span><span class="n">ee</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="p">:],)</span><span class="o">+</span><span class="n">args</span><span class="p">),</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+    <span class="n">hess</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">outer</span><span class="p">(</span><span class="n">h</span><span class="p">,</span> <span class="n">h</span><span class="p">)</span>  <span class="c1"># this is now epsilon**2</span>
+    <span class="c1"># Compute &quot;double&quot; forward step</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">n</span><span class="p">):</span>
+            <span class="n">hess</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">f</span><span class="p">(</span><span class="o">*</span><span class="p">((</span><span class="n">x</span> <span class="o">+</span> <span class="n">ee</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="p">:]</span> <span class="o">+</span> <span class="n">ee</span><span class="p">[</span><span class="n">j</span><span class="p">,</span> <span class="p">:],)</span> <span class="o">+</span> <span class="n">args</span><span class="p">),</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-</span>
+                          <span class="n">g</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">-</span> <span class="n">g</span><span class="p">[</span><span class="n">j</span><span class="p">]</span> <span class="o">+</span> <span class="n">f0</span> <span class="o">+</span>
+                          <span class="n">f</span><span class="p">(</span><span class="o">*</span><span class="p">((</span><span class="n">x</span> <span class="o">-</span> <span class="n">ee</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="p">:]</span> <span class="o">-</span> <span class="n">ee</span><span class="p">[</span><span class="n">j</span><span class="p">,</span> <span class="p">:],)</span> <span class="o">+</span> <span class="n">args</span><span class="p">),</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-</span>
+                          <span class="n">gg</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">-</span> <span class="n">gg</span><span class="p">[</span><span class="n">j</span><span class="p">]</span> <span class="o">+</span> <span class="n">f0</span><span class="p">)</span><span class="o">/</span><span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">hess</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="n">j</span><span class="p">])</span>
+            <span class="n">hess</span><span class="p">[</span><span class="n">j</span><span class="p">,</span> <span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">hess</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="n">j</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">return_grad</span><span class="p">:</span>
+        <span class="n">grad</span> <span class="o">=</span> <span class="p">(</span><span class="n">g</span> <span class="o">-</span> <span class="n">f0</span><span class="p">)</span><span class="o">/</span><span class="n">h</span>
+        <span class="k">return</span> <span class="n">hess</span><span class="p">,</span> <span class="n">grad</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">hess</span></div>
+
+
+<span class="n">approx_hess2</span><span class="o">.</span><span class="vm">__doc__</span> <span class="o">=</span> <span class="n">_hessian_docs</span> <span class="o">%</span> <span class="nb">dict</span><span class="p">(</span><span class="n">scale</span><span class="o">=</span><span class="s2">&quot;3&quot;</span><span class="p">,</span>
+<span class="n">extra_params</span><span class="o">=</span><span class="s2">&quot;&quot;&quot;return_grad : bool</span>
+<span class="s2">        Whether or not to also return the gradient</span>
+<span class="s2">&quot;&quot;&quot;</span><span class="p">,</span>
+<span class="n">extra_returns</span><span class="o">=</span><span class="s2">&quot;&quot;&quot;grad : nparray</span>
+<span class="s2">        Gradient if return_grad == True</span>
+<span class="s2">&quot;&quot;&quot;</span><span class="p">,</span>
+<span class="n">equation_number</span><span class="o">=</span><span class="s2">&quot;8&quot;</span><span class="p">,</span>
+<span class="n">equation</span> <span class="o">=</span> <span class="s2">&quot;&quot;&quot;1/(2*d_j*d_k) * ((f(x + d[j]*e[j] + d[k]*e[k]) - f(x + d[j]*e[j])) -</span>
+<span class="s2">                 (f(x + d[k]*e[k]) - f(x)) +</span>
+<span class="s2">                 (f(x - d[j]*e[j] - d[k]*e[k]) - f(x + d[j]*e[j])) -</span>
+<span class="s2">                 (f(x - d[k]*e[k]) - f(x)))</span>
+<span class="s2">&quot;&quot;&quot;</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="approx_hess3"><a class="viewcode-back" href="../../../generated/statsmodels.tools.numdiff.approx_hess3.html#statsmodels.tools.numdiff.approx_hess3">[docs]</a><span class="k">def</span> <span class="nf">approx_hess3</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">f</span><span class="p">,</span> <span class="n">epsilon</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="p">(),</span> <span class="n">kwargs</span><span class="o">=</span><span class="p">{}):</span>
+    <span class="n">n</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+    <span class="n">h</span> <span class="o">=</span> <span class="n">_get_epsilon</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="n">epsilon</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span>
+    <span class="n">ee</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">diag</span><span class="p">(</span><span class="n">h</span><span class="p">)</span>
+    <span class="n">hess</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">outer</span><span class="p">(</span><span class="n">h</span><span class="p">,</span><span class="n">h</span><span class="p">)</span>
+
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">n</span><span class="p">):</span>
+            <span class="n">hess</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">f</span><span class="p">(</span><span class="o">*</span><span class="p">((</span><span class="n">x</span> <span class="o">+</span> <span class="n">ee</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="p">:]</span> <span class="o">+</span> <span class="n">ee</span><span class="p">[</span><span class="n">j</span><span class="p">,</span> <span class="p">:],)</span> <span class="o">+</span> <span class="n">args</span><span class="p">),</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+                          <span class="o">-</span> <span class="n">f</span><span class="p">(</span><span class="o">*</span><span class="p">((</span><span class="n">x</span> <span class="o">+</span> <span class="n">ee</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="p">:]</span> <span class="o">-</span> <span class="n">ee</span><span class="p">[</span><span class="n">j</span><span class="p">,</span> <span class="p">:],)</span> <span class="o">+</span> <span class="n">args</span><span class="p">),</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+                          <span class="o">-</span> <span class="p">(</span><span class="n">f</span><span class="p">(</span><span class="o">*</span><span class="p">((</span><span class="n">x</span> <span class="o">-</span> <span class="n">ee</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="p">:]</span> <span class="o">+</span> <span class="n">ee</span><span class="p">[</span><span class="n">j</span><span class="p">,</span> <span class="p">:],)</span> <span class="o">+</span> <span class="n">args</span><span class="p">),</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+                          <span class="o">-</span> <span class="n">f</span><span class="p">(</span><span class="o">*</span><span class="p">((</span><span class="n">x</span> <span class="o">-</span> <span class="n">ee</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="p">:]</span> <span class="o">-</span> <span class="n">ee</span><span class="p">[</span><span class="n">j</span><span class="p">,</span> <span class="p">:],)</span> <span class="o">+</span> <span class="n">args</span><span class="p">),</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">))</span>
+                          <span class="p">)</span><span class="o">/</span><span class="p">(</span><span class="mf">4.</span><span class="o">*</span><span class="n">hess</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="n">j</span><span class="p">])</span>
+            <span class="n">hess</span><span class="p">[</span><span class="n">j</span><span class="p">,</span> <span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">hess</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="n">j</span><span class="p">]</span>
+    <span class="k">return</span> <span class="n">hess</span></div>
+
+<span class="n">approx_hess3</span><span class="o">.</span><span class="vm">__doc__</span> <span class="o">=</span> <span class="n">_hessian_docs</span> <span class="o">%</span> <span class="nb">dict</span><span class="p">(</span><span class="n">scale</span><span class="o">=</span><span class="s2">&quot;4&quot;</span><span class="p">,</span> <span class="n">extra_params</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">,</span>
+                                            <span class="n">extra_returns</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">,</span>
+                                            <span class="n">equation_number</span><span class="o">=</span><span class="s2">&quot;9&quot;</span><span class="p">,</span>
+<span class="n">equation</span> <span class="o">=</span> <span class="s2">&quot;&quot;&quot;1/(4*d_j*d_k) * ((f(x + d[j]*e[j] + d[k]*e[k]) - f(x + d[j]*e[j]</span>
+<span class="s2">                                                     - d[k]*e[k])) -</span>
+<span class="s2">                 (f(x - d[j]*e[j] + d[k]*e[k]) - f(x - d[j]*e[j]</span>
+<span class="s2">                                                     - d[k]*e[k]))&quot;&quot;&quot;</span><span class="p">)</span>
+<span class="n">approx_hess</span> <span class="o">=</span> <span class="n">approx_hess3</span>
+<span class="n">approx_hess</span><span class="o">.</span><span class="vm">__doc__</span> <span class="o">+=</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">    This is an alias for approx_hess3&quot;</span>
+</pre></div>
+
+
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../../../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" />
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer" role="contentinfo">
+        &#169; Copyright 2009-2018, Josef Perktold, Skipper Seabold, Jonathan Taylor, statsmodels-developers.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 2.1.2.
+    </div>
+  </body>
+</html>

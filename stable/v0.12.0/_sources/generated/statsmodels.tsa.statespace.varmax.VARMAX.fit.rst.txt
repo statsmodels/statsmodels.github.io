@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.tsa.statespace.varmax.VARMAX.fit
+============================================
+
+.. currentmodule:: statsmodels.tsa.statespace.varmax
+
+.. automethod:: VARMAX.fit

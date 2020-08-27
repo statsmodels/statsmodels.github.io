@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.iolib.table.SimpleTable.get\_colwidths
+==================================================
+
+.. currentmodule:: statsmodels.iolib.table
+
+.. automethod:: SimpleTable.get_colwidths

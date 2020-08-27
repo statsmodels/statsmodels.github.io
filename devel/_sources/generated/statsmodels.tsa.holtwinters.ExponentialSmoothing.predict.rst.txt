@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.tsa.holtwinters.ExponentialSmoothing.predict
+========================================================
+
+.. currentmodule:: statsmodels.tsa.holtwinters
+
+.. automethod:: ExponentialSmoothing.predict

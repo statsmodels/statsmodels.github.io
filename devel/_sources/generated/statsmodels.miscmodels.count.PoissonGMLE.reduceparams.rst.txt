@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.miscmodels.count.PoissonGMLE.reduceparams
+=====================================================
+
+.. currentmodule:: statsmodels.miscmodels.count
+
+.. automethod:: PoissonGMLE.reduceparams

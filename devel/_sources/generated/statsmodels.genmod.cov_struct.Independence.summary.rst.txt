@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.genmod.cov\_struct.Independence.summary
+===================================================
+
+.. currentmodule:: statsmodels.genmod.cov_struct
+
+.. automethod:: Independence.summary

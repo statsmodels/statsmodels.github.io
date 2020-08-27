@@ -1,0 +1,1161 @@
+
+
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta charset="utf-8" />
+    <title>statsmodels.gam.generalized_additive_model &#8212; statsmodels v0.10.2 documentation</title>
+    <link rel="stylesheet" href="../../../_static/nature.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css" />
+    <script type="text/javascript" id="documentation_options" data-url_root="../../../" src="../../../_static/documentation_options.js"></script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <script type="text/javascript" src="../../../_static/language_data.js"></script>
+    <script async="async" type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/latest.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="shortcut icon" href="../../../_static/statsmodels_hybi_favico.ico"/>
+    <link rel="author" title="About these documents" href="../../../about.html" />
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+<link rel="stylesheet" href="../../../_static/examples.css" type="text/css" />
+<link rel="stylesheet" href="../../../_static/facebox.css" type="text/css" />
+<script type="text/javascript" src="../../../_static/scripts.js">
+</script>
+<script type="text/javascript" src="../../../_static/facebox.js">
+</script>
+<script type="text/javascript">
+$.facebox.settings.closeImage = "../../../_static/closelabel.png"
+$.facebox.settings.loadingImage = "../../../_static/loading.gif"
+</script>
+
+<script>
+$(document).ready(function() {
+  $.getJSON("../../../../versions.json", function(versions) {
+    var dropdown = document.createElement("div");
+    dropdown.className = "dropdown";
+    var button = document.createElement("button");
+    button.className = "dropbtn";
+    button.innerHTML = "Other Versions";
+    var content = document.createElement("div");
+    content.className = "dropdown-content";
+    dropdown.appendChild(button);
+    dropdown.appendChild(content);
+    $(".header").prepend(dropdown);
+    for (var i = 0; i < versions.length; i++) {
+      if (versions[i].substring(0, 1) == "v") {
+        versions[i] = [versions[i], versions[i].substring(1)];
+      } else {
+        versions[i] = [versions[i], versions[i]];
+      };
+    };
+    for (var i = 0; i < versions.length; i++) {
+      var a = document.createElement("a");
+      a.innerHTML = versions[i][1];
+      a.href = "../../../../" + versions[i][0] + "/index.html";
+      a.title = versions[i][1];
+      $(".dropdown-content").append(a);
+    };
+  });
+});
+</script>
+
+
+  </head><body>
+<div class="headerwrap">
+    <div class = "header">
+        
+        <a href = "../../../index.html">
+<img src="../../../_static/statsmodels_hybi_banner.png" alt="Logo"
+    style="padding-left: 15px"/></a>
+        
+    </div>
+</div>
+
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+<li><a href ="../../../install.html">Install</a></li> &nbsp;|&nbsp;
+<li><a href="https://groups.google.com/forum/?hl=en#!forum/pystatsmodels">Support</a></li> &nbsp;|&nbsp;
+<li><a href="https://github.com/statsmodels/statsmodels/issues">Bugs</a></li> &nbsp;|&nbsp;
+<li><a href="../../../dev/index.html">Develop</a></li> &nbsp;|&nbsp;
+<li><a href="../../../examples/index.html">Examples</a></li> &nbsp;|&nbsp;
+<li><a href="../../../faq.html">FAQ</a></li> &nbsp;|&nbsp;
+
+          <li class="nav-item nav-item-1"><a href="../../index.html" accesskey="U">Module code</a> |</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+
+
+
+
+  <h1>Source code for statsmodels.gam.generalized_additive_model</h1><div class="highlight"><pre>
+<span></span><span class="c1"># -*- coding: utf-8 -*-</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Generalized Additive Models</span>
+
+<span class="sd">Author: Luca Puggini</span>
+<span class="sd">Author: Josef Perktold</span>
+
+<span class="sd">created on 08/07/2015</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">from</span> <span class="nn">__future__</span> <span class="k">import</span> <span class="n">division</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="kn">from</span> <span class="nn">collections.abc</span> <span class="k">import</span> <span class="n">Iterable</span>
+<span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span>  <span class="c1"># Python 2.7</span>
+    <span class="kn">from</span> <span class="nn">collections</span> <span class="k">import</span> <span class="n">Iterable</span>
+<span class="kn">import</span> <span class="nn">copy</span>  <span class="c1"># check if needed when dropping python 2.7</span>
+
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+<span class="kn">from</span> <span class="nn">scipy</span> <span class="k">import</span> <span class="n">optimize</span>
+<span class="kn">import</span> <span class="nn">pandas</span> <span class="k">as</span> <span class="nn">pd</span>
+
+<span class="kn">import</span> <span class="nn">statsmodels.base.wrapper</span> <span class="k">as</span> <span class="nn">wrap</span>
+
+<span class="kn">from</span> <span class="nn">statsmodels.discrete.discrete_model</span> <span class="k">import</span> <span class="n">Logit</span>
+<span class="kn">from</span> <span class="nn">statsmodels.genmod.generalized_linear_model</span> <span class="k">import</span> <span class="p">(</span>
+    <span class="n">GLM</span><span class="p">,</span> <span class="n">GLMResults</span><span class="p">,</span> <span class="n">GLMResultsWrapper</span><span class="p">,</span> <span class="n">_check_convergence</span><span class="p">)</span>
+<span class="kn">import</span> <span class="nn">statsmodels.regression.linear_model</span> <span class="k">as</span> <span class="nn">lm</span>
+<span class="c1"># import statsmodels.regression._tools as reg_tools  # TODO: use this for pirls</span>
+<span class="kn">from</span> <span class="nn">statsmodels.tools.sm_exceptions</span> <span class="k">import</span> <span class="p">(</span><span class="n">PerfectSeparationError</span><span class="p">,</span>
+                                             <span class="n">ValueWarning</span><span class="p">)</span>
+<span class="kn">from</span> <span class="nn">statsmodels.tools.decorators</span> <span class="k">import</span> <span class="n">cache_readonly</span>
+<span class="kn">from</span> <span class="nn">statsmodels.tools.data</span> <span class="k">import</span> <span class="n">_is_using_pandas</span>
+<span class="kn">from</span> <span class="nn">statsmodels.tools.linalg</span> <span class="k">import</span> <span class="n">matrix_sqrt</span>
+
+<span class="kn">from</span> <span class="nn">statsmodels.base._penalized</span> <span class="k">import</span> <span class="n">PenalizedMixin</span>
+<span class="kn">from</span> <span class="nn">statsmodels.gam.gam_penalties</span> <span class="k">import</span> <span class="n">MultivariateGamPenalty</span>
+<span class="kn">from</span> <span class="nn">statsmodels.gam.gam_cross_validation.gam_cross_validation</span> <span class="k">import</span> <span class="p">(</span>
+    <span class="n">MultivariateGAMCVPath</span><span class="p">)</span>
+<span class="kn">from</span> <span class="nn">statsmodels.gam.gam_cross_validation.cross_validators</span> <span class="k">import</span> <span class="n">KFold</span>
+
+
+<span class="k">def</span> <span class="nf">_transform_predict_exog</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">exog</span><span class="p">,</span> <span class="n">design_info</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;transform exog for predict using design_info</span>
+
+<span class="sd">    Note: this is copied from base.model.Results.predict and converted to</span>
+<span class="sd">    standalone function with additional options.</span>
+
+
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">is_pandas</span> <span class="o">=</span> <span class="n">_is_using_pandas</span><span class="p">(</span><span class="n">exog</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+
+    <span class="n">exog_index</span> <span class="o">=</span> <span class="n">exog</span><span class="o">.</span><span class="n">index</span> <span class="k">if</span> <span class="n">is_pandas</span> <span class="k">else</span> <span class="kc">None</span>
+
+    <span class="k">if</span> <span class="n">design_info</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">design_info</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">data</span><span class="p">,</span> <span class="s1">&#39;design_info&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">design_info</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="p">(</span><span class="n">exog</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">):</span>
+        <span class="kn">from</span> <span class="nn">patsy</span> <span class="k">import</span> <span class="n">dmatrix</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">exog</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">):</span>
+            <span class="c1"># we are guessing whether it should be column or row</span>
+            <span class="k">if</span> <span class="p">(</span><span class="nb">hasattr</span><span class="p">(</span><span class="n">exog</span><span class="p">,</span> <span class="s1">&#39;name&#39;</span><span class="p">)</span> <span class="ow">and</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">exog</span><span class="o">.</span><span class="n">name</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="ow">and</span>
+                    <span class="n">exog</span><span class="o">.</span><span class="n">name</span> <span class="ow">in</span> <span class="n">design_info</span><span class="o">.</span><span class="n">describe</span><span class="p">()):</span>
+                <span class="c1"># assume we need one column</span>
+                <span class="n">exog</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">exog</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="c1"># assume we need a row</span>
+                <span class="n">exog</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">exog</span><span class="p">)</span><span class="o">.</span><span class="n">T</span>
+        <span class="n">orig_exog_len</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">exog</span><span class="p">)</span>
+        <span class="n">is_dict</span> <span class="o">=</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">exog</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)</span>
+        <span class="n">exog</span> <span class="o">=</span> <span class="n">dmatrix</span><span class="p">(</span><span class="n">design_info</span><span class="p">,</span> <span class="n">exog</span><span class="p">,</span> <span class="n">return_type</span><span class="o">=</span><span class="s2">&quot;dataframe&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">orig_exog_len</span> <span class="o">&gt;</span> <span class="nb">len</span><span class="p">(</span><span class="n">exog</span><span class="p">)</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">is_dict</span><span class="p">:</span>
+            <span class="kn">import</span> <span class="nn">warnings</span>
+            <span class="k">if</span> <span class="n">exog_index</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="s1">&#39;nan values have been dropped&#39;</span><span class="p">,</span> <span class="n">ValueWarning</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">exog</span> <span class="o">=</span> <span class="n">exog</span><span class="o">.</span><span class="n">reindex</span><span class="p">(</span><span class="n">exog_index</span><span class="p">)</span>
+        <span class="n">exog_index</span> <span class="o">=</span> <span class="n">exog</span><span class="o">.</span><span class="n">index</span>
+
+    <span class="k">if</span> <span class="n">exog</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">exog</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">exog</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">exog</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">1</span> <span class="ow">and</span> <span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">exog</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">1</span> <span class="ow">or</span>
+                               <span class="n">model</span><span class="o">.</span><span class="n">exog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="mi">1</span><span class="p">):</span>
+            <span class="n">exog</span> <span class="o">=</span> <span class="n">exog</span><span class="p">[:,</span> <span class="kc">None</span><span class="p">]</span>
+        <span class="n">exog</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">atleast_2d</span><span class="p">(</span><span class="n">exog</span><span class="p">)</span>  <span class="c1"># needed in count model shape[1]</span>
+
+    <span class="k">return</span> <span class="n">exog</span><span class="p">,</span> <span class="n">exog_index</span>
+
+
+<div class="viewcode-block" id="GLMGamResults"><a class="viewcode-back" href="../../../generated/statsmodels.gam.generalized_additive_model.GLMGamResults.html#statsmodels.gam.generalized_additive_model.GLMGamResults">[docs]</a><span class="k">class</span> <span class="nc">GLMGamResults</span><span class="p">(</span><span class="n">GLMResults</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Results class for generalized additive models, GAM.</span>
+
+<span class="sd">    This inherits from GLMResults.</span>
+
+<span class="sd">    Warning: some inherited methods might not correctly take account of the</span>
+<span class="sd">    penalization</span>
+
+<span class="sd">    GLMGamResults inherits from GLMResults</span>
+<span class="sd">    All methods related to the loglikelihood function return the penalized</span>
+<span class="sd">    values.</span>
+
+<span class="sd">    Attributes</span>
+<span class="sd">    ----------</span>
+
+<span class="sd">    edf</span>
+<span class="sd">        list of effective degrees of freedom for each column of the design</span>
+<span class="sd">        matrix.</span>
+<span class="sd">    hat_matrix_diag</span>
+<span class="sd">        diagonal of hat matrix</span>
+<span class="sd">    gcv</span>
+<span class="sd">        generalized cross-validation criterion computed as</span>
+<span class="sd">        ``gcv = scale / (1. - hat_matrix_trace / self.nobs)**2``</span>
+<span class="sd">    cv</span>
+<span class="sd">        cross-validation criterion computed as</span>
+<span class="sd">        ``cv = ((resid_pearson / (1 - hat_matrix_diag))**2).sum() / nobs``</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    status: experimental</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">normalized_cov_params</span><span class="p">,</span> <span class="n">scale</span><span class="p">,</span> <span class="o">**</span><span class="n">kwds</span><span class="p">):</span>
+
+        <span class="c1"># this is a messy way to compute edf and update scale</span>
+        <span class="c1"># need several attributes to compute edf</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">model</span> <span class="o">=</span> <span class="n">model</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">params</span> <span class="o">=</span> <span class="n">params</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">normalized_cov_params</span> <span class="o">=</span> <span class="n">normalized_cov_params</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">scale</span> <span class="o">=</span> <span class="n">scale</span>
+        <span class="n">edf</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">edf</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">df_model</span> <span class="o">=</span> <span class="n">edf</span> <span class="o">-</span> <span class="mi">1</span>  <span class="c1"># assume constant</span>
+        <span class="c1"># need to use nobs or wnobs attribute</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">df_resid</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">endog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">-</span> <span class="n">edf</span>
+
+        <span class="c1"># we are setting the model df for the case when super is using it</span>
+        <span class="c1"># df in model will be incorrect state when alpha/pen_weight changes</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">df_model</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">df_model</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">df_resid</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">df_resid</span>
+        <span class="n">mu</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">fittedvalues</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">scale</span> <span class="o">=</span> <span class="n">scale</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">estimate_scale</span><span class="p">(</span><span class="n">mu</span><span class="p">)</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">GLMGamResults</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span>
+                                            <span class="n">normalized_cov_params</span><span class="p">,</span> <span class="n">scale</span><span class="p">,</span>
+                                            <span class="o">**</span><span class="n">kwds</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_tranform_predict_exog</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">exog</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">exog_smooth</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                               <span class="n">transform</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Transform original explanatory variables for prediction</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        exog : array_like, optional</span>
+<span class="sd">            The values for the linear explanatory variables.</span>
+<span class="sd">        exog_smooth : array_like</span>
+<span class="sd">            values for the variables in the smooth terms</span>
+<span class="sd">        transform : bool, optional</span>
+<span class="sd">            If transform is False, then ``exog`` is returned unchanged and</span>
+<span class="sd">            ``x`` is ignored. It is assumed that exog contains the full</span>
+<span class="sd">            design matrix for the predict observations.</span>
+<span class="sd">            If transform is True, then the basis representation of the smooth</span>
+<span class="sd">            term will be constructed from the provided ``x``.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        exog_transformed : ndarray</span>
+<span class="sd">            design matrix for the prediction</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">exog_index</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="n">transform</span> <span class="ow">is</span> <span class="kc">False</span><span class="p">:</span>
+            <span class="c1"># the following allows that either or both exog are not None</span>
+            <span class="k">if</span> <span class="n">exog_smooth</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="c1"># exog could be None or array</span>
+                <span class="n">ex</span> <span class="o">=</span> <span class="n">exog</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">exog</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                    <span class="n">ex</span> <span class="o">=</span> <span class="n">exog_smooth</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">ex</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">column_stack</span><span class="p">((</span><span class="n">exog</span><span class="p">,</span> <span class="n">exog_smooth</span><span class="p">))</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># transform exog_linear if needed</span>
+            <span class="k">if</span> <span class="n">exog</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="p">,</span> <span class="s1">&#39;design_info_linear&#39;</span><span class="p">):</span>
+                <span class="n">exog</span><span class="p">,</span> <span class="n">exog_index</span> <span class="o">=</span> <span class="n">_transform_predict_exog</span><span class="p">(</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="p">,</span> <span class="n">exog</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">design_info_linear</span><span class="p">)</span>
+
+            <span class="c1"># create smooth basis</span>
+            <span class="k">if</span> <span class="n">exog_smooth</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">ex_smooth</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">smoother</span><span class="o">.</span><span class="n">transform</span><span class="p">(</span><span class="n">exog_smooth</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">exog</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                    <span class="n">ex</span> <span class="o">=</span> <span class="n">ex_smooth</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="c1"># TODO: there might be problems is exog_smooth is 1-D</span>
+                    <span class="n">ex</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">column_stack</span><span class="p">((</span><span class="n">exog</span><span class="p">,</span> <span class="n">ex_smooth</span><span class="p">))</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">ex</span> <span class="o">=</span> <span class="n">exog</span>
+
+        <span class="k">return</span> <span class="n">ex</span><span class="p">,</span> <span class="n">exog_index</span>
+
+<div class="viewcode-block" id="GLMGamResults.predict"><a class="viewcode-back" href="../../../generated/statsmodels.gam.generalized_additive_model.GLMGamResults.predict.html#statsmodels.gam.generalized_additive_model.GLMGamResults.predict">[docs]</a>    <span class="k">def</span> <span class="nf">predict</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">exog</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">exog_smooth</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">transform</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;&quot;</span>
+<span class="sd">        compute prediction</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        exog : array_like, optional</span>
+<span class="sd">            The values for the linear explanatory variables</span>
+<span class="sd">        exog_smooth : array_like</span>
+<span class="sd">            values for the variables in the smooth terms</span>
+<span class="sd">        transform : bool, optional</span>
+<span class="sd">            If transform is True, then the basis representation of the smooth</span>
+<span class="sd">            term will be constructed from the provided ``exog``.</span>
+<span class="sd">        kwargs :</span>
+<span class="sd">            Some models can take additional arguments or keywords, see the</span>
+<span class="sd">            predict method of the model for the details.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        prediction : ndarray, pandas.Series or pandas.DataFrame</span>
+<span class="sd">            predicted values</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">ex</span><span class="p">,</span> <span class="n">exog_index</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_tranform_predict_exog</span><span class="p">(</span><span class="n">exog</span><span class="o">=</span><span class="n">exog</span><span class="p">,</span>
+                                                     <span class="n">exog_smooth</span><span class="o">=</span><span class="n">exog_smooth</span><span class="p">,</span>
+                                                     <span class="n">transform</span><span class="o">=</span><span class="n">transform</span><span class="p">)</span>
+        <span class="n">predict_results</span> <span class="o">=</span> <span class="nb">super</span><span class="p">(</span><span class="n">GLMGamResults</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">predict</span><span class="p">(</span><span class="n">ex</span><span class="p">,</span>
+                                                             <span class="n">transform</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+                                                             <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">exog_index</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span>
+                <span class="n">predict_results</span><span class="p">,</span> <span class="s1">&#39;predicted_values&#39;</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">predict_results</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">(</span><span class="n">predict_results</span><span class="p">,</span> <span class="n">index</span><span class="o">=</span><span class="n">exog_index</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">predict_results</span><span class="p">,</span> <span class="n">index</span><span class="o">=</span><span class="n">exog_index</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">predict_results</span></div>
+
+<div class="viewcode-block" id="GLMGamResults.get_prediction"><a class="viewcode-back" href="../../../generated/statsmodels.gam.generalized_additive_model.GLMGamResults.get_prediction.html#statsmodels.gam.generalized_additive_model.GLMGamResults.get_prediction">[docs]</a>    <span class="k">def</span> <span class="nf">get_prediction</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">exog</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">exog_smooth</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">transform</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+                       <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;compute prediction results</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        exog : array_like, optional</span>
+<span class="sd">            The values for which you want to predict.</span>
+<span class="sd">        exog_smooth : array_like</span>
+<span class="sd">            values for the variables in the smooth terms</span>
+<span class="sd">        transform : bool, optional</span>
+<span class="sd">            If transform is True, then the basis representation of the smooth</span>
+<span class="sd">            term will be constructed from the provided ``x``.</span>
+<span class="sd">        kwargs :</span>
+<span class="sd">            Some models can take additional arguments or keywords, see the</span>
+<span class="sd">            predict method of the model for the details.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        prediction_results : generalized_linear_model.PredictionResults</span>
+<span class="sd">            The prediction results instance contains prediction and prediction</span>
+<span class="sd">            variance and can on demand calculate confidence intervals and</span>
+<span class="sd">            summary tables for the prediction of the mean and of new</span>
+<span class="sd">            observations.</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">ex</span><span class="p">,</span> <span class="n">exog_index</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_tranform_predict_exog</span><span class="p">(</span><span class="n">exog</span><span class="o">=</span><span class="n">exog</span><span class="p">,</span>
+                                                     <span class="n">exog_smooth</span><span class="o">=</span><span class="n">exog_smooth</span><span class="p">,</span>
+                                                     <span class="n">transform</span><span class="o">=</span><span class="n">transform</span><span class="p">)</span>
+        <span class="k">return</span> <span class="nb">super</span><span class="p">(</span><span class="n">GLMGamResults</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">get_prediction</span><span class="p">(</span><span class="n">ex</span><span class="p">,</span> <span class="n">transform</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+                                                         <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="GLMGamResults.partial_values"><a class="viewcode-back" href="../../../generated/statsmodels.gam.generalized_additive_model.GLMGamResults.partial_values.html#statsmodels.gam.generalized_additive_model.GLMGamResults.partial_values">[docs]</a>    <span class="k">def</span> <span class="nf">partial_values</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">smooth_index</span><span class="p">,</span> <span class="n">include_constant</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;contribution of a smooth term to the linear prediction</span>
+
+<span class="sd">        Warning: This will be replaced by a predict method</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        smooth_index : int</span>
+<span class="sd">            index of the smooth term within list of smooth terms</span>
+<span class="sd">        include_constant : bool</span>
+<span class="sd">            If true, then the estimated intercept is added to the prediction</span>
+<span class="sd">            and its standard errors. This avoids that the confidence interval</span>
+<span class="sd">            has zero width at the imposed identification constraint, e.g.</span>
+<span class="sd">            either at a reference point or at the mean.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        predicted : nd_array</span>
+<span class="sd">            predicted value of linear term.</span>
+<span class="sd">            This is not the expected response if the link function is not</span>
+<span class="sd">            linear.</span>
+<span class="sd">        se_pred : nd_array</span>
+<span class="sd">            standard error of linear prediction</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">variable</span> <span class="o">=</span> <span class="n">smooth_index</span>
+        <span class="n">smoother</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">smoother</span>
+        <span class="n">mask</span> <span class="o">=</span> <span class="n">smoother</span><span class="o">.</span><span class="n">mask</span><span class="p">[</span><span class="n">variable</span><span class="p">]</span>
+
+        <span class="n">start_idx</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">k_exog_linear</span>
+        <span class="n">idx</span> <span class="o">=</span> <span class="n">start_idx</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">nonzero</span><span class="p">(</span><span class="n">mask</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+
+        <span class="c1"># smoother has only smooth parts, not exog_linear</span>
+        <span class="n">exog_part</span> <span class="o">=</span> <span class="n">smoother</span><span class="o">.</span><span class="n">basis</span><span class="p">[:,</span> <span class="n">mask</span><span class="p">]</span>
+
+        <span class="n">const_idx</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">const_idx</span>
+        <span class="k">if</span> <span class="n">include_constant</span> <span class="ow">and</span> <span class="n">const_idx</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(([</span><span class="n">const_idx</span><span class="p">],</span> <span class="n">idx</span><span class="p">))</span>
+            <span class="n">exog_part</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">exog</span><span class="p">[:,</span> <span class="n">idx</span><span class="p">]</span>
+
+        <span class="n">linpred</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">exog_part</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">params</span><span class="p">[</span><span class="n">idx</span><span class="p">])</span>
+        <span class="c1"># select the submatrix corresponding to a single variable</span>
+        <span class="n">partial_cov_params</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">cov_params</span><span class="p">(</span><span class="n">column</span><span class="o">=</span><span class="n">idx</span><span class="p">)</span>
+
+        <span class="n">covb</span> <span class="o">=</span> <span class="n">partial_cov_params</span>
+        <span class="n">var</span> <span class="o">=</span> <span class="p">(</span><span class="n">exog_part</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">covb</span><span class="p">,</span> <span class="n">exog_part</span><span class="o">.</span><span class="n">T</span><span class="p">)</span><span class="o">.</span><span class="n">T</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+        <span class="n">se</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">var</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">linpred</span><span class="p">,</span> <span class="n">se</span></div>
+
+<div class="viewcode-block" id="GLMGamResults.plot_partial"><a class="viewcode-back" href="../../../generated/statsmodels.gam.generalized_additive_model.GLMGamResults.plot_partial.html#statsmodels.gam.generalized_additive_model.GLMGamResults.plot_partial">[docs]</a>    <span class="k">def</span> <span class="nf">plot_partial</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">smooth_index</span><span class="p">,</span> <span class="n">plot_se</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">cpr</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+                     <span class="n">include_constant</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">ax</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;plot the contribution of a smooth term to the linear prediction</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        smooth_index : int</span>
+<span class="sd">            index of the smooth term within list of smooth terms</span>
+<span class="sd">        plot_se : book</span>
+<span class="sd">            If plot_se is true, then the confidence interval for the linear</span>
+<span class="sd">            prediction will be added to the plot.</span>
+<span class="sd">        cpr : bool</span>
+<span class="sd">            If cpr (component plus residual) is true, the a scatter plot of</span>
+<span class="sd">            the partial working residuals will be added to the plot.</span>
+<span class="sd">        include_constant : bool</span>
+<span class="sd">            If true, then the estimated intercept is added to the prediction</span>
+<span class="sd">            and its standard errors. This avoids that the confidence interval</span>
+<span class="sd">            has zero width at the imposed identification constraint, e.g.</span>
+<span class="sd">            either at a reference point or at the mean.</span>
+<span class="sd">        ax : None or matplotlib axis instance</span>
+<span class="sd">           If ax is not None, then the plot will be added to it.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        fig : matplotlib Figure instance</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="kn">from</span> <span class="nn">statsmodels.graphics.utils</span> <span class="k">import</span> <span class="n">_import_mpl</span><span class="p">,</span> <span class="n">create_mpl_ax</span>
+        <span class="n">_import_mpl</span><span class="p">()</span>
+
+        <span class="n">variable</span> <span class="o">=</span> <span class="n">smooth_index</span>
+        <span class="n">y_est</span><span class="p">,</span> <span class="n">se</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">partial_values</span><span class="p">(</span><span class="n">variable</span><span class="p">,</span>
+                                        <span class="n">include_constant</span><span class="o">=</span><span class="n">include_constant</span><span class="p">)</span>
+        <span class="n">smoother</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">smoother</span>
+        <span class="n">x</span> <span class="o">=</span> <span class="n">smoother</span><span class="o">.</span><span class="n">smoothers</span><span class="p">[</span><span class="n">variable</span><span class="p">]</span><span class="o">.</span><span class="n">x</span>
+        <span class="n">sort_index</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+        <span class="n">x</span> <span class="o">=</span> <span class="n">x</span><span class="p">[</span><span class="n">sort_index</span><span class="p">]</span>
+        <span class="n">y_est</span> <span class="o">=</span> <span class="n">y_est</span><span class="p">[</span><span class="n">sort_index</span><span class="p">]</span>
+        <span class="n">se</span> <span class="o">=</span> <span class="n">se</span><span class="p">[</span><span class="n">sort_index</span><span class="p">]</span>
+
+        <span class="n">fig</span><span class="p">,</span> <span class="n">ax</span> <span class="o">=</span> <span class="n">create_mpl_ax</span><span class="p">(</span><span class="n">ax</span><span class="p">)</span>
+        <span class="n">ax</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y_est</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="s1">&#39;blue&#39;</span><span class="p">,</span> <span class="n">lw</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">plot_se</span><span class="p">:</span>
+            <span class="n">ax</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y_est</span> <span class="o">+</span> <span class="mf">1.96</span> <span class="o">*</span> <span class="n">se</span><span class="p">,</span> <span class="s1">&#39;-&#39;</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="s1">&#39;blue&#39;</span><span class="p">)</span>
+            <span class="n">ax</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y_est</span> <span class="o">-</span> <span class="mf">1.96</span> <span class="o">*</span> <span class="n">se</span><span class="p">,</span> <span class="s1">&#39;-&#39;</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="s1">&#39;blue&#39;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">cpr</span><span class="p">:</span>
+            <span class="c1"># TODO: resid_response doesn&#39;t make sense with nonlinear link</span>
+            <span class="c1"># use resid_working ?</span>
+            <span class="n">cpr_</span> <span class="o">=</span> <span class="n">y_est</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">resid_working</span>
+            <span class="n">ax</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">cpr_</span><span class="p">,</span> <span class="s1">&#39;.&#39;</span><span class="p">,</span> <span class="n">lw</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+
+        <span class="n">ax</span><span class="o">.</span><span class="n">set_xlabel</span><span class="p">(</span><span class="n">smoother</span><span class="o">.</span><span class="n">smoothers</span><span class="p">[</span><span class="n">variable</span><span class="p">]</span><span class="o">.</span><span class="n">variable_name</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">fig</span></div>
+
+<div class="viewcode-block" id="GLMGamResults.test_significance"><a class="viewcode-back" href="../../../generated/statsmodels.gam.generalized_additive_model.GLMGamResults.test_significance.html#statsmodels.gam.generalized_additive_model.GLMGamResults.test_significance">[docs]</a>    <span class="k">def</span> <span class="nf">test_significance</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">smooth_index</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;hypothesis test that a smooth component is zero.</span>
+
+<span class="sd">        This calls `wald_test` to compute the hypothesis test, but uses</span>
+<span class="sd">        effective degrees of freedom.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        smooth_index : int</span>
+<span class="sd">            index of the smooth term within list of smooth terms</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        wald_test : ContrastResults instance</span>
+<span class="sd">            the results instance created by `wald_test`</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="n">variable</span> <span class="o">=</span> <span class="n">smooth_index</span>
+        <span class="n">smoother</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">smoother</span>
+        <span class="n">start_idx</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">k_exog_linear</span>
+
+        <span class="n">k_params</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">params</span><span class="p">)</span>
+        <span class="c1"># a bit messy, we need first index plus length of smooth term</span>
+        <span class="n">mask</span> <span class="o">=</span> <span class="n">smoother</span><span class="o">.</span><span class="n">mask</span><span class="p">[</span><span class="n">variable</span><span class="p">]</span>
+        <span class="n">k_constraints</span> <span class="o">=</span> <span class="n">mask</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
+        <span class="n">idx</span> <span class="o">=</span> <span class="n">start_idx</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">nonzero</span><span class="p">(</span><span class="n">mask</span><span class="p">)[</span><span class="mi">0</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">constraints</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="n">k_constraints</span><span class="p">,</span> <span class="n">k_params</span><span class="p">,</span> <span class="n">idx</span><span class="p">)</span>
+        <span class="n">df_constraints</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">edf</span><span class="p">[</span><span class="n">idx</span><span class="p">:</span> <span class="n">idx</span> <span class="o">+</span> <span class="n">k_constraints</span><span class="p">]</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
+
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">wald_test</span><span class="p">(</span><span class="n">constraints</span><span class="p">,</span> <span class="n">df_constraints</span><span class="o">=</span><span class="n">df_constraints</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="GLMGamResults.get_hat_matrix_diag"><a class="viewcode-back" href="../../../generated/statsmodels.gam.generalized_additive_model.GLMGamResults.get_hat_matrix_diag.html#statsmodels.gam.generalized_additive_model.GLMGamResults.get_hat_matrix_diag">[docs]</a>    <span class="k">def</span> <span class="nf">get_hat_matrix_diag</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">observed</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">_axis</span><span class="o">=</span><span class="mi">1</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Compute the diagonal of the hat matrix</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        observed : bool</span>
+<span class="sd">            If true, then observed hessian is used in the hat matrix</span>
+<span class="sd">            computation. If false, then the expected hessian is used.</span>
+<span class="sd">            In the case of a canonical link function both are the same.</span>
+<span class="sd">            This is only relevant for models that implement both observed</span>
+<span class="sd">            and expected Hessian, which is currently only GLM. Other</span>
+<span class="sd">            models only use the observed Hessian.</span>
+<span class="sd">        _axis : int</span>
+<span class="sd">            This is mainly for internal use. By default it returns the usual</span>
+<span class="sd">            diagonal of the hat matrix. If _axis is zero, then the result</span>
+<span class="sd">            corresponds to the effective degrees of freedom, ``edf`` for each</span>
+<span class="sd">            column of exog.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        hat_matrix_diag : ndarray</span>
+<span class="sd">            The diagonal of the hat matrix computed from the observed</span>
+<span class="sd">            or expected hessian.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">weights</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">hessian_factor</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">params</span><span class="p">,</span> <span class="n">scale</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">scale</span><span class="p">,</span>
+                                            <span class="n">observed</span><span class="o">=</span><span class="n">observed</span><span class="p">)</span>
+        <span class="n">wexog</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">weights</span><span class="p">)[:,</span> <span class="kc">None</span><span class="p">]</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">exog</span>
+
+        <span class="c1"># we can use inverse hessian directly instead of computing it from</span>
+        <span class="c1"># WLS/IRLS as in GLM</span>
+
+        <span class="c1"># TODO: does `normalized_cov_params * scale` work in all cases?</span>
+        <span class="c1"># this avoids recomputing hessian, check when used for other models.</span>
+        <span class="n">hess_inv</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">normalized_cov_params</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">scale</span>
+        <span class="c1"># this is in GLM equivalent to the more generic and direct</span>
+        <span class="c1"># hess_inv = np.linalg.inv(-self.model.hessian(self.params))</span>
+        <span class="n">hd</span> <span class="o">=</span> <span class="p">(</span><span class="n">wexog</span> <span class="o">*</span> <span class="n">hess_inv</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">wexog</span><span class="o">.</span><span class="n">T</span><span class="p">)</span><span class="o">.</span><span class="n">T</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="n">_axis</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">hd</span></div>
+
+<div class="viewcode-block" id="GLMGamResults.edf"><a class="viewcode-back" href="../../../generated/statsmodels.gam.generalized_additive_model.GLMGamResults.edf.html#statsmodels.gam.generalized_additive_model.GLMGamResults.edf">[docs]</a>    <span class="nd">@cache_readonly</span>
+    <span class="k">def</span> <span class="nf">edf</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_hat_matrix_diag</span><span class="p">(</span><span class="n">_axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="GLMGamResults.hat_matrix_trace"><a class="viewcode-back" href="../../../generated/statsmodels.gam.generalized_additive_model.GLMGamResults.hat_matrix_trace.html#statsmodels.gam.generalized_additive_model.GLMGamResults.hat_matrix_trace">[docs]</a>    <span class="nd">@cache_readonly</span>
+    <span class="k">def</span> <span class="nf">hat_matrix_trace</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">hat_matrix_diag</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span></div>
+
+<div class="viewcode-block" id="GLMGamResults.hat_matrix_diag"><a class="viewcode-back" href="../../../generated/statsmodels.gam.generalized_additive_model.GLMGamResults.hat_matrix_diag.html#statsmodels.gam.generalized_additive_model.GLMGamResults.hat_matrix_diag">[docs]</a>    <span class="nd">@cache_readonly</span>
+    <span class="k">def</span> <span class="nf">hat_matrix_diag</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_hat_matrix_diag</span><span class="p">(</span><span class="n">observed</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="GLMGamResults.gcv"><a class="viewcode-back" href="../../../generated/statsmodels.gam.generalized_additive_model.GLMGamResults.gcv.html#statsmodels.gam.generalized_additive_model.GLMGamResults.gcv">[docs]</a>    <span class="nd">@cache_readonly</span>
+    <span class="k">def</span> <span class="nf">gcv</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">scale</span> <span class="o">/</span> <span class="p">(</span><span class="mf">1.</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">hat_matrix_trace</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span><span class="p">)</span><span class="o">**</span><span class="mi">2</span></div>
+
+<div class="viewcode-block" id="GLMGamResults.cv"><a class="viewcode-back" href="../../../generated/statsmodels.gam.generalized_additive_model.GLMGamResults.cv.html#statsmodels.gam.generalized_additive_model.GLMGamResults.cv">[docs]</a>    <span class="nd">@cache_readonly</span>
+    <span class="k">def</span> <span class="nf">cv</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">cv_</span> <span class="o">=</span> <span class="p">((</span><span class="bp">self</span><span class="o">.</span><span class="n">resid_pearson</span> <span class="o">/</span> <span class="p">(</span><span class="mf">1.</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">hat_matrix_diag</span><span class="p">))</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
+        <span class="n">cv_</span> <span class="o">/=</span> <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span>
+        <span class="k">return</span> <span class="n">cv_</span></div></div>
+
+
+<span class="k">class</span> <span class="nc">GLMGamResultsWrapper</span><span class="p">(</span><span class="n">GLMResultsWrapper</span><span class="p">):</span>
+    <span class="k">pass</span>
+
+
+<span class="n">wrap</span><span class="o">.</span><span class="n">populate_wrapper</span><span class="p">(</span><span class="n">GLMGamResultsWrapper</span><span class="p">,</span> <span class="n">GLMGamResults</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="GLMGam"><a class="viewcode-back" href="../../../generated/statsmodels.gam.generalized_additive_model.GLMGam.html#statsmodels.gam.generalized_additive_model.GLMGam">[docs]</a><span class="k">class</span> <span class="nc">GLMGam</span><span class="p">(</span><span class="n">PenalizedMixin</span><span class="p">,</span> <span class="n">GLM</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Model class for generalized additive models, GAM.</span>
+
+<span class="sd">    This inherits from `GLM`.</span>
+
+<span class="sd">    Warning: Not all inherited methods might take correctly account of the</span>
+<span class="sd">    penalization. Not all options including offset and exposure have been</span>
+<span class="sd">    verified yet.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    endog : array_like</span>
+<span class="sd">    exog : array_like or None</span>
+<span class="sd">        This explanatory variables are treated as linear. The model in this</span>
+<span class="sd">        case is a partial linear model.</span>
+<span class="sd">    smoother : instance of additive smoother class such as Bsplines or</span>
+<span class="sd">        CyclicCubicSplines</span>
+<span class="sd">        This is a required keyword argument</span>
+<span class="sd">    alpha : list of floats</span>
+<span class="sd">        penalization weights for smooth terms. The length of the list needs</span>
+<span class="sd">        to be the same as the number of smooth terms in the ``smoother``</span>
+<span class="sd">    family : instance of GLM family</span>
+<span class="sd">        see GLM</span>
+<span class="sd">    offset : None or array_like</span>
+<span class="sd">        see GLM</span>
+<span class="sd">    exposure : None or array_like</span>
+<span class="sd">        see GLM</span>
+<span class="sd">    missing : &#39;none&#39;</span>
+<span class="sd">        missing value handling is not supported in this class</span>
+<span class="sd">    kwargs :</span>
+<span class="sd">        extra keywords are used in call to the super classes.</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    Status: experimental. This has full unit test coverage for the core</span>
+<span class="sd">    results with Gaussian and Poisson (without offset and exposure). Other</span>
+<span class="sd">    options and additional results might not be correctly supported yet.</span>
+<span class="sd">    (Binomial with counts, i.e. with n_trials, is most likely wrong in pirls.</span>
+<span class="sd">    User specified var or freq weights are most likely also not correct for</span>
+<span class="sd">    all results.)</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">_results_class</span> <span class="o">=</span> <span class="n">GLMGamResults</span>
+    <span class="n">_results_class_wrapper</span> <span class="o">=</span> <span class="n">GLMGamResultsWrapper</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">endog</span><span class="p">,</span> <span class="n">exog</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">smoother</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">family</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                 <span class="n">offset</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">exposure</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">missing</span><span class="o">=</span><span class="s1">&#39;none&#39;</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+
+        <span class="c1"># TODO: check usage of hasconst</span>
+        <span class="n">hasconst</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;hasconst&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+        <span class="n">xnames_linear</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">exog</span><span class="p">,</span> <span class="s1">&#39;design_info&#39;</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">design_info_linear</span> <span class="o">=</span> <span class="n">exog</span><span class="o">.</span><span class="n">design_info</span>
+            <span class="n">xnames_linear</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">design_info_linear</span><span class="o">.</span><span class="n">column_names</span>
+
+        <span class="n">is_pandas</span> <span class="o">=</span> <span class="n">_is_using_pandas</span><span class="p">(</span><span class="n">exog</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+
+        <span class="c1"># TODO: handle data is experimental, see #5469</span>
+        <span class="c1"># This is a bit wasteful because we need to `handle_data twice`</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">data_linear</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_handle_data</span><span class="p">(</span><span class="n">endog</span><span class="p">,</span> <span class="n">exog</span><span class="p">,</span> <span class="n">missing</span><span class="p">,</span> <span class="n">hasconst</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">xnames_linear</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">xnames_linear</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">data_linear</span><span class="o">.</span><span class="n">xnames</span>
+        <span class="k">if</span> <span class="n">exog</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">exog_linear</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">exog</span><span class="p">)</span>
+            <span class="n">k_exog_linear</span> <span class="o">=</span> <span class="n">exog_linear</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">exog_linear</span> <span class="o">=</span> <span class="kc">None</span>
+            <span class="n">k_exog_linear</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">k_exog_linear</span> <span class="o">=</span> <span class="n">k_exog_linear</span>
+        <span class="c1"># We need exog_linear for k-fold cross validation</span>
+        <span class="c1"># TODO: alternative is to take columns from combined exog</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">exog_linear</span> <span class="o">=</span> <span class="n">exog_linear</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">smoother</span> <span class="o">=</span> <span class="n">smoother</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">k_smooths</span> <span class="o">=</span> <span class="n">smoother</span><span class="o">.</span><span class="n">k_variables</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">alpha</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_check_alpha</span><span class="p">(</span><span class="n">alpha</span><span class="p">)</span>
+        <span class="n">penal</span> <span class="o">=</span> <span class="n">MultivariateGamPenalty</span><span class="p">(</span><span class="n">smoother</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">alpha</span><span class="p">,</span>
+                                       <span class="n">start_idx</span><span class="o">=</span><span class="n">k_exog_linear</span><span class="p">)</span>
+        <span class="n">kwargs</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s1">&#39;penal&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">exog_linear</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">exog</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">column_stack</span><span class="p">((</span><span class="n">exog_linear</span><span class="p">,</span> <span class="n">smoother</span><span class="o">.</span><span class="n">basis</span><span class="p">))</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">exog</span> <span class="o">=</span> <span class="n">smoother</span><span class="o">.</span><span class="n">basis</span>
+
+        <span class="c1"># TODO: check: xnames_linear will be None instead of empty list</span>
+        <span class="c1">#       if no exog_linear</span>
+        <span class="c1"># can smoother be empty ? I guess not allowed.</span>
+        <span class="k">if</span> <span class="n">xnames_linear</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">xnames_linear</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">xnames</span> <span class="o">=</span> <span class="n">xnames_linear</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">smoother</span><span class="o">.</span><span class="n">col_names</span>
+
+        <span class="k">if</span> <span class="n">is_pandas</span> <span class="ow">and</span> <span class="n">exog_linear</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="c1"># we a dataframe so we can get a PandasData instance for wrapping</span>
+            <span class="n">exog</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">exog</span><span class="p">,</span> <span class="n">index</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">data_linear</span><span class="o">.</span><span class="n">row_labels</span><span class="p">,</span>
+                                <span class="n">columns</span><span class="o">=</span><span class="n">xnames</span><span class="p">)</span>
+
+        <span class="nb">super</span><span class="p">(</span><span class="n">GLMGam</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">endog</span><span class="p">,</span> <span class="n">exog</span><span class="o">=</span><span class="n">exog</span><span class="p">,</span> <span class="n">family</span><span class="o">=</span><span class="n">family</span><span class="p">,</span>
+                                     <span class="n">offset</span><span class="o">=</span><span class="n">offset</span><span class="p">,</span> <span class="n">exposure</span><span class="o">=</span><span class="n">exposure</span><span class="p">,</span>
+                                     <span class="n">penal</span><span class="o">=</span><span class="n">penal</span><span class="p">,</span> <span class="n">missing</span><span class="o">=</span><span class="n">missing</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">is_pandas</span><span class="p">:</span>
+            <span class="c1"># set exog nanmes if not given by pandas DataFrame</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">exog_names</span><span class="p">[:]</span> <span class="o">=</span> <span class="n">xnames</span>
+
+        <span class="c1"># TODO: the generic data handling might attach the design_info from the</span>
+        <span class="c1">#       linear part, but this is incorrect for the full model and</span>
+        <span class="c1">#       causes problems in wald_test_terms</span>
+
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">,</span> <span class="s1">&#39;design_info&#39;</span><span class="p">):</span>
+            <span class="k">del</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">design_info</span>
+        <span class="c1"># formula also might be attached which causes problems in predict</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s1">&#39;formula&#39;</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">formula_linear</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">formula</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">formula</span> <span class="o">=</span> <span class="kc">None</span>
+            <span class="k">del</span> <span class="bp">self</span><span class="o">.</span><span class="n">formula</span>
+
+    <span class="k">def</span> <span class="nf">_check_alpha</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">alpha</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;check and convert alpha to required list format</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        alpha : scalar, list or array-like</span>
+<span class="sd">            penalization weight</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        alpha : list</span>
+<span class="sd">            penalization weight, list with length equal to the number of</span>
+<span class="sd">            smooth terms</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">alpha</span><span class="p">,</span> <span class="n">Iterable</span><span class="p">):</span>
+            <span class="n">alpha</span> <span class="o">=</span> <span class="p">[</span><span class="n">alpha</span><span class="p">]</span> <span class="o">*</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">smoother</span><span class="o">.</span><span class="n">smoothers</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">alpha</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+            <span class="c1"># we want alpha to be a list</span>
+            <span class="n">alpha</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">alpha</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">alpha</span>
+
+<div class="viewcode-block" id="GLMGam.fit"><a class="viewcode-back" href="../../../generated/statsmodels.gam.generalized_additive_model.GLMGam.fit.html#statsmodels.gam.generalized_additive_model.GLMGam.fit">[docs]</a>    <span class="k">def</span> <span class="nf">fit</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">start_params</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">maxiter</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s1">&#39;pirls&#39;</span><span class="p">,</span> <span class="n">tol</span><span class="o">=</span><span class="mf">1e-8</span><span class="p">,</span>
+            <span class="n">scale</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">cov_type</span><span class="o">=</span><span class="s1">&#39;nonrobust&#39;</span><span class="p">,</span> <span class="n">cov_kwds</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">use_t</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+            <span class="n">full_output</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">disp</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">max_start_irls</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;estimate parameters and create instance of GLMGamResults class</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        most parameters are the same as for GLM</span>
+<span class="sd">        method : optimization method</span>
+<span class="sd">            The special optimization method is &quot;pirls&quot; which uses a penalized</span>
+<span class="sd">            version of IRLS. Other methods are gradient optimizers as used in</span>
+<span class="sd">            base.model.LikelihoodModel.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        res : instance of wrapped GLMGamResults</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># TODO: temporary hack to remove attribute</span>
+        <span class="c1"># formula also might be attached which in inherited from_formula</span>
+        <span class="c1"># causes problems in predict</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s1">&#39;formula&#39;</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">formula_linear</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">formula</span>
+            <span class="k">del</span> <span class="bp">self</span><span class="o">.</span><span class="n">formula</span>
+
+        <span class="c1"># TODO: alpha not allowed yet, but is in `_fit_pirls`</span>
+        <span class="c1"># alpha = self._check_alpha()</span>
+
+        <span class="k">if</span> <span class="n">method</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;pirls&#39;</span><span class="p">,</span> <span class="s1">&#39;irls&#39;</span><span class="p">]:</span>
+            <span class="n">res</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_fit_pirls</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">alpha</span><span class="p">,</span> <span class="n">start_params</span><span class="o">=</span><span class="n">start_params</span><span class="p">,</span>
+                                  <span class="n">maxiter</span><span class="o">=</span><span class="n">maxiter</span><span class="p">,</span> <span class="n">tol</span><span class="o">=</span><span class="n">tol</span><span class="p">,</span> <span class="n">scale</span><span class="o">=</span><span class="n">scale</span><span class="p">,</span>
+                                  <span class="n">cov_type</span><span class="o">=</span><span class="n">cov_type</span><span class="p">,</span> <span class="n">cov_kwds</span><span class="o">=</span><span class="n">cov_kwds</span><span class="p">,</span>
+                                  <span class="n">use_t</span><span class="o">=</span><span class="n">use_t</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">max_start_irls</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="ow">and</span> <span class="p">(</span><span class="n">start_params</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">):</span>
+                <span class="n">res</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_fit_pirls</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">alpha</span><span class="p">,</span> <span class="n">start_params</span><span class="o">=</span><span class="n">start_params</span><span class="p">,</span>
+                                      <span class="n">maxiter</span><span class="o">=</span><span class="n">max_start_irls</span><span class="p">,</span> <span class="n">tol</span><span class="o">=</span><span class="n">tol</span><span class="p">,</span>
+                                      <span class="n">scale</span><span class="o">=</span><span class="n">scale</span><span class="p">,</span>
+                                      <span class="n">cov_type</span><span class="o">=</span><span class="n">cov_type</span><span class="p">,</span> <span class="n">cov_kwds</span><span class="o">=</span><span class="n">cov_kwds</span><span class="p">,</span>
+                                      <span class="n">use_t</span><span class="o">=</span><span class="n">use_t</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+                <span class="n">start_params</span> <span class="o">=</span> <span class="n">res</span><span class="o">.</span><span class="n">params</span>
+                <span class="k">del</span> <span class="n">res</span>
+            <span class="n">res</span> <span class="o">=</span> <span class="nb">super</span><span class="p">(</span><span class="n">GLMGam</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">start_params</span><span class="o">=</span><span class="n">start_params</span><span class="p">,</span>
+                                          <span class="n">maxiter</span><span class="o">=</span><span class="n">maxiter</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="n">method</span><span class="p">,</span>
+                                          <span class="n">tol</span><span class="o">=</span><span class="n">tol</span><span class="p">,</span> <span class="n">scale</span><span class="o">=</span><span class="n">scale</span><span class="p">,</span>
+                                          <span class="n">cov_type</span><span class="o">=</span><span class="n">cov_type</span><span class="p">,</span> <span class="n">cov_kwds</span><span class="o">=</span><span class="n">cov_kwds</span><span class="p">,</span>
+                                          <span class="n">use_t</span><span class="o">=</span><span class="n">use_t</span><span class="p">,</span>
+                                          <span class="n">full_output</span><span class="o">=</span><span class="n">full_output</span><span class="p">,</span> <span class="n">disp</span><span class="o">=</span><span class="n">disp</span><span class="p">,</span>
+                                          <span class="n">max_start_irls</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+                                          <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">res</span></div>
+
+    <span class="c1"># pag 165 4.3 # pag 136 PIRLS</span>
+    <span class="k">def</span> <span class="nf">_fit_pirls</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">alpha</span><span class="p">,</span> <span class="n">start_params</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">maxiter</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="n">tol</span><span class="o">=</span><span class="mf">1e-8</span><span class="p">,</span>
+                   <span class="n">scale</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">cov_type</span><span class="o">=</span><span class="s1">&#39;nonrobust&#39;</span><span class="p">,</span> <span class="n">cov_kwds</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">use_t</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                   <span class="n">weights</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;fit model with penalized reweighted least squares</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># TODO: this currently modifies several attributes</span>
+        <span class="c1"># self.scale, self.scaletype, self.mu, self.weights</span>
+        <span class="c1"># self.data_weights,</span>
+        <span class="c1"># and possibly self._offset_exposure</span>
+        <span class="c1"># several of those might not be necessary, e.g. mu and weights</span>
+
+        <span class="c1"># alpha = alpha * len(y) * self.scale / 100</span>
+        <span class="c1"># TODO: we need to rescale alpha</span>
+        <span class="n">endog</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">endog</span>
+        <span class="n">wlsexog</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">exog</span>  <span class="c1"># smoother.basis</span>
+        <span class="n">spl_s</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">penal</span><span class="o">.</span><span class="n">penalty_matrix</span><span class="p">(</span><span class="n">alpha</span><span class="o">=</span><span class="n">alpha</span><span class="p">)</span>
+
+        <span class="n">nobs</span><span class="p">,</span> <span class="n">n_columns</span> <span class="o">=</span> <span class="n">wlsexog</span><span class="o">.</span><span class="n">shape</span>
+
+        <span class="c1"># TODO what are these values?</span>
+        <span class="k">if</span> <span class="n">weights</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">data_weights</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">1.</span><span class="p">]</span> <span class="o">*</span> <span class="n">nobs</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">data_weights</span> <span class="o">=</span> <span class="n">weights</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s1">&#39;_offset_exposure&#39;</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_offset_exposure</span> <span class="o">=</span> <span class="mi">0</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">scaletype</span> <span class="o">=</span> <span class="n">scale</span>
+        <span class="c1"># TODO: check default scale types</span>
+        <span class="c1"># self.scaletype = &#39;dev&#39;</span>
+        <span class="c1"># during iteration</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">scale</span> <span class="o">=</span> <span class="mi">1</span>
+
+        <span class="k">if</span> <span class="n">start_params</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">mu</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">family</span><span class="o">.</span><span class="n">starting_mu</span><span class="p">(</span><span class="n">endog</span><span class="p">)</span>
+            <span class="n">lin_pred</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">family</span><span class="o">.</span><span class="n">predict</span><span class="p">(</span><span class="n">mu</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">lin_pred</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">wlsexog</span><span class="p">,</span> <span class="n">start_params</span><span class="p">)</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">_offset_exposure</span>
+            <span class="n">mu</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">family</span><span class="o">.</span><span class="n">fitted</span><span class="p">(</span><span class="n">lin_pred</span><span class="p">)</span>
+        <span class="n">dev</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">family</span><span class="o">.</span><span class="n">deviance</span><span class="p">(</span><span class="n">endog</span><span class="p">,</span> <span class="n">mu</span><span class="p">)</span>
+
+        <span class="n">history</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">params</span><span class="o">=</span><span class="p">[</span><span class="kc">None</span><span class="p">,</span> <span class="n">start_params</span><span class="p">],</span> <span class="n">deviance</span><span class="o">=</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">,</span> <span class="n">dev</span><span class="p">])</span>
+        <span class="n">converged</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="n">criterion</span> <span class="o">=</span> <span class="n">history</span><span class="p">[</span><span class="s1">&#39;deviance&#39;</span><span class="p">]</span>
+        <span class="c1"># This special case is used to get the likelihood for a specific</span>
+        <span class="c1"># params vector.</span>
+        <span class="k">if</span> <span class="n">maxiter</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">mu</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">family</span><span class="o">.</span><span class="n">fitted</span><span class="p">(</span><span class="n">lin_pred</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">scale</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">estimate_scale</span><span class="p">(</span><span class="n">mu</span><span class="p">)</span>
+            <span class="n">wls_results</span> <span class="o">=</span> <span class="n">lm</span><span class="o">.</span><span class="n">RegressionResults</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">start_params</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+            <span class="n">iteration</span> <span class="o">=</span> <span class="mi">0</span>
+
+        <span class="k">for</span> <span class="n">iteration</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">maxiter</span><span class="p">):</span>
+
+            <span class="c1"># TODO: is this equivalent to point 1 of page 136:</span>
+            <span class="c1"># w = 1 / (V(mu) * g&#39;(mu))  ?</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">weights</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">data_weights</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">family</span><span class="o">.</span><span class="n">weights</span><span class="p">(</span><span class="n">mu</span><span class="p">)</span>
+
+            <span class="c1"># TODO: is this equivalent to point 1 of page 136:</span>
+            <span class="c1"># z = g(mu)(y - mu) + X beta  ?</span>
+            <span class="n">wlsendog</span> <span class="o">=</span> <span class="p">(</span><span class="n">lin_pred</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">family</span><span class="o">.</span><span class="n">link</span><span class="o">.</span><span class="n">deriv</span><span class="p">(</span><span class="n">mu</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="n">endog</span> <span class="o">-</span> <span class="n">mu</span><span class="p">)</span>
+                        <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">_offset_exposure</span><span class="p">)</span>
+
+            <span class="c1"># this defines the augmented matrix point 2a on page 136</span>
+            <span class="n">wls_results</span> <span class="o">=</span> <span class="n">penalized_wls</span><span class="p">(</span><span class="n">wlsendog</span><span class="p">,</span> <span class="n">wlsexog</span><span class="p">,</span> <span class="n">spl_s</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">weights</span><span class="p">)</span>
+            <span class="n">lin_pred</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">wlsexog</span><span class="p">,</span> <span class="n">wls_results</span><span class="o">.</span><span class="n">params</span><span class="p">)</span><span class="o">.</span><span class="n">ravel</span><span class="p">()</span>
+            <span class="n">lin_pred</span> <span class="o">+=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_offset_exposure</span>
+            <span class="n">mu</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">family</span><span class="o">.</span><span class="n">fitted</span><span class="p">(</span><span class="n">lin_pred</span><span class="p">)</span>
+
+            <span class="c1"># We don&#39;t need to update scale in GLM/LEF models</span>
+            <span class="c1"># We might need it in dispersion models.</span>
+            <span class="c1"># self.scale = self.estimate_scale(mu)</span>
+            <span class="n">history</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_update_history</span><span class="p">(</span><span class="n">wls_results</span><span class="p">,</span> <span class="n">mu</span><span class="p">,</span> <span class="n">history</span><span class="p">)</span>
+
+            <span class="k">if</span> <span class="n">endog</span><span class="o">.</span><span class="n">squeeze</span><span class="p">()</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">1</span> <span class="ow">and</span> <span class="n">np</span><span class="o">.</span><span class="n">allclose</span><span class="p">(</span><span class="n">mu</span> <span class="o">-</span> <span class="n">endog</span><span class="p">,</span> <span class="mi">0</span><span class="p">):</span>
+                <span class="n">msg</span> <span class="o">=</span> <span class="s2">&quot;Perfect separation detected, results not available&quot;</span>
+                <span class="k">raise</span> <span class="n">PerfectSeparationError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+
+            <span class="c1"># TODO need atol, rtol</span>
+            <span class="c1"># args of _check_convergence: (criterion, iteration, atol, rtol)</span>
+            <span class="n">converged</span> <span class="o">=</span> <span class="n">_check_convergence</span><span class="p">(</span><span class="n">criterion</span><span class="p">,</span> <span class="n">iteration</span><span class="p">,</span> <span class="n">tol</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">converged</span><span class="p">:</span>
+                <span class="k">break</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">mu</span> <span class="o">=</span> <span class="n">mu</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">scale</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">estimate_scale</span><span class="p">(</span><span class="n">mu</span><span class="p">)</span>
+        <span class="n">glm_results</span> <span class="o">=</span> <span class="n">GLMGamResults</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">wls_results</span><span class="o">.</span><span class="n">params</span><span class="p">,</span>
+                                    <span class="n">wls_results</span><span class="o">.</span><span class="n">normalized_cov_params</span><span class="p">,</span>
+                                    <span class="bp">self</span><span class="o">.</span><span class="n">scale</span><span class="p">,</span>
+                                    <span class="n">cov_type</span><span class="o">=</span><span class="n">cov_type</span><span class="p">,</span> <span class="n">cov_kwds</span><span class="o">=</span><span class="n">cov_kwds</span><span class="p">,</span>
+                                    <span class="n">use_t</span><span class="o">=</span><span class="n">use_t</span><span class="p">)</span>
+
+        <span class="n">glm_results</span><span class="o">.</span><span class="n">method</span> <span class="o">=</span> <span class="s2">&quot;PIRLS&quot;</span>
+        <span class="n">history</span><span class="p">[</span><span class="s1">&#39;iteration&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">iteration</span> <span class="o">+</span> <span class="mi">1</span>
+        <span class="n">glm_results</span><span class="o">.</span><span class="n">fit_history</span> <span class="o">=</span> <span class="n">history</span>
+        <span class="n">glm_results</span><span class="o">.</span><span class="n">converged</span> <span class="o">=</span> <span class="n">converged</span>
+
+        <span class="k">return</span> <span class="n">GLMGamResultsWrapper</span><span class="p">(</span><span class="n">glm_results</span><span class="p">)</span>
+
+<div class="viewcode-block" id="GLMGam.select_penweight"><a class="viewcode-back" href="../../../generated/statsmodels.gam.generalized_additive_model.GLMGam.select_penweight.html#statsmodels.gam.generalized_additive_model.GLMGam.select_penweight">[docs]</a>    <span class="k">def</span> <span class="nf">select_penweight</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">criterion</span><span class="o">=</span><span class="s1">&#39;aic&#39;</span><span class="p">,</span> <span class="n">start_params</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                         <span class="n">start_model_params</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                         <span class="n">method</span><span class="o">=</span><span class="s1">&#39;basinhopping&#39;</span><span class="p">,</span> <span class="o">**</span><span class="n">fit_kwds</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;find alpha by minimizing results criterion</span>
+
+<span class="sd">        The objective for the minimization can be results attributes like</span>
+<span class="sd">        ``gcv``, ``aic`` or ``bic`` where the latter are based on effective</span>
+<span class="sd">        degrees of freedom.</span>
+
+<span class="sd">        Warning: In many case the optimization might converge to a local</span>
+<span class="sd">        optimum or near optimum. Different start_params or using a global</span>
+<span class="sd">        optimizer is recommended, default is basinhopping.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        criterion=&#39;aic&#39;</span>
+<span class="sd">            name of results attribute to be minimized.</span>
+<span class="sd">            Default is &#39;aic&#39;, other options are &#39;gcv&#39;, &#39;cv&#39; or &#39;bic&#39;.</span>
+<span class="sd">        start_params : None or array</span>
+<span class="sd">            starting parameters for alpha in the penalization weight</span>
+<span class="sd">            minimization. The parameters are internally exponentiated and</span>
+<span class="sd">            the minimization is with respect to ``exp(alpha)``</span>
+<span class="sd">        start_model_params : None or array</span>
+<span class="sd">            starting parameter for the ``model._fit_pirls``.</span>
+<span class="sd">        method : &#39;basinhopping&#39;, &#39;nm&#39; or &#39;minimize&#39;</span>
+<span class="sd">            &#39;basinhopping&#39; and &#39;nm&#39; directly use the underlying scipy.optimize</span>
+<span class="sd">            functions `basinhopping` and `fmin`. &#39;minimize&#39; provides access</span>
+<span class="sd">            to the high level interface, `scipy.optimize.minimize`.</span>
+<span class="sd">        fit_kwds : keyword arguments</span>
+<span class="sd">            additional keyword arguments will be used in the call to the</span>
+<span class="sd">            scipy optimizer. Which keywords are supported depends on the</span>
+<span class="sd">            scipy optimization function.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        alpha : ndarray</span>
+<span class="sd">            penalization parameter found by minimizing the criterion.</span>
+<span class="sd">            Note that this can be only a local (near) optimum.</span>
+<span class="sd">        fit_res : tuple</span>
+<span class="sd">            results returned by the scipy optimization routine. The</span>
+<span class="sd">            parameters in the optimization problem are `log(alpha)`</span>
+<span class="sd">        history : dict</span>
+<span class="sd">            history of calls to pirls and contains alpha, the fit</span>
+<span class="sd">            criterion and the parameters to which pirls converged to for the</span>
+<span class="sd">            given alpha.</span>
+
+<span class="sd">        Notes</span>
+<span class="sd">        -----</span>
+<span class="sd">        In the test cases Nelder-Mead and bfgs often converge to local optima,</span>
+<span class="sd">        see also https://github.com/statsmodels/statsmodels/issues/5381.</span>
+
+<span class="sd">        This does not use any analytical derivatives for the criterion</span>
+<span class="sd">        minimization.</span>
+
+<span class="sd">        Status: experimental, It is possible that defaults change if there</span>
+<span class="sd">        is a better way to find a global optimum. API (e.g. type of return)</span>
+<span class="sd">        might also change.</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># copy attributes that are changed, so we can reset them</span>
+        <span class="n">scale_keep</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">scale</span>
+        <span class="n">scaletype_keep</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">scaletype</span>
+        <span class="c1"># TODO: use .copy() method when available for all types</span>
+        <span class="n">alpha_keep</span> <span class="o">=</span> <span class="n">copy</span><span class="o">.</span><span class="n">copy</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">alpha</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">start_params</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">start_params</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">k_smooths</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">start_params</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="mf">1e-20</span> <span class="o">+</span> <span class="n">start_params</span><span class="p">)</span>
+
+        <span class="n">history</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="n">history</span><span class="p">[</span><span class="s1">&#39;alpha&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">history</span><span class="p">[</span><span class="s1">&#39;params&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="n">start_model_params</span><span class="p">]</span>
+        <span class="n">history</span><span class="p">[</span><span class="s1">&#39;criterion&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+
+        <span class="k">def</span> <span class="nf">fun</span><span class="p">(</span><span class="n">p</span><span class="p">):</span>
+            <span class="n">a</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">p</span><span class="p">)</span>
+            <span class="n">res_</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_fit_pirls</span><span class="p">(</span><span class="n">start_params</span><span class="o">=</span><span class="n">history</span><span class="p">[</span><span class="s1">&#39;params&#39;</span><span class="p">][</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span>
+                                   <span class="n">alpha</span><span class="o">=</span><span class="n">a</span><span class="p">)</span>
+            <span class="n">history</span><span class="p">[</span><span class="s1">&#39;alpha&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">a</span><span class="p">)</span>
+            <span class="n">history</span><span class="p">[</span><span class="s1">&#39;params&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">res_</span><span class="o">.</span><span class="n">params</span><span class="p">))</span>
+            <span class="k">return</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">res_</span><span class="p">,</span> <span class="n">criterion</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">method</span> <span class="o">==</span> <span class="s1">&#39;nm&#39;</span><span class="p">:</span>
+            <span class="n">kwds</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">full_output</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">maxiter</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span> <span class="n">maxfun</span><span class="o">=</span><span class="mi">2000</span><span class="p">)</span>
+            <span class="n">kwds</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">fit_kwds</span><span class="p">)</span>
+            <span class="n">fit_res</span> <span class="o">=</span> <span class="n">optimize</span><span class="o">.</span><span class="n">fmin</span><span class="p">(</span><span class="n">fun</span><span class="p">,</span> <span class="n">start_params</span><span class="p">,</span> <span class="o">**</span><span class="n">kwds</span><span class="p">)</span>
+            <span class="n">opt</span> <span class="o">=</span> <span class="n">fit_res</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="k">elif</span> <span class="n">method</span> <span class="o">==</span> <span class="s1">&#39;basinhopping&#39;</span><span class="p">:</span>
+            <span class="n">kwds</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">minimizer_kwargs</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;method&#39;</span><span class="p">:</span> <span class="s1">&#39;Nelder-Mead&#39;</span><span class="p">,</span>
+                        <span class="s1">&#39;options&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;maxiter&#39;</span><span class="p">:</span> <span class="mi">100</span><span class="p">,</span> <span class="s1">&#39;maxfev&#39;</span><span class="p">:</span> <span class="mi">500</span><span class="p">}},</span>
+                        <span class="n">niter</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span>
+            <span class="n">kwds</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">fit_kwds</span><span class="p">)</span>
+            <span class="n">fit_res</span> <span class="o">=</span> <span class="n">optimize</span><span class="o">.</span><span class="n">basinhopping</span><span class="p">(</span><span class="n">fun</span><span class="p">,</span> <span class="n">start_params</span><span class="p">,</span> <span class="o">**</span><span class="n">kwds</span><span class="p">)</span>
+            <span class="n">opt</span> <span class="o">=</span> <span class="n">fit_res</span><span class="o">.</span><span class="n">x</span>
+        <span class="k">elif</span> <span class="n">method</span> <span class="o">==</span> <span class="s1">&#39;minimize&#39;</span><span class="p">:</span>
+            <span class="n">fit_res</span> <span class="o">=</span> <span class="n">optimize</span><span class="o">.</span><span class="n">minimize</span><span class="p">(</span><span class="n">fun</span><span class="p">,</span> <span class="n">start_params</span><span class="p">,</span> <span class="o">**</span><span class="n">fit_kwds</span><span class="p">)</span>
+            <span class="n">opt</span> <span class="o">=</span> <span class="n">fit_res</span><span class="o">.</span><span class="n">x</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;method not recognized&#39;</span><span class="p">)</span>
+
+        <span class="k">del</span> <span class="n">history</span><span class="p">[</span><span class="s1">&#39;params&#39;</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span>  <span class="c1"># remove the model start_params</span>
+
+        <span class="n">alpha</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">opt</span><span class="p">)</span>
+
+        <span class="c1"># reset attributes that have or might have changed</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">scale</span> <span class="o">=</span> <span class="n">scale_keep</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">scaletype</span> <span class="o">=</span> <span class="n">scaletype_keep</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">alpha</span> <span class="o">=</span> <span class="n">alpha_keep</span>
+
+        <span class="k">return</span> <span class="n">alpha</span><span class="p">,</span> <span class="n">fit_res</span><span class="p">,</span> <span class="n">history</span></div>
+
+<div class="viewcode-block" id="GLMGam.select_penweight_kfold"><a class="viewcode-back" href="../../../generated/statsmodels.gam.generalized_additive_model.GLMGam.select_penweight_kfold.html#statsmodels.gam.generalized_additive_model.GLMGam.select_penweight_kfold">[docs]</a>    <span class="k">def</span> <span class="nf">select_penweight_kfold</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">alphas</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">cv_iterator</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">cost</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                               <span class="n">k_folds</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span> <span class="n">k_grid</span><span class="o">=</span><span class="mi">11</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;find alphas by k-fold cross-validation</span>
+
+<span class="sd">        Warning: This estimates ``k_folds`` models for each point in the</span>
+<span class="sd">            grid of alphas.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        alphas : None or list of arrays</span>
+<span class="sd">        cv_iterator : instance</span>
+<span class="sd">            instance of a cross-validation iterator, by default this is a</span>
+<span class="sd">            KFold instance</span>
+<span class="sd">        cost : function</span>
+<span class="sd">            default is mean squared error. The cost function to evaluate the</span>
+<span class="sd">            prediction error for the left out sample. This should take two</span>
+<span class="sd">            arrays as argument and return one float.</span>
+<span class="sd">        k_folds : int</span>
+<span class="sd">            number of folds if default Kfold iterator is used.</span>
+<span class="sd">            This is ignored if ``cv_iterator`` is not None.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        alpha_cv : list of float</span>
+<span class="sd">            Best alpha in grid according to cross-validation</span>
+<span class="sd">        res_cv : instance of MultivariateGAMCVPath</span>
+<span class="sd">            The instance was used for cross-validation and holds the results</span>
+
+<span class="sd">        Notes</span>
+<span class="sd">        -----</span>
+<span class="sd">        The default alphas are defined as</span>
+<span class="sd">        ``alphas = [np.logspace(0, 7, k_grid) for _ in range(k_smooths)]``</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="k">if</span> <span class="n">cost</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">def</span> <span class="nf">cost</span><span class="p">(</span><span class="n">x1</span><span class="p">,</span> <span class="n">x2</span><span class="p">):</span>
+                <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">x1</span> <span class="o">-</span> <span class="n">x2</span><span class="p">)</span> <span class="o">/</span> <span class="nb">len</span><span class="p">(</span><span class="n">x1</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">alphas</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">alphas</span> <span class="o">=</span> <span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">logspace</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">7</span><span class="p">,</span> <span class="n">k_grid</span><span class="p">)</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">k_smooths</span><span class="p">)]</span>
+
+        <span class="k">if</span> <span class="n">cv_iterator</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">cv_iterator</span> <span class="o">=</span> <span class="n">KFold</span><span class="p">(</span><span class="n">k_folds</span><span class="o">=</span><span class="n">k_folds</span><span class="p">,</span> <span class="n">shuffle</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+        <span class="n">gam_cv</span> <span class="o">=</span> <span class="n">MultivariateGAMCVPath</span><span class="p">(</span><span class="n">smoother</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">smoother</span><span class="p">,</span> <span class="n">alphas</span><span class="o">=</span><span class="n">alphas</span><span class="p">,</span>
+                                       <span class="n">gam</span><span class="o">=</span><span class="n">GLMGam</span><span class="p">,</span> <span class="n">cost</span><span class="o">=</span><span class="n">cost</span><span class="p">,</span> <span class="n">endog</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">endog</span><span class="p">,</span>
+                                       <span class="n">exog</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">exog_linear</span><span class="p">,</span>
+                                       <span class="n">cv_iterator</span><span class="o">=</span><span class="n">cv_iterator</span><span class="p">)</span>
+        <span class="n">gam_cv_res</span> <span class="o">=</span> <span class="n">gam_cv</span><span class="o">.</span><span class="n">fit</span><span class="p">()</span>
+
+        <span class="k">return</span> <span class="n">gam_cv_res</span><span class="o">.</span><span class="n">alpha_cv</span><span class="p">,</span> <span class="n">gam_cv_res</span></div></div>
+
+
+<div class="viewcode-block" id="LogitGam"><a class="viewcode-back" href="../../../generated/statsmodels.gam.generalized_additive_model.LogitGam.html#statsmodels.gam.generalized_additive_model.LogitGam">[docs]</a><span class="k">class</span> <span class="nc">LogitGam</span><span class="p">(</span><span class="n">PenalizedMixin</span><span class="p">,</span> <span class="n">Logit</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Generalized Additive model for discrete Logit</span>
+
+<span class="sd">    This subclasses discrete_model Logit.</span>
+
+<span class="sd">    Warning: not all inherited methods might take correctly account of the</span>
+<span class="sd">    penalization</span>
+
+<span class="sd">    not verified yet.</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">endog</span><span class="p">,</span> <span class="n">smoother</span><span class="p">,</span> <span class="n">alpha</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">alpha</span><span class="p">,</span> <span class="n">Iterable</span><span class="p">):</span>
+            <span class="n">alpha</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">alpha</span><span class="p">]</span> <span class="o">*</span> <span class="nb">len</span><span class="p">(</span><span class="n">smoother</span><span class="o">.</span><span class="n">smoothers</span><span class="p">))</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">smoother</span> <span class="o">=</span> <span class="n">smoother</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">alpha</span> <span class="o">=</span> <span class="n">alpha</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">pen_weight</span> <span class="o">=</span> <span class="mi">1</span>  <span class="c1"># TODO: pen weight should not be defined here!!</span>
+        <span class="n">penal</span> <span class="o">=</span> <span class="n">MultivariateGamPenalty</span><span class="p">(</span><span class="n">smoother</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="n">alpha</span><span class="p">)</span>
+
+        <span class="nb">super</span><span class="p">(</span><span class="n">LogitGam</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">endog</span><span class="p">,</span> <span class="n">smoother</span><span class="o">.</span><span class="n">basis</span><span class="p">,</span> <span class="n">penal</span><span class="o">=</span><span class="n">penal</span><span class="p">,</span>
+                                       <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span></div>
+
+
+<span class="k">def</span> <span class="nf">penalized_wls</span><span class="p">(</span><span class="n">endog</span><span class="p">,</span> <span class="n">exog</span><span class="p">,</span> <span class="n">penalty_matrix</span><span class="p">,</span> <span class="n">weights</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;weighted least squares with quadratic penalty</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    endog : ndarray</span>
+<span class="sd">        response or endogenous variable</span>
+<span class="sd">    exog : ndarray</span>
+<span class="sd">        design matrix, matrix of exogenous or explanatory variables</span>
+<span class="sd">    penalty_matrix : ndarray, 2-Dim square</span>
+<span class="sd">        penality matrix for quadratic penalization. Note, the penalty_matrix</span>
+<span class="sd">        is multiplied by two to match non-pirls fitting methods.</span>
+<span class="sd">    weights : ndarray</span>
+<span class="sd">        weights for WLS</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    results : Results instance of WLS</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">y</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">s</span> <span class="o">=</span> <span class="n">endog</span><span class="p">,</span> <span class="n">exog</span><span class="p">,</span> <span class="n">penalty_matrix</span>
+    <span class="c1"># TODO: I don&#39;t understand why I need 2 * s</span>
+    <span class="n">aug_y</span><span class="p">,</span> <span class="n">aug_x</span><span class="p">,</span> <span class="n">aug_weights</span> <span class="o">=</span> <span class="n">make_augmented_matrix</span><span class="p">(</span><span class="n">y</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">s</span><span class="p">,</span> <span class="n">weights</span><span class="p">)</span>
+    <span class="n">wls_results</span> <span class="o">=</span> <span class="n">lm</span><span class="o">.</span><span class="n">WLS</span><span class="p">(</span><span class="n">aug_y</span><span class="p">,</span> <span class="n">aug_x</span><span class="p">,</span> <span class="n">aug_weights</span><span class="p">)</span><span class="o">.</span><span class="n">fit</span><span class="p">()</span>
+    <span class="c1"># TODO: use MinimalWLS during iterations, less overhead</span>
+    <span class="c1"># However, MinimalWLS does not return normalized_cov_params</span>
+    <span class="c1">#   which we need at the end of the iterations</span>
+    <span class="c1"># call would be</span>
+    <span class="c1"># wls_results = reg_tools._MinimalWLS(aug_y, aug_x, aug_weights).fit()</span>
+    <span class="n">wls_results</span><span class="o">.</span><span class="n">params</span> <span class="o">=</span> <span class="n">wls_results</span><span class="o">.</span><span class="n">params</span><span class="o">.</span><span class="n">ravel</span><span class="p">()</span>
+
+    <span class="k">return</span> <span class="n">wls_results</span>
+
+
+<span class="k">def</span> <span class="nf">make_augmented_matrix</span><span class="p">(</span><span class="n">endog</span><span class="p">,</span> <span class="n">exog</span><span class="p">,</span> <span class="n">penalty_matrix</span><span class="p">,</span> <span class="n">weights</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;augment endog, exog and weights with stochastic restriction matrix</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    endog : ndarray</span>
+<span class="sd">        response or endogenous variable</span>
+<span class="sd">    exog : ndarray</span>
+<span class="sd">        design matrix, matrix of exogenous or explanatory variables</span>
+<span class="sd">    penalty_matrix : ndarray, 2-Dim square</span>
+<span class="sd">        penality matrix for quadratic penalization</span>
+<span class="sd">    weights : ndarray</span>
+<span class="sd">        weights for WLS</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    endog_aug : ndarray</span>
+<span class="sd">        augmented response variable</span>
+<span class="sd">    exog_aug : ndarray</span>
+<span class="sd">        augmented design matrix</span>
+<span class="sd">    weights_aug : ndarray</span>
+<span class="sd">        augmented weights for WLS</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">y</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">s</span><span class="p">,</span> <span class="o">=</span> <span class="n">endog</span><span class="p">,</span> <span class="n">exog</span><span class="p">,</span> <span class="n">penalty_matrix</span>
+    <span class="n">nobs</span> <span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+    <span class="c1"># TODO: needs full because of broadcasting with weights</span>
+    <span class="c1"># check what weights should be doing</span>
+    <span class="n">rs</span> <span class="o">=</span> <span class="n">matrix_sqrt</span><span class="p">(</span><span class="n">s</span><span class="p">)</span>
+    <span class="n">x1</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">x</span><span class="p">,</span> <span class="n">rs</span><span class="p">])</span>  <span class="c1"># augmented x</span>
+    <span class="n">n_samp1es_x1</span> <span class="o">=</span> <span class="n">x1</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+    <span class="n">y1</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">0.</span><span class="p">]</span> <span class="o">*</span> <span class="n">n_samp1es_x1</span><span class="p">)</span>  <span class="c1"># augmented y</span>
+    <span class="n">y1</span><span class="p">[:</span><span class="n">nobs</span><span class="p">]</span> <span class="o">=</span> <span class="n">y</span>
+
+    <span class="n">id1</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">1.</span><span class="p">]</span> <span class="o">*</span> <span class="n">rs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+    <span class="n">w1</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">weights</span><span class="p">,</span> <span class="n">id1</span><span class="p">])</span>
+
+    <span class="k">return</span> <span class="n">y1</span><span class="p">,</span> <span class="n">x1</span><span class="p">,</span> <span class="n">w1</span>
+</pre></div>
+
+
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../../../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" />
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer" role="contentinfo">
+        &#169; Copyright 2009-2018, Josef Perktold, Skipper Seabold, Jonathan Taylor, statsmodels-developers.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 2.2.1.
+    </div>
+  </body>
+</html>

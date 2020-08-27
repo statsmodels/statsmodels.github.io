@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.tsa.arima\_model.ARMAResults.plot\_predict
+======================================================
+
+.. currentmodule:: statsmodels.tsa.arima_model
+
+.. automethod:: ARMAResults.plot_predict

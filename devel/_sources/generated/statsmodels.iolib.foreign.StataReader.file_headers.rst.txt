@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.iolib.foreign.StataReader.file\_headers
+===================================================
+
+.. currentmodule:: statsmodels.iolib.foreign
+
+.. automethod:: StataReader.file_headers

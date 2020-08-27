@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.base.model.LikelihoodModelResults.cov\_params
+=========================================================
+
+.. currentmodule:: statsmodels.base.model
+
+.. automethod:: LikelihoodModelResults.cov_params

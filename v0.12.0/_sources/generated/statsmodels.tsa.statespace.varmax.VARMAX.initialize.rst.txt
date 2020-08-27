@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.tsa.statespace.varmax.VARMAX.initialize
+===================================================
+
+.. currentmodule:: statsmodels.tsa.statespace.varmax
+
+.. automethod:: VARMAX.initialize

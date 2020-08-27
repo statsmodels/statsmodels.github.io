@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.genmod.generalized\_estimating\_equations.GEEMargins.summary
+========================================================================
+
+.. currentmodule:: statsmodels.genmod.generalized_estimating_equations
+
+.. automethod:: GEEMargins.summary

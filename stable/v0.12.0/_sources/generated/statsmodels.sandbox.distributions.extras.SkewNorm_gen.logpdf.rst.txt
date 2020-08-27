@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.sandbox.distributions.extras.SkewNorm\_gen.logpdf
+=============================================================
+
+.. currentmodule:: statsmodels.sandbox.distributions.extras
+
+.. automethod:: SkewNorm_gen.logpdf

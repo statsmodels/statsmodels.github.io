@@ -1,0 +1,555 @@
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>statsmodels.stats.multitest &mdash; statsmodels 0.6.1 documentation</title>
+    
+    <link rel="stylesheet" href="../../../_static/nature.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../../',
+        VERSION:     '0.6.1',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <link rel="shortcut icon" href="../../../_static/statsmodels_hybi_favico.ico"/>
+    <link rel="author" title="About these documents" href="../../../about.html" />
+    <link rel="top" title="statsmodels 0.6.1 documentation" href="../../../index.html" />
+    <link rel="up" title="Module code" href="../../index.html" />
+<link rel="stylesheet" href="../../_static/facebox.css" type="text/css" />
+<link rel="stylesheet" href="../_static/examples.css" type="text/css" />
+<script type="text/javascript" src="../../../_static/scripts.js">
+</script>
+<script type="text/javascript" src="../../../_static/facebox.js">
+</script>
+
+  </head>
+  <body role="document">
+<div class="headerwrap">
+    <div class = "header">
+        
+        <a href = "../../../index.html">
+<img src="../../../_static/statsmodels_hybi_banner.png" alt="Logo"
+    style="padding-left: 15px"/></a>
+        
+    </div>
+</div>
+
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+<li><a href ="../../../install.html">Install</a></li> &nbsp;|&nbsp;
+<li><a href="https://groups.google.com/group/pystatsmodels?hl=en">Support</a></li> &nbsp;|&nbsp;
+<li><a href="https://github.com/statsmodels/statsmodels/issues">Bugs</a></li> &nbsp;|&nbsp;
+<li><a href="../../../dev/index.html">Develop</a></li> &nbsp;|&nbsp;
+<li><a href="../../../examples/index.html">Examples</a></li> &nbsp;|&nbsp;
+<li><a href="../../../faq.html">FAQ</a></li> &nbsp;|&nbsp;
+
+          <li class="nav-item nav-item-1"><a href="../../index.html" accesskey="U">Module code</a> |</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+
+
+
+
+  <h1>Source code for statsmodels.stats.multitest</h1><div class="highlight"><pre>
+<span class="sd">&#39;&#39;&#39;Multiple Testing and P-Value Correction</span>
+
+
+<span class="sd">Author: Josef Perktold</span>
+<span class="sd">License: BSD-3</span>
+
+<span class="sd">&#39;&#39;&#39;</span>
+
+<span class="kn">from</span> <span class="nn">statsmodels.compat.python</span> <span class="kn">import</span> <span class="nb">range</span>
+<span class="kn">from</span> <span class="nn">statsmodels.compat.collections</span> <span class="kn">import</span> <span class="n">OrderedDict</span>
+
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="kn">as</span> <span class="nn">np</span>
+
+
+<span class="c">#==============================================</span>
+<span class="c">#</span>
+<span class="c"># Part 1: Multiple Tests and P-Value Correction</span>
+<span class="c">#</span>
+<span class="c">#==============================================</span>
+
+<span class="k">def</span> <span class="nf">_ecdf</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;no frills empirical cdf used in fdrcorrection</span>
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="n">nobs</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="n">nobs</span><span class="o">+</span><span class="mi">1</span><span class="p">)</span><span class="o">/</span><span class="nb">float</span><span class="p">(</span><span class="n">nobs</span><span class="p">)</span>
+
+<span class="n">multitest_methods_names</span> <span class="o">=</span> <span class="p">{</span><span class="s">&#39;b&#39;</span><span class="p">:</span> <span class="s">&#39;Bonferroni&#39;</span><span class="p">,</span>
+                           <span class="s">&#39;s&#39;</span><span class="p">:</span> <span class="s">&#39;Sidak&#39;</span><span class="p">,</span>
+                           <span class="s">&#39;h&#39;</span><span class="p">:</span> <span class="s">&#39;Holm&#39;</span><span class="p">,</span>
+                           <span class="s">&#39;hs&#39;</span><span class="p">:</span> <span class="s">&#39;Holm-Sidak&#39;</span><span class="p">,</span>
+                           <span class="s">&#39;sh&#39;</span><span class="p">:</span> <span class="s">&#39;Simes-Hochberg&#39;</span><span class="p">,</span>
+                           <span class="s">&#39;ho&#39;</span><span class="p">:</span> <span class="s">&#39;Hommel&#39;</span><span class="p">,</span>
+                           <span class="s">&#39;fdr_bh&#39;</span><span class="p">:</span> <span class="s">&#39;FDR Benjamini-Hochberg&#39;</span><span class="p">,</span>
+                           <span class="s">&#39;fdr_by&#39;</span><span class="p">:</span> <span class="s">&#39;FDR Benjamini-Yekutieli&#39;</span><span class="p">,</span>
+                           <span class="s">&#39;fdr_tsbh&#39;</span><span class="p">:</span> <span class="s">&#39;FDR 2-stage Benjamini-Hochberg&#39;</span><span class="p">,</span>
+                           <span class="s">&#39;fdr_tsbky&#39;</span><span class="p">:</span> <span class="s">&#39;FDR 2-stage Benjamini-Krieger-Yekutieli&#39;</span><span class="p">,</span>
+                           <span class="s">&#39;fdr_gbs&#39;</span><span class="p">:</span> <span class="s">&#39;FDR adaptive Gavrilov-Benjamini-Sarkar&#39;</span>
+                           <span class="p">}</span>
+
+<span class="n">_alias_list</span> <span class="o">=</span> <span class="p">[[</span><span class="s">&#39;b&#39;</span><span class="p">,</span> <span class="s">&#39;bonf&#39;</span><span class="p">,</span> <span class="s">&#39;bonferroni&#39;</span><span class="p">],</span>
+               <span class="p">[</span><span class="s">&#39;s&#39;</span><span class="p">,</span> <span class="s">&#39;sidak&#39;</span><span class="p">],</span>
+               <span class="p">[</span><span class="s">&#39;h&#39;</span><span class="p">,</span> <span class="s">&#39;holm&#39;</span><span class="p">],</span>
+               <span class="p">[</span><span class="s">&#39;hs&#39;</span><span class="p">,</span> <span class="s">&#39;holm-sidak&#39;</span><span class="p">],</span>
+               <span class="p">[</span><span class="s">&#39;sh&#39;</span><span class="p">,</span> <span class="s">&#39;simes-hochberg&#39;</span><span class="p">],</span>
+               <span class="p">[</span><span class="s">&#39;ho&#39;</span><span class="p">,</span> <span class="s">&#39;hommel&#39;</span><span class="p">],</span>
+               <span class="p">[</span><span class="s">&#39;fdr_bh&#39;</span><span class="p">,</span> <span class="s">&#39;fdr_i&#39;</span><span class="p">,</span> <span class="s">&#39;fdr_p&#39;</span><span class="p">,</span> <span class="s">&#39;fdri&#39;</span><span class="p">,</span> <span class="s">&#39;fdrp&#39;</span><span class="p">],</span>
+               <span class="p">[</span><span class="s">&#39;fdr_by&#39;</span><span class="p">,</span> <span class="s">&#39;fdr_n&#39;</span><span class="p">,</span> <span class="s">&#39;fdr_c&#39;</span><span class="p">,</span> <span class="s">&#39;fdrn&#39;</span><span class="p">,</span> <span class="s">&#39;fdrcorr&#39;</span><span class="p">],</span>
+               <span class="p">[</span><span class="s">&#39;fdr_tsbh&#39;</span><span class="p">,</span> <span class="s">&#39;fdr_2sbh&#39;</span><span class="p">],</span>
+               <span class="p">[</span><span class="s">&#39;fdr_tsbky&#39;</span><span class="p">,</span> <span class="s">&#39;fdr_2sbky&#39;</span><span class="p">,</span> <span class="s">&#39;fdr_twostage&#39;</span><span class="p">],</span>
+               <span class="p">[</span><span class="s">&#39;fdr_gbs&#39;</span><span class="p">]</span>
+               <span class="p">]</span>
+
+
+<span class="n">multitest_alias</span> <span class="o">=</span> <span class="n">OrderedDict</span><span class="p">()</span>
+<span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="n">_alias_list</span><span class="p">:</span>
+    <span class="n">multitest_alias</span><span class="p">[</span><span class="n">m</span><span class="p">[</span><span class="mi">0</span><span class="p">]]</span> <span class="o">=</span> <span class="n">m</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="n">m</span><span class="p">[</span><span class="mi">1</span><span class="p">:]:</span>
+        <span class="n">multitest_alias</span><span class="p">[</span><span class="n">a</span><span class="p">]</span> <span class="o">=</span> <span class="n">m</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+<div class="viewcode-block" id="multipletests"><a class="viewcode-back" href="../../../generated/statsmodels.sandbox.stats.multicomp.multipletests.html#statsmodels.sandbox.stats.multicomp.multipletests">[docs]</a><span class="k">def</span> <span class="nf">multipletests</span><span class="p">(</span><span class="n">pvals</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="mf">0.05</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s">&#39;hs&#39;</span><span class="p">,</span> <span class="n">is_sorted</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span>
+                  <span class="n">returnsorted</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;test results and p-value correction for multiple tests</span>
+
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    pvals : array_like</span>
+<span class="sd">        uncorrected p-values</span>
+<span class="sd">    alpha : float</span>
+<span class="sd">        FWER, family-wise error rate, e.g. 0.1</span>
+<span class="sd">    method : string</span>
+<span class="sd">        Method used for testing and adjustment of pvalues. Can be either the</span>
+<span class="sd">        full name or initial letters. Available methods are ::</span>
+
+<span class="sd">        `bonferroni` : one-step correction</span>
+<span class="sd">        `sidak` : one-step correction</span>
+<span class="sd">        `holm-sidak` : step down method using Sidak adjustments</span>
+<span class="sd">        `holm` : step-down method using Bonferroni adjustments</span>
+<span class="sd">        `simes-hochberg` : step-up method  (independent)</span>
+<span class="sd">        `hommel` : closed method based on Simes tests (non-negative)</span>
+<span class="sd">        `fdr_bh` : Benjamini/Hochberg  (non-negative)</span>
+<span class="sd">        `fdr_by` : Benjamini/Yekutieli (negative)</span>
+<span class="sd">        `fdr_tsbh` : two stage fdr correction (non-negative)</span>
+<span class="sd">        `fdr_tsbky` : two stage fdr correction (non-negative)</span>
+
+<span class="sd">    is_sorted : bool</span>
+<span class="sd">        If False (default), the p_values will be sorted, but the corrected</span>
+<span class="sd">        pvalues are in the original order. If True, then it assumed that the</span>
+<span class="sd">        pvalues are already sorted in ascending order.</span>
+<span class="sd">    returnsorted : bool</span>
+<span class="sd">         not tested, return sorted p-values instead of original sequence</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    reject : array, boolean</span>
+<span class="sd">        true for hypothesis that can be rejected for given alpha</span>
+<span class="sd">    pvals_corrected : array</span>
+<span class="sd">        p-values corrected for multiple tests</span>
+<span class="sd">    alphacSidak: float</span>
+<span class="sd">        corrected alpha for Sidak method</span>
+<span class="sd">    alphacBonf: float</span>
+<span class="sd">        corrected alpha for Bonferroni method</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    There may be API changes for this function in the future.</span>
+
+<span class="sd">    Except for &#39;fdr_twostage&#39;, the p-value correction is independent of the</span>
+<span class="sd">    alpha specified as argument. In these cases the corrected p-values</span>
+<span class="sd">    can also be compared with a different alpha. In the case of &#39;fdr_twostage&#39;,</span>
+<span class="sd">    the corrected p-values are specific to the given alpha, see</span>
+<span class="sd">    ``fdrcorrection_twostage``.</span>
+
+<span class="sd">    The &#39;fdr_gbs&#39; procedure is not verified against another package, p-values</span>
+<span class="sd">    are derived from scratch and are not derived in the reference. In Monte</span>
+<span class="sd">    Carlo experiments the method worked correctly and maintained the false</span>
+<span class="sd">    discovery rate.</span>
+
+<span class="sd">    All procedures that are included, control FWER or FDR in the independent</span>
+<span class="sd">    case, and most are robust in the positively correlated case.</span>
+
+<span class="sd">    `fdr_gbs`: high power, fdr control for independent case and only small</span>
+<span class="sd">    violation in positively correlated case</span>
+
+<span class="sd">    **Timing**:</span>
+
+<span class="sd">    Most of the time with large arrays is spent in `argsort`. When</span>
+<span class="sd">    we want to calculate the p-value for several methods, then it is more</span>
+<span class="sd">    efficient to presort the pvalues, and put the results back into the</span>
+<span class="sd">    original order outside of the function.</span>
+
+<span class="sd">    Method=&#39;hommel&#39; is very slow for large arrays, since it requires the</span>
+<span class="sd">    evaluation of n partitions, where n is the number of p-values.</span>
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="kn">import</span> <span class="nn">gc</span>
+    <span class="n">pvals</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">pvals</span><span class="p">)</span>
+    <span class="n">alphaf</span> <span class="o">=</span> <span class="n">alpha</span>  <span class="c"># Notation ?</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">is_sorted</span><span class="p">:</span>
+        <span class="n">sortind</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">pvals</span><span class="p">)</span>
+        <span class="n">pvals</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">take</span><span class="p">(</span><span class="n">pvals</span><span class="p">,</span> <span class="n">sortind</span><span class="p">)</span>
+
+    <span class="n">ntests</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">pvals</span><span class="p">)</span>
+    <span class="n">alphacSidak</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">power</span><span class="p">((</span><span class="mf">1.</span> <span class="o">-</span> <span class="n">alphaf</span><span class="p">),</span> <span class="mf">1.</span><span class="o">/</span><span class="n">ntests</span><span class="p">)</span>
+    <span class="n">alphacBonf</span> <span class="o">=</span> <span class="n">alphaf</span> <span class="o">/</span> <span class="nb">float</span><span class="p">(</span><span class="n">ntests</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">method</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="ow">in</span> <span class="p">[</span><span class="s">&#39;b&#39;</span><span class="p">,</span> <span class="s">&#39;bonf&#39;</span><span class="p">,</span> <span class="s">&#39;bonferroni&#39;</span><span class="p">]:</span>
+        <span class="n">reject</span> <span class="o">=</span> <span class="n">pvals</span> <span class="o">&lt;=</span> <span class="n">alphacBonf</span>
+        <span class="n">pvals_corrected</span> <span class="o">=</span> <span class="n">pvals</span> <span class="o">*</span> <span class="nb">float</span><span class="p">(</span><span class="n">ntests</span><span class="p">)</span>
+
+    <span class="k">elif</span> <span class="n">method</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="ow">in</span> <span class="p">[</span><span class="s">&#39;s&#39;</span><span class="p">,</span> <span class="s">&#39;sidak&#39;</span><span class="p">]:</span>
+        <span class="n">reject</span> <span class="o">=</span> <span class="n">pvals</span> <span class="o">&lt;=</span> <span class="n">alphacSidak</span>
+        <span class="n">pvals_corrected</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">power</span><span class="p">((</span><span class="mf">1.</span> <span class="o">-</span> <span class="n">pvals</span><span class="p">),</span> <span class="n">ntests</span><span class="p">)</span>
+
+    <span class="k">elif</span> <span class="n">method</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="ow">in</span> <span class="p">[</span><span class="s">&#39;hs&#39;</span><span class="p">,</span> <span class="s">&#39;holm-sidak&#39;</span><span class="p">]:</span>
+        <span class="n">alphacSidak_all</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">power</span><span class="p">((</span><span class="mf">1.</span> <span class="o">-</span> <span class="n">alphaf</span><span class="p">),</span>
+                                       <span class="mf">1.</span><span class="o">/</span><span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">ntests</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">))</span>
+        <span class="n">notreject</span> <span class="o">=</span> <span class="n">pvals</span> <span class="o">&gt;</span> <span class="n">alphacSidak_all</span>
+        <span class="k">del</span> <span class="n">alphacSidak_all</span>
+
+        <span class="n">nr_index</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nonzero</span><span class="p">(</span><span class="n">notreject</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">nr_index</span><span class="o">.</span><span class="n">size</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="c"># nonreject is empty, all rejected</span>
+            <span class="n">notrejectmin</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">pvals</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">notrejectmin</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">nr_index</span><span class="p">)</span>
+        <span class="n">notreject</span><span class="p">[</span><span class="n">notrejectmin</span><span class="p">:]</span> <span class="o">=</span> <span class="bp">True</span>
+        <span class="n">reject</span> <span class="o">=</span> <span class="o">~</span><span class="n">notreject</span>
+        <span class="k">del</span> <span class="n">notreject</span>
+
+        <span class="n">pvals_corrected_raw</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">power</span><span class="p">((</span><span class="mf">1.</span> <span class="o">-</span> <span class="n">pvals</span><span class="p">),</span>
+                                           <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">ntests</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">))</span>
+        <span class="n">pvals_corrected</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">maximum</span><span class="o">.</span><span class="n">accumulate</span><span class="p">(</span><span class="n">pvals_corrected_raw</span><span class="p">)</span>
+        <span class="k">del</span> <span class="n">pvals_corrected_raw</span>
+
+    <span class="k">elif</span> <span class="n">method</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="ow">in</span> <span class="p">[</span><span class="s">&#39;h&#39;</span><span class="p">,</span> <span class="s">&#39;holm&#39;</span><span class="p">]:</span>
+        <span class="n">notreject</span> <span class="o">=</span> <span class="n">pvals</span> <span class="o">&gt;</span> <span class="n">alphaf</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">ntests</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+        <span class="n">nr_index</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nonzero</span><span class="p">(</span><span class="n">notreject</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">nr_index</span><span class="o">.</span><span class="n">size</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="c"># nonreject is empty, all rejected</span>
+            <span class="n">notrejectmin</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">pvals</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">notrejectmin</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">nr_index</span><span class="p">)</span>
+        <span class="n">notreject</span><span class="p">[</span><span class="n">notrejectmin</span><span class="p">:]</span> <span class="o">=</span> <span class="bp">True</span>
+        <span class="n">reject</span> <span class="o">=</span> <span class="o">~</span><span class="n">notreject</span>
+        <span class="n">pvals_corrected_raw</span> <span class="o">=</span> <span class="n">pvals</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">ntests</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+        <span class="n">pvals_corrected</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">maximum</span><span class="o">.</span><span class="n">accumulate</span><span class="p">(</span><span class="n">pvals_corrected_raw</span><span class="p">)</span>
+        <span class="k">del</span> <span class="n">pvals_corrected_raw</span>
+        <span class="n">gc</span><span class="o">.</span><span class="n">collect</span><span class="p">()</span>
+
+    <span class="k">elif</span> <span class="n">method</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="ow">in</span> <span class="p">[</span><span class="s">&#39;sh&#39;</span><span class="p">,</span> <span class="s">&#39;simes-hochberg&#39;</span><span class="p">]:</span>
+        <span class="n">alphash</span> <span class="o">=</span> <span class="n">alphaf</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">ntests</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+        <span class="n">reject</span> <span class="o">=</span> <span class="n">pvals</span> <span class="o">&lt;=</span> <span class="n">alphash</span>
+        <span class="n">rejind</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nonzero</span><span class="p">(</span><span class="n">reject</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">rejind</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">size</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">rejectmax</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">nonzero</span><span class="p">(</span><span class="n">reject</span><span class="p">))</span>
+            <span class="n">reject</span><span class="p">[:</span><span class="n">rejectmax</span><span class="p">]</span> <span class="o">=</span> <span class="bp">True</span>
+        <span class="n">pvals_corrected_raw</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">ntests</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span> <span class="o">*</span> <span class="n">pvals</span>
+        <span class="n">pvals_corrected</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">minimum</span><span class="o">.</span><span class="n">accumulate</span><span class="p">(</span><span class="n">pvals_corrected_raw</span><span class="p">[::</span><span class="o">-</span><span class="mi">1</span><span class="p">])[::</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+        <span class="k">del</span> <span class="n">pvals_corrected_raw</span>
+
+    <span class="k">elif</span> <span class="n">method</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="ow">in</span> <span class="p">[</span><span class="s">&#39;ho&#39;</span><span class="p">,</span> <span class="s">&#39;hommel&#39;</span><span class="p">]:</span>
+        <span class="c"># we need a copy because we overwrite it in a loop</span>
+        <span class="n">a</span> <span class="o">=</span> <span class="n">pvals</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        <span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">ntests</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">):</span>
+            <span class="n">cim</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">m</span> <span class="o">*</span> <span class="n">pvals</span><span class="p">[</span><span class="o">-</span><span class="n">m</span><span class="p">:]</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="n">m</span><span class="o">+</span><span class="mf">1.</span><span class="p">))</span>
+            <span class="n">a</span><span class="p">[</span><span class="o">-</span><span class="n">m</span><span class="p">:]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span><span class="n">a</span><span class="p">[</span><span class="o">-</span><span class="n">m</span><span class="p">:],</span> <span class="n">cim</span><span class="p">)</span>
+            <span class="n">a</span><span class="p">[:</span><span class="o">-</span><span class="n">m</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span><span class="n">a</span><span class="p">[:</span><span class="o">-</span><span class="n">m</span><span class="p">],</span> <span class="n">np</span><span class="o">.</span><span class="n">minimum</span><span class="p">(</span><span class="n">m</span> <span class="o">*</span> <span class="n">pvals</span><span class="p">[:</span><span class="o">-</span><span class="n">m</span><span class="p">],</span> <span class="n">cim</span><span class="p">))</span>
+        <span class="n">pvals_corrected</span> <span class="o">=</span> <span class="n">a</span>
+        <span class="n">reject</span> <span class="o">=</span> <span class="n">a</span> <span class="o">&lt;=</span> <span class="n">alphaf</span>
+
+    <span class="k">elif</span> <span class="n">method</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="ow">in</span> <span class="p">[</span><span class="s">&#39;fdr_bh&#39;</span><span class="p">,</span> <span class="s">&#39;fdr_i&#39;</span><span class="p">,</span> <span class="s">&#39;fdr_p&#39;</span><span class="p">,</span> <span class="s">&#39;fdri&#39;</span><span class="p">,</span> <span class="s">&#39;fdrp&#39;</span><span class="p">]:</span>
+        <span class="c"># delegate, call with sorted pvals</span>
+        <span class="n">reject</span><span class="p">,</span> <span class="n">pvals_corrected</span> <span class="o">=</span> <span class="n">fdrcorrection</span><span class="p">(</span><span class="n">pvals</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="n">alpha</span><span class="p">,</span>
+                                                 <span class="n">method</span><span class="o">=</span><span class="s">&#39;indep&#39;</span><span class="p">,</span>
+                                                 <span class="n">is_sorted</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">method</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="ow">in</span> <span class="p">[</span><span class="s">&#39;fdr_by&#39;</span><span class="p">,</span> <span class="s">&#39;fdr_n&#39;</span><span class="p">,</span> <span class="s">&#39;fdr_c&#39;</span><span class="p">,</span> <span class="s">&#39;fdrn&#39;</span><span class="p">,</span> <span class="s">&#39;fdrcorr&#39;</span><span class="p">]:</span>
+        <span class="c"># delegate, call with sorted pvals</span>
+        <span class="n">reject</span><span class="p">,</span> <span class="n">pvals_corrected</span> <span class="o">=</span> <span class="n">fdrcorrection</span><span class="p">(</span><span class="n">pvals</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="n">alpha</span><span class="p">,</span>
+                                                 <span class="n">method</span><span class="o">=</span><span class="s">&#39;n&#39;</span><span class="p">,</span>
+                                                 <span class="n">is_sorted</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">method</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="ow">in</span> <span class="p">[</span><span class="s">&#39;fdr_tsbky&#39;</span><span class="p">,</span> <span class="s">&#39;fdr_2sbky&#39;</span><span class="p">,</span> <span class="s">&#39;fdr_twostage&#39;</span><span class="p">]:</span>
+        <span class="c"># delegate, call with sorted pvals</span>
+        <span class="n">reject</span><span class="p">,</span> <span class="n">pvals_corrected</span> <span class="o">=</span> <span class="n">fdrcorrection_twostage</span><span class="p">(</span><span class="n">pvals</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="n">alpha</span><span class="p">,</span>
+                                                         <span class="n">method</span><span class="o">=</span><span class="s">&#39;bky&#39;</span><span class="p">,</span>
+                                                         <span class="n">is_sorted</span><span class="o">=</span><span class="bp">True</span><span class="p">)[:</span><span class="mi">2</span><span class="p">]</span>
+    <span class="k">elif</span> <span class="n">method</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="ow">in</span> <span class="p">[</span><span class="s">&#39;fdr_tsbh&#39;</span><span class="p">,</span> <span class="s">&#39;fdr_2sbh&#39;</span><span class="p">]:</span>
+        <span class="c"># delegate, call with sorted pvals</span>
+        <span class="n">reject</span><span class="p">,</span> <span class="n">pvals_corrected</span> <span class="o">=</span> <span class="n">fdrcorrection_twostage</span><span class="p">(</span><span class="n">pvals</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="n">alpha</span><span class="p">,</span>
+                                                         <span class="n">method</span><span class="o">=</span><span class="s">&#39;bh&#39;</span><span class="p">,</span>
+                                                         <span class="n">is_sorted</span><span class="o">=</span><span class="bp">True</span><span class="p">)[:</span><span class="mi">2</span><span class="p">]</span>
+
+    <span class="k">elif</span> <span class="n">method</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="ow">in</span> <span class="p">[</span><span class="s">&#39;fdr_gbs&#39;</span><span class="p">]:</span>
+        <span class="c">#adaptive stepdown in Gavrilov, Benjamini, Sarkar, Annals of Statistics 2009</span>
+<span class="c">##        notreject = pvals &gt; alphaf / np.arange(ntests, 0, -1) #alphacSidak</span>
+<span class="c">##        notrejectmin = np.min(np.nonzero(notreject))</span>
+<span class="c">##        notreject[notrejectmin:] = True</span>
+<span class="c">##        reject = ~notreject</span>
+
+        <span class="n">ii</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">ntests</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="n">q</span> <span class="o">=</span> <span class="p">(</span><span class="n">ntests</span> <span class="o">+</span> <span class="mf">1.</span> <span class="o">-</span> <span class="n">ii</span><span class="p">)</span><span class="o">/</span><span class="n">ii</span> <span class="o">*</span> <span class="n">pvals</span> <span class="o">/</span> <span class="p">(</span><span class="mf">1.</span> <span class="o">-</span> <span class="n">pvals</span><span class="p">)</span>
+        <span class="n">pvals_corrected_raw</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">maximum</span><span class="o">.</span><span class="n">accumulate</span><span class="p">(</span><span class="n">q</span><span class="p">)</span> <span class="c">#up requirementd</span>
+
+        <span class="n">pvals_corrected</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">minimum</span><span class="o">.</span><span class="n">accumulate</span><span class="p">(</span><span class="n">pvals_corrected_raw</span><span class="p">[::</span><span class="o">-</span><span class="mi">1</span><span class="p">])[::</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+        <span class="k">del</span> <span class="n">pvals_corrected_raw</span>
+        <span class="n">reject</span> <span class="o">=</span> <span class="n">pvals_corrected</span> <span class="o">&lt;=</span> <span class="n">alpha</span>
+
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&#39;method not recognized&#39;</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">pvals_corrected</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span> <span class="c">#not necessary anymore</span>
+        <span class="n">pvals_corrected</span><span class="p">[</span><span class="n">pvals_corrected</span><span class="o">&gt;</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span>
+    <span class="k">if</span> <span class="n">is_sorted</span> <span class="ow">or</span> <span class="n">returnsorted</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">reject</span><span class="p">,</span> <span class="n">pvals_corrected</span><span class="p">,</span> <span class="n">alphacSidak</span><span class="p">,</span> <span class="n">alphacBonf</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">pvals_corrected_</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty_like</span><span class="p">(</span><span class="n">pvals_corrected</span><span class="p">)</span>
+        <span class="n">pvals_corrected_</span><span class="p">[</span><span class="n">sortind</span><span class="p">]</span> <span class="o">=</span> <span class="n">pvals_corrected</span>
+        <span class="k">del</span> <span class="n">pvals_corrected</span>
+        <span class="n">reject_</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty_like</span><span class="p">(</span><span class="n">reject</span><span class="p">)</span>
+        <span class="n">reject_</span><span class="p">[</span><span class="n">sortind</span><span class="p">]</span> <span class="o">=</span> <span class="n">reject</span>
+        <span class="k">return</span> <span class="n">reject_</span><span class="p">,</span> <span class="n">pvals_corrected_</span><span class="p">,</span> <span class="n">alphacSidak</span><span class="p">,</span> <span class="n">alphacBonf</span>
+
+</div>
+<span class="k">def</span> <span class="nf">fdrcorrection</span><span class="p">(</span><span class="n">pvals</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="mf">0.05</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s">&#39;indep&#39;</span><span class="p">,</span> <span class="n">is_sorted</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;pvalue correction for false discovery rate</span>
+
+<span class="sd">    This covers Benjamini/Hochberg for independent or positively correlated and</span>
+<span class="sd">    Benjamini/Yekutieli for general or negatively correlated tests. Both are</span>
+<span class="sd">    available in the function multipletests, as method=`fdr_bh`, resp. `fdr_by`.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    pvals : array_like</span>
+<span class="sd">        set of p-values of the individual tests.</span>
+<span class="sd">    alpha : float</span>
+<span class="sd">        error rate</span>
+<span class="sd">    method : {&#39;indep&#39;, &#39;negcorr&#39;)</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    rejected : array, bool</span>
+<span class="sd">        True if a hypothesis is rejected, False if not</span>
+<span class="sd">    pvalue-corrected : array</span>
+<span class="sd">        pvalues adjusted for multiple hypothesis testing to limit FDR</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+
+<span class="sd">    If there is prior information on the fraction of true hypothesis, then alpha</span>
+<span class="sd">    should be set to alpha * m/m_0 where m is the number of tests,</span>
+<span class="sd">    given by the p-values, and m_0 is an estimate of the true hypothesis.</span>
+<span class="sd">    (see Benjamini, Krieger and Yekuteli)</span>
+
+<span class="sd">    The two-step method of Benjamini, Krieger and Yekutiel that estimates the number</span>
+<span class="sd">    of false hypotheses will be available (soon).</span>
+
+<span class="sd">    Method names can be abbreviated to first letter, &#39;i&#39; or &#39;p&#39; for fdr_bh and &#39;n&#39; for</span>
+<span class="sd">    fdr_by.</span>
+
+
+
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="n">pvals</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">pvals</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">is_sorted</span><span class="p">:</span>
+        <span class="n">pvals_sortind</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">pvals</span><span class="p">)</span>
+        <span class="n">pvals_sorted</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">take</span><span class="p">(</span><span class="n">pvals</span><span class="p">,</span> <span class="n">pvals_sortind</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">pvals_sorted</span> <span class="o">=</span> <span class="n">pvals</span>  <span class="c"># alias</span>
+
+    <span class="k">if</span> <span class="n">method</span> <span class="ow">in</span> <span class="p">[</span><span class="s">&#39;i&#39;</span><span class="p">,</span> <span class="s">&#39;indep&#39;</span><span class="p">,</span> <span class="s">&#39;p&#39;</span><span class="p">,</span> <span class="s">&#39;poscorr&#39;</span><span class="p">]:</span>
+        <span class="n">ecdffactor</span> <span class="o">=</span> <span class="n">_ecdf</span><span class="p">(</span><span class="n">pvals_sorted</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">method</span> <span class="ow">in</span> <span class="p">[</span><span class="s">&#39;n&#39;</span><span class="p">,</span> <span class="s">&#39;negcorr&#39;</span><span class="p">]:</span>
+        <span class="n">cm</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="mf">1.</span><span class="o">/</span><span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">pvals_sorted</span><span class="p">)</span><span class="o">+</span><span class="mi">1</span><span class="p">))</span>   <span class="c">#corrected this</span>
+        <span class="n">ecdffactor</span> <span class="o">=</span> <span class="n">_ecdf</span><span class="p">(</span><span class="n">pvals_sorted</span><span class="p">)</span> <span class="o">/</span> <span class="n">cm</span>
+<span class="c">##    elif method in [&#39;n&#39;, &#39;negcorr&#39;]:</span>
+<span class="c">##        cm = np.sum(np.arange(len(pvals)))</span>
+<span class="c">##        ecdffactor = ecdf(pvals_sorted)/cm</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&#39;only indep and necorr implemented&#39;</span><span class="p">)</span>
+    <span class="n">reject</span> <span class="o">=</span> <span class="n">pvals_sorted</span> <span class="o">&lt;=</span> <span class="n">ecdffactor</span><span class="o">*</span><span class="n">alpha</span>
+    <span class="k">if</span> <span class="n">reject</span><span class="o">.</span><span class="n">any</span><span class="p">():</span>
+        <span class="n">rejectmax</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">nonzero</span><span class="p">(</span><span class="n">reject</span><span class="p">)[</span><span class="mi">0</span><span class="p">])</span>
+        <span class="n">reject</span><span class="p">[:</span><span class="n">rejectmax</span><span class="p">]</span> <span class="o">=</span> <span class="bp">True</span>
+
+    <span class="n">pvals_corrected_raw</span> <span class="o">=</span> <span class="n">pvals_sorted</span> <span class="o">/</span> <span class="n">ecdffactor</span>
+    <span class="n">pvals_corrected</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">minimum</span><span class="o">.</span><span class="n">accumulate</span><span class="p">(</span><span class="n">pvals_corrected_raw</span><span class="p">[::</span><span class="o">-</span><span class="mi">1</span><span class="p">])[::</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+    <span class="k">del</span> <span class="n">pvals_corrected_raw</span>
+    <span class="n">pvals_corrected</span><span class="p">[</span><span class="n">pvals_corrected</span><span class="o">&gt;</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">is_sorted</span><span class="p">:</span>
+        <span class="n">pvals_corrected_</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty_like</span><span class="p">(</span><span class="n">pvals_corrected</span><span class="p">)</span>
+        <span class="n">pvals_corrected_</span><span class="p">[</span><span class="n">pvals_sortind</span><span class="p">]</span> <span class="o">=</span> <span class="n">pvals_corrected</span>
+        <span class="k">del</span> <span class="n">pvals_corrected</span>
+        <span class="n">reject_</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty_like</span><span class="p">(</span><span class="n">reject</span><span class="p">)</span>
+        <span class="n">reject_</span><span class="p">[</span><span class="n">pvals_sortind</span><span class="p">]</span> <span class="o">=</span> <span class="n">reject</span>
+        <span class="k">return</span> <span class="n">reject_</span><span class="p">,</span> <span class="n">pvals_corrected_</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">reject</span><span class="p">,</span> <span class="n">pvals_corrected</span>
+
+
+<span class="k">def</span> <span class="nf">fdrcorrection_twostage</span><span class="p">(</span><span class="n">pvals</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="mf">0.05</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s">&#39;bky&#39;</span><span class="p">,</span> <span class="nb">iter</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span>
+                           <span class="n">is_sorted</span><span class="o">=</span><span class="bp">False</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;(iterated) two stage linear step-up procedure with estimation of number of true</span>
+<span class="sd">    hypotheses</span>
+
+<span class="sd">    Benjamini, Krieger and Yekuteli, procedure in Definition 6</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    pvals : array_like</span>
+<span class="sd">        set of p-values of the individual tests.</span>
+<span class="sd">    alpha : float</span>
+<span class="sd">        error rate</span>
+<span class="sd">    method : {&#39;bky&#39;, &#39;bh&#39;)</span>
+<span class="sd">         see Notes for details</span>
+
+<span class="sd">        &#39;bky&#39; : implements the procedure in Definition 6 of Benjamini, Krieger</span>
+<span class="sd">           and Yekuteli 2006</span>
+<span class="sd">        &#39;bh&#39; : implements the two stage method of Benjamini and Hochberg</span>
+
+<span class="sd">    iter ; bool</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    rejected : array, bool</span>
+<span class="sd">        True if a hypothesis is rejected, False if not</span>
+<span class="sd">    pvalue-corrected : array</span>
+<span class="sd">        pvalues adjusted for multiple hypotheses testing to limit FDR</span>
+<span class="sd">    m0 : int</span>
+<span class="sd">        ntest - rej, estimated number of true hypotheses</span>
+<span class="sd">    alpha_stages : list of floats</span>
+<span class="sd">        A list of alphas that have been used at each stage</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    The returned corrected p-values are specific to the given alpha, they</span>
+<span class="sd">    cannot be used for a different alpha.</span>
+
+<span class="sd">    The returned corrected p-values are from the last stage of the fdr_bh</span>
+<span class="sd">    linear step-up procedure (fdrcorrection0 with method=&#39;indep&#39;) corrected</span>
+<span class="sd">    for the estimated fraction of true hypotheses.</span>
+<span class="sd">    This means that the rejection decision can be obtained with</span>
+<span class="sd">    ``pval_corrected &lt;= alpha``, where ``alpha`` is the origianal significance</span>
+<span class="sd">    level.</span>
+<span class="sd">    (Note: This has changed from earlier versions (&lt;0.5.0) of statsmodels.)</span>
+
+<span class="sd">    BKY described several other multi-stage methods, which would be easy to implement.</span>
+<span class="sd">    However, in their simulation the simple two-stage method (with iter=False) was the</span>
+<span class="sd">    most robust to the presence of positive correlation</span>
+
+<span class="sd">    TODO: What should be returned?</span>
+
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="n">pvals</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">pvals</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">is_sorted</span><span class="p">:</span>
+        <span class="n">pvals_sortind</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">pvals</span><span class="p">)</span>
+        <span class="n">pvals</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">take</span><span class="p">(</span><span class="n">pvals</span><span class="p">,</span> <span class="n">pvals_sortind</span><span class="p">)</span>
+
+    <span class="n">ntests</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">pvals</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">method</span> <span class="o">==</span> <span class="s">&#39;bky&#39;</span><span class="p">:</span>
+        <span class="n">fact</span> <span class="o">=</span> <span class="p">(</span><span class="mf">1.</span><span class="o">+</span><span class="n">alpha</span><span class="p">)</span>
+        <span class="n">alpha_prime</span> <span class="o">=</span> <span class="n">alpha</span> <span class="o">/</span> <span class="n">fact</span>
+    <span class="k">elif</span> <span class="n">method</span> <span class="o">==</span> <span class="s">&#39;bh&#39;</span><span class="p">:</span>
+        <span class="n">fact</span> <span class="o">=</span> <span class="mf">1.</span>
+        <span class="n">alpha_prime</span> <span class="o">=</span> <span class="n">alpha</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&quot;only &#39;bky&#39; and &#39;bh&#39; are available as method&quot;</span><span class="p">)</span>
+
+    <span class="n">alpha_stages</span> <span class="o">=</span> <span class="p">[</span><span class="n">alpha_prime</span><span class="p">]</span>
+    <span class="n">rej</span><span class="p">,</span> <span class="n">pvalscorr</span> <span class="o">=</span> <span class="n">fdrcorrection</span><span class="p">(</span><span class="n">pvals</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="n">alpha_prime</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s">&#39;indep&#39;</span><span class="p">,</span>
+                                   <span class="n">is_sorted</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+    <span class="n">r1</span> <span class="o">=</span> <span class="n">rej</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">r1</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span> <span class="ow">or</span> <span class="p">(</span><span class="n">r1</span> <span class="o">==</span> <span class="n">ntests</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">rej</span><span class="p">,</span> <span class="n">pvalscorr</span> <span class="o">*</span> <span class="n">fact</span><span class="p">,</span> <span class="n">ntests</span> <span class="o">-</span> <span class="n">r1</span><span class="p">,</span> <span class="n">alpha_stages</span>
+    <span class="n">ri_old</span> <span class="o">=</span> <span class="n">r1</span>
+
+    <span class="k">while</span> <span class="bp">True</span><span class="p">:</span>
+        <span class="n">ntests0</span> <span class="o">=</span> <span class="mf">1.0</span> <span class="o">*</span> <span class="n">ntests</span> <span class="o">-</span> <span class="n">ri_old</span>
+        <span class="n">alpha_star</span> <span class="o">=</span> <span class="n">alpha_prime</span> <span class="o">*</span> <span class="n">ntests</span> <span class="o">/</span> <span class="n">ntests0</span>
+        <span class="n">alpha_stages</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">alpha_star</span><span class="p">)</span>
+        <span class="c">#print ntests0, alpha_star</span>
+        <span class="n">rej</span><span class="p">,</span> <span class="n">pvalscorr</span> <span class="o">=</span> <span class="n">fdrcorrection</span><span class="p">(</span><span class="n">pvals</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="n">alpha_star</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s">&#39;indep&#39;</span><span class="p">,</span>
+                                       <span class="n">is_sorted</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+        <span class="n">ri</span> <span class="o">=</span> <span class="n">rej</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
+        <span class="k">if</span> <span class="p">(</span><span class="ow">not</span> <span class="nb">iter</span><span class="p">)</span> <span class="ow">or</span> <span class="n">ri</span> <span class="o">==</span> <span class="n">ri_old</span><span class="p">:</span>
+            <span class="k">break</span>
+        <span class="k">elif</span> <span class="n">ri</span> <span class="o">&lt;</span> <span class="n">ri_old</span><span class="p">:</span>
+            <span class="c"># prevent cycles and endless loops</span>
+            <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s">&quot; oops - shouldn&#39;t be here&quot;</span><span class="p">)</span>
+        <span class="n">ri_old</span> <span class="o">=</span> <span class="n">ri</span>
+
+    <span class="c"># make adjustment to pvalscorr to reflect estimated number of Non-Null cases</span>
+    <span class="c"># decision is then pvalscorr &lt; alpha  (or &lt;=)</span>
+    <span class="n">pvalscorr</span> <span class="o">*=</span> <span class="n">ntests0</span> <span class="o">*</span> <span class="mf">1.0</span> <span class="o">/</span>  <span class="n">ntests</span>
+    <span class="k">if</span> <span class="n">method</span> <span class="o">==</span> <span class="s">&#39;bky&#39;</span><span class="p">:</span>
+        <span class="n">pvalscorr</span> <span class="o">*=</span> <span class="p">(</span><span class="mf">1.</span> <span class="o">+</span> <span class="n">alpha</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">is_sorted</span><span class="p">:</span>
+        <span class="n">pvalscorr_</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty_like</span><span class="p">(</span><span class="n">pvalscorr</span><span class="p">)</span>
+        <span class="n">pvalscorr_</span><span class="p">[</span><span class="n">pvals_sortind</span><span class="p">]</span> <span class="o">=</span> <span class="n">pvalscorr</span>
+        <span class="k">del</span> <span class="n">pvalscorr</span>
+        <span class="n">reject</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty_like</span><span class="p">(</span><span class="n">rej</span><span class="p">)</span>
+        <span class="n">reject</span><span class="p">[</span><span class="n">pvals_sortind</span><span class="p">]</span> <span class="o">=</span> <span class="n">rej</span>
+        <span class="k">return</span> <span class="n">reject</span><span class="p">,</span> <span class="n">pvalscorr_</span><span class="p">,</span> <span class="n">ntests</span> <span class="o">-</span> <span class="n">ri</span><span class="p">,</span> <span class="n">alpha_stages</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">rej</span><span class="p">,</span> <span class="n">pvalscorr</span><span class="p">,</span> <span class="n">ntests</span> <span class="o">-</span> <span class="n">ri</span><span class="p">,</span> <span class="n">alpha_stages</span>
+</pre></div>
+
+
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <form class="search" action="../../../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer" role="contentinfo">
+        &copy; Copyright 2009-2013, Josef Perktold, Skipper Seabold, Jonathan Taylor, statsmodels-developers.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.3.1.
+    </div>
+  </body>
+</html>

@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.tsa.arima\_model.ARMA.fit
+=====================================
+
+.. currentmodule:: statsmodels.tsa.arima_model
+
+.. automethod:: ARMA.fit

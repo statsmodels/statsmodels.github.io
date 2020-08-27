@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.tsa.vector\_ar.var\_model.VAR.initialize
+====================================================
+
+.. currentmodule:: statsmodels.tsa.vector_ar.var_model
+
+.. automethod:: VAR.initialize

@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.imputation.mice.MICEData.next\_sample
+=================================================
+
+.. currentmodule:: statsmodels.imputation.mice
+
+.. automethod:: MICEData.next_sample

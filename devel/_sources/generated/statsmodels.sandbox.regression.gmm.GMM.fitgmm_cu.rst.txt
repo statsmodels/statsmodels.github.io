@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.sandbox.regression.gmm.GMM.fitgmm\_cu
+=================================================
+
+.. currentmodule:: statsmodels.sandbox.regression.gmm
+
+.. automethod:: GMM.fitgmm_cu

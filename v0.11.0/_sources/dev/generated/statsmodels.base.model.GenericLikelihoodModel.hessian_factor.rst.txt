@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.base.model.GenericLikelihoodModel.hessian\_factor
+=============================================================
+
+.. currentmodule:: statsmodels.base.model
+
+.. automethod:: GenericLikelihoodModel.hessian_factor

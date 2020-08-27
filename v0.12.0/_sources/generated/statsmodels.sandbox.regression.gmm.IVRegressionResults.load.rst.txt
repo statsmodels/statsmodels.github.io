@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.sandbox.regression.gmm.IVRegressionResults.load
+===========================================================
+
+.. currentmodule:: statsmodels.sandbox.regression.gmm
+
+.. automethod:: IVRegressionResults.load

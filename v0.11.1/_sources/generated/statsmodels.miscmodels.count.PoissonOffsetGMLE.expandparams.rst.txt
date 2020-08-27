@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.miscmodels.count.PoissonOffsetGMLE.expandparams
+===========================================================
+
+.. currentmodule:: statsmodels.miscmodels.count
+
+.. automethod:: PoissonOffsetGMLE.expandparams

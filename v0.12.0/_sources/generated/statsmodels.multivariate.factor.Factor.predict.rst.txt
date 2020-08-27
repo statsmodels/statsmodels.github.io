@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.multivariate.factor.Factor.predict
+==============================================
+
+.. currentmodule:: statsmodels.multivariate.factor
+
+.. automethod:: Factor.predict

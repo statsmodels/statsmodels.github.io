@@ -1,0 +1,686 @@
+
+
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta charset="utf-8" />
+    <title>statsmodels.multivariate.multivariate_ols &#8212; statsmodels v0.10.2 documentation</title>
+    <link rel="stylesheet" href="../../../_static/nature.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css" />
+    <script type="text/javascript" id="documentation_options" data-url_root="../../../" src="../../../_static/documentation_options.js"></script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <script type="text/javascript" src="../../../_static/language_data.js"></script>
+    <script async="async" type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/latest.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="shortcut icon" href="../../../_static/statsmodels_hybi_favico.ico"/>
+    <link rel="author" title="About these documents" href="../../../about.html" />
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+<link rel="stylesheet" href="../../../_static/examples.css" type="text/css" />
+<link rel="stylesheet" href="../../../_static/facebox.css" type="text/css" />
+<script type="text/javascript" src="../../../_static/scripts.js">
+</script>
+<script type="text/javascript" src="../../../_static/facebox.js">
+</script>
+<script type="text/javascript">
+$.facebox.settings.closeImage = "../../../_static/closelabel.png"
+$.facebox.settings.loadingImage = "../../../_static/loading.gif"
+</script>
+
+<script>
+$(document).ready(function() {
+  $.getJSON("../../../../versions.json", function(versions) {
+    var dropdown = document.createElement("div");
+    dropdown.className = "dropdown";
+    var button = document.createElement("button");
+    button.className = "dropbtn";
+    button.innerHTML = "Other Versions";
+    var content = document.createElement("div");
+    content.className = "dropdown-content";
+    dropdown.appendChild(button);
+    dropdown.appendChild(content);
+    $(".header").prepend(dropdown);
+    for (var i = 0; i < versions.length; i++) {
+      if (versions[i].substring(0, 1) == "v") {
+        versions[i] = [versions[i], versions[i].substring(1)];
+      } else {
+        versions[i] = [versions[i], versions[i]];
+      };
+    };
+    for (var i = 0; i < versions.length; i++) {
+      var a = document.createElement("a");
+      a.innerHTML = versions[i][1];
+      a.href = "../../../../" + versions[i][0] + "/index.html";
+      a.title = versions[i][1];
+      $(".dropdown-content").append(a);
+    };
+  });
+});
+</script>
+
+
+  </head><body>
+<div class="headerwrap">
+    <div class = "header">
+        
+        <a href = "../../../index.html">
+<img src="../../../_static/statsmodels_hybi_banner.png" alt="Logo"
+    style="padding-left: 15px"/></a>
+        
+    </div>
+</div>
+
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+<li><a href ="../../../install.html">Install</a></li> &nbsp;|&nbsp;
+<li><a href="https://groups.google.com/forum/?hl=en#!forum/pystatsmodels">Support</a></li> &nbsp;|&nbsp;
+<li><a href="https://github.com/statsmodels/statsmodels/issues">Bugs</a></li> &nbsp;|&nbsp;
+<li><a href="../../../dev/index.html">Develop</a></li> &nbsp;|&nbsp;
+<li><a href="../../../examples/index.html">Examples</a></li> &nbsp;|&nbsp;
+<li><a href="../../../faq.html">FAQ</a></li> &nbsp;|&nbsp;
+
+          <li class="nav-item nav-item-1"><a href="../../index.html" accesskey="U">Module code</a> |</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+
+
+
+
+  <h1>Source code for statsmodels.multivariate.multivariate_ols</h1><div class="highlight"><pre>
+<span></span><span class="c1"># -*- coding: utf-8 -*-</span>
+
+<span class="sd">&quot;&quot;&quot;General linear model</span>
+
+<span class="sd">author: Yichuan Liu</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="kn">from</span> <span class="nn">__future__</span> <span class="k">import</span> <span class="n">division</span>
+
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+<span class="kn">from</span> <span class="nn">numpy.linalg</span> <span class="k">import</span> <span class="n">eigvals</span><span class="p">,</span> <span class="n">inv</span><span class="p">,</span> <span class="n">solve</span><span class="p">,</span> <span class="n">matrix_rank</span><span class="p">,</span> <span class="n">pinv</span><span class="p">,</span> <span class="n">svd</span>
+<span class="kn">from</span> <span class="nn">scipy</span> <span class="k">import</span> <span class="n">stats</span>
+<span class="kn">import</span> <span class="nn">pandas</span> <span class="k">as</span> <span class="nn">pd</span>
+<span class="kn">from</span> <span class="nn">patsy</span> <span class="k">import</span> <span class="n">DesignInfo</span>
+
+<span class="kn">from</span> <span class="nn">statsmodels.compat</span> <span class="k">import</span> <span class="n">string_types</span>
+<span class="kn">from</span> <span class="nn">statsmodels.base.model</span> <span class="k">import</span> <span class="n">Model</span>
+<span class="kn">from</span> <span class="nn">statsmodels.iolib</span> <span class="k">import</span> <span class="n">summary2</span>
+<span class="n">__docformat__</span> <span class="o">=</span> <span class="s1">&#39;restructuredtext en&#39;</span>
+
+<span class="n">_hypotheses_doc</span> <span class="o">=</span> \
+<span class="sd">&quot;&quot;&quot;hypotheses: A list of tuples</span>
+<span class="sd">    Hypothesis `L*B*M = C` to be tested where B is the parameters in</span>
+<span class="sd">    regression Y = X*B. Each element is a tuple of length 2, 3, or 4:</span>
+
+<span class="sd">      * (name, contrast_L)</span>
+<span class="sd">      * (name, contrast_L, transform_M)</span>
+<span class="sd">      * (name, contrast_L, transform_M, constant_C)</span>
+
+<span class="sd">    containing a string `name`, the contrast matrix L, the transform</span>
+<span class="sd">    matrix M (for transforming dependent variables), and right-hand side</span>
+<span class="sd">    constant matrix constant_C, respectively.</span>
+
+<span class="sd">    contrast_L : 2D array or an array of strings</span>
+<span class="sd">        Left-hand side contrast matrix for hypotheses testing.</span>
+<span class="sd">        If 2D array, each row is an hypotheses and each column is an</span>
+<span class="sd">        independent variable. At least 1 row</span>
+<span class="sd">        (1 by k_exog, the number of independent variables) is required.</span>
+<span class="sd">        If an array of strings, it will be passed to</span>
+<span class="sd">        patsy.DesignInfo().linear_constraint.</span>
+
+<span class="sd">    transform_M : 2D array or an array of strings or None, optional</span>
+<span class="sd">        Left hand side transform matrix.</span>
+<span class="sd">        If `None` or left out, it is set to a k_endog by k_endog</span>
+<span class="sd">        identity matrix (i.e. do not transform y matrix).</span>
+<span class="sd">        If an array of strings, it will be passed to</span>
+<span class="sd">        patsy.DesignInfo().linear_constraint.</span>
+
+<span class="sd">    constant_C : 2D array or None, optional</span>
+<span class="sd">        Right-hand side constant matrix.</span>
+<span class="sd">        if `None` or left out it is set to a matrix of zeros</span>
+<span class="sd">        Must has the same number of rows as contrast_L and the same</span>
+<span class="sd">        number of columns as transform_M</span>
+
+<span class="sd">    If `hypotheses` is None: 1) the effect of each independent variable</span>
+<span class="sd">    on the dependent variables will be tested. Or 2) if model is created</span>
+<span class="sd">    using a formula,  `hypotheses` will be created according to</span>
+<span class="sd">    `design_info`. 1) and 2) is equivalent if no additional variables</span>
+<span class="sd">    are created by the formula (e.g. dummy variables for categorical</span>
+<span class="sd">    variables and interaction terms)</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+
+<span class="k">def</span> <span class="nf">_multivariate_ols_fit</span><span class="p">(</span><span class="n">endog</span><span class="p">,</span> <span class="n">exog</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s1">&#39;svd&#39;</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="mf">1e-8</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Solve multivariate linear model y = x * params</span>
+<span class="sd">    where y is dependent variables, x is independent variables</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    endog : array_like</span>
+<span class="sd">        each column is a dependent variable</span>
+<span class="sd">    exog : array_like</span>
+<span class="sd">        each column is a independent variable</span>
+<span class="sd">    method : string</span>
+<span class="sd">        &#39;svd&#39; - Singular value decomposition</span>
+<span class="sd">        &#39;pinv&#39; - Moore-Penrose pseudoinverse</span>
+<span class="sd">    tolerance : float, a small positive number</span>
+<span class="sd">        Tolerance for eigenvalue. Values smaller than tolerance is considered</span>
+<span class="sd">        zero.</span>
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    a tuple of matrices or values necessary for hypotheses testing</span>
+
+<span class="sd">    .. [*] https://support.sas.com/documentation/cdl/en/statug/63033/HTML/default/viewer.htm#statug_introreg_sect012.htm</span>
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    Status: experimental and incomplete</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">y</span> <span class="o">=</span> <span class="n">endog</span>
+    <span class="n">x</span> <span class="o">=</span> <span class="n">exog</span>
+    <span class="n">nobs</span><span class="p">,</span> <span class="n">k_endog</span> <span class="o">=</span> <span class="n">y</span><span class="o">.</span><span class="n">shape</span>
+    <span class="n">nobs1</span><span class="p">,</span> <span class="n">k_exog</span><span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">shape</span>
+    <span class="k">if</span> <span class="n">nobs</span> <span class="o">!=</span> <span class="n">nobs1</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;x(n=</span><span class="si">%d</span><span class="s1">) and y(n=</span><span class="si">%d</span><span class="s1">) should have the same number of &#39;</span>
+                         <span class="s1">&#39;rows!&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">nobs1</span><span class="p">,</span> <span class="n">nobs</span><span class="p">))</span>
+
+    <span class="c1"># Calculate the matrices necessary for hypotheses testing</span>
+    <span class="n">df_resid</span> <span class="o">=</span> <span class="n">nobs</span> <span class="o">-</span> <span class="n">k_exog</span>
+    <span class="k">if</span> <span class="n">method</span> <span class="o">==</span> <span class="s1">&#39;pinv&#39;</span><span class="p">:</span>
+        <span class="c1"># Regression coefficients matrix</span>
+        <span class="n">pinv_x</span> <span class="o">=</span> <span class="n">pinv</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+        <span class="n">params</span> <span class="o">=</span> <span class="n">pinv_x</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">y</span><span class="p">)</span>
+
+        <span class="c1"># inverse of x&#39;x</span>
+        <span class="n">inv_cov</span> <span class="o">=</span> <span class="n">pinv_x</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">pinv_x</span><span class="o">.</span><span class="n">T</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">matrix_rank</span><span class="p">(</span><span class="n">inv_cov</span><span class="p">,</span><span class="n">tol</span><span class="o">=</span><span class="n">tolerance</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">k_exog</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;Covariance of x singular!&#39;</span><span class="p">)</span>
+
+        <span class="c1"># Sums of squares and cross-products of residuals</span>
+        <span class="c1"># Y&#39;Y - (X * params)&#39;B * params</span>
+        <span class="n">t</span> <span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">params</span><span class="p">)</span>
+        <span class="n">sscpr</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">subtract</span><span class="p">(</span><span class="n">y</span><span class="o">.</span><span class="n">T</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">y</span><span class="p">),</span> <span class="n">t</span><span class="o">.</span><span class="n">T</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">t</span><span class="p">))</span>
+        <span class="k">return</span> <span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="n">df_resid</span><span class="p">,</span> <span class="n">inv_cov</span><span class="p">,</span> <span class="n">sscpr</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">method</span> <span class="o">==</span> <span class="s1">&#39;svd&#39;</span><span class="p">:</span>
+        <span class="n">u</span><span class="p">,</span> <span class="n">s</span><span class="p">,</span> <span class="n">v</span> <span class="o">=</span> <span class="n">svd</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+        <span class="k">if</span> <span class="p">(</span><span class="n">s</span> <span class="o">&gt;</span> <span class="n">tolerance</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="n">s</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;Covariance of x singular!&#39;</span><span class="p">)</span>
+        <span class="n">invs</span> <span class="o">=</span> <span class="mf">1.</span> <span class="o">/</span> <span class="n">s</span>
+
+        <span class="n">params</span> <span class="o">=</span> <span class="n">v</span><span class="o">.</span><span class="n">T</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">diag</span><span class="p">(</span><span class="n">invs</span><span class="p">))</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">u</span><span class="o">.</span><span class="n">T</span><span class="p">)</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">y</span><span class="p">)</span>
+        <span class="n">inv_cov</span> <span class="o">=</span> <span class="n">v</span><span class="o">.</span><span class="n">T</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">diag</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">power</span><span class="p">(</span><span class="n">invs</span><span class="p">,</span> <span class="mi">2</span><span class="p">)))</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">v</span><span class="p">)</span>
+        <span class="n">t</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">diag</span><span class="p">(</span><span class="n">s</span><span class="p">)</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">v</span><span class="p">)</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">params</span><span class="p">)</span>
+        <span class="n">sscpr</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">subtract</span><span class="p">(</span><span class="n">y</span><span class="o">.</span><span class="n">T</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">y</span><span class="p">),</span> <span class="n">t</span><span class="o">.</span><span class="n">T</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">t</span><span class="p">))</span>
+        <span class="k">return</span> <span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="n">df_resid</span><span class="p">,</span> <span class="n">inv_cov</span><span class="p">,</span> <span class="n">sscpr</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;</span><span class="si">%s</span><span class="s1"> is not a supported method!&#39;</span> <span class="o">%</span> <span class="n">method</span><span class="p">)</span>
+
+
+<span class="k">def</span> <span class="nf">multivariate_stats</span><span class="p">(</span><span class="n">eigenvals</span><span class="p">,</span>
+                       <span class="n">r_err_sscp</span><span class="p">,</span>
+                       <span class="n">r_contrast</span><span class="p">,</span> <span class="n">df_resid</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="mf">1e-8</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    For multivariate linear model Y = X * B</span>
+<span class="sd">    Testing hypotheses</span>
+<span class="sd">        L*B*M = 0</span>
+<span class="sd">    where L is contrast matrix, B is the parameters of the</span>
+<span class="sd">    multivariate linear model and M is dependent variable transform matrix.</span>
+<span class="sd">        T = L*inv(X&#39;X)*L&#39;</span>
+<span class="sd">        H = M&#39;B&#39;L&#39;*inv(T)*LBM</span>
+<span class="sd">        E =  M&#39;(Y&#39;Y - B&#39;X&#39;XB)M</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    eigenvals : array</span>
+<span class="sd">        The eigenvalues of inv(E + H)*H</span>
+<span class="sd">    r_err_sscp : int</span>
+<span class="sd">        Rank of E + H</span>
+<span class="sd">    r_contrast : int</span>
+<span class="sd">        Rank of T matrix</span>
+<span class="sd">    df_resid : int</span>
+<span class="sd">        Residual degree of freedom (n_samples minus n_variables of X)</span>
+<span class="sd">    tolerance : float</span>
+<span class="sd">        smaller than which eigenvalue is considered 0</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    A DataFrame</span>
+
+<span class="sd">    References</span>
+<span class="sd">    ----------</span>
+<span class="sd">    .. [*] https://support.sas.com/documentation/cdl/en/statug/63033/HTML/default/viewer.htm#statug_introreg_sect012.htm</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">v</span> <span class="o">=</span> <span class="n">df_resid</span>
+    <span class="n">p</span> <span class="o">=</span> <span class="n">r_err_sscp</span>
+    <span class="n">q</span> <span class="o">=</span> <span class="n">r_contrast</span>
+    <span class="n">s</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">([</span><span class="n">p</span><span class="p">,</span> <span class="n">q</span><span class="p">])</span>
+    <span class="n">ind</span> <span class="o">=</span> <span class="n">eigenvals</span> <span class="o">&gt;</span> <span class="n">tolerance</span>
+    <span class="n">n_e</span> <span class="o">=</span> <span class="n">ind</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
+    <span class="n">eigv2</span> <span class="o">=</span> <span class="n">eigenvals</span><span class="p">[</span><span class="n">ind</span><span class="p">]</span>
+    <span class="n">eigv1</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">i</span> <span class="o">/</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">i</span><span class="p">)</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">eigv2</span><span class="p">])</span>
+    <span class="n">m</span> <span class="o">=</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">p</span> <span class="o">-</span> <span class="n">q</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span> <span class="o">/</span> <span class="mi">2</span>
+    <span class="n">n</span> <span class="o">=</span> <span class="p">(</span><span class="n">v</span> <span class="o">-</span> <span class="n">p</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span> <span class="o">/</span> <span class="mi">2</span>
+
+    <span class="n">cols</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;Value&#39;</span><span class="p">,</span> <span class="s1">&#39;Num DF&#39;</span><span class="p">,</span> <span class="s1">&#39;Den DF&#39;</span><span class="p">,</span> <span class="s1">&#39;F Value&#39;</span><span class="p">,</span> <span class="s1">&#39;Pr &gt; F&#39;</span><span class="p">]</span>
+    <span class="n">index</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;Wilks&#39; lambda&quot;</span><span class="p">,</span> <span class="s2">&quot;Pillai&#39;s trace&quot;</span><span class="p">,</span>
+             <span class="s2">&quot;Hotelling-Lawley trace&quot;</span><span class="p">,</span> <span class="s2">&quot;Roy&#39;s greatest root&quot;</span><span class="p">]</span>
+    <span class="n">results</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">columns</span><span class="o">=</span><span class="n">cols</span><span class="p">,</span>
+                           <span class="n">index</span><span class="o">=</span><span class="n">index</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">fn</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">real</span><span class="p">([</span><span class="n">x</span><span class="p">])[</span><span class="mi">0</span><span class="p">]</span>
+
+    <span class="n">results</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="s2">&quot;Wilks&#39; lambda&quot;</span><span class="p">,</span> <span class="s1">&#39;Value&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">fn</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">prod</span><span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">eigv2</span><span class="p">))</span>
+
+    <span class="n">results</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="s2">&quot;Pillai&#39;s trace&quot;</span><span class="p">,</span> <span class="s1">&#39;Value&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">fn</span><span class="p">(</span><span class="n">eigv2</span><span class="o">.</span><span class="n">sum</span><span class="p">())</span>
+
+    <span class="n">results</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="s2">&quot;Hotelling-Lawley trace&quot;</span><span class="p">,</span> <span class="s1">&#39;Value&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">fn</span><span class="p">(</span><span class="n">eigv1</span><span class="o">.</span><span class="n">sum</span><span class="p">())</span>
+
+    <span class="n">results</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="s2">&quot;Roy&#39;s greatest root&quot;</span><span class="p">,</span> <span class="s1">&#39;Value&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">fn</span><span class="p">(</span><span class="n">eigv1</span><span class="o">.</span><span class="n">max</span><span class="p">())</span>
+
+    <span class="n">r</span> <span class="o">=</span> <span class="n">v</span> <span class="o">-</span> <span class="p">(</span><span class="n">p</span> <span class="o">-</span> <span class="n">q</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span><span class="o">/</span><span class="mi">2</span>
+    <span class="n">u</span> <span class="o">=</span> <span class="p">(</span><span class="n">p</span><span class="o">*</span><span class="n">q</span> <span class="o">-</span> <span class="mi">2</span><span class="p">)</span> <span class="o">/</span> <span class="mi">4</span>
+    <span class="n">df1</span> <span class="o">=</span> <span class="n">p</span> <span class="o">*</span> <span class="n">q</span>
+    <span class="k">if</span> <span class="n">p</span><span class="o">*</span><span class="n">p</span> <span class="o">+</span> <span class="n">q</span><span class="o">*</span><span class="n">q</span> <span class="o">-</span> <span class="mi">5</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="n">t</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">((</span><span class="n">p</span><span class="o">*</span><span class="n">p</span><span class="o">*</span><span class="n">q</span><span class="o">*</span><span class="n">q</span> <span class="o">-</span> <span class="mi">4</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="n">p</span><span class="o">*</span><span class="n">p</span> <span class="o">+</span> <span class="n">q</span><span class="o">*</span><span class="n">q</span> <span class="o">-</span> <span class="mi">5</span><span class="p">))</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">t</span> <span class="o">=</span> <span class="mi">1</span>
+    <span class="n">df2</span> <span class="o">=</span> <span class="n">r</span><span class="o">*</span><span class="n">t</span> <span class="o">-</span> <span class="mi">2</span><span class="o">*</span><span class="n">u</span>
+    <span class="n">lmd</span> <span class="o">=</span> <span class="n">results</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="s2">&quot;Wilks&#39; lambda&quot;</span><span class="p">,</span> <span class="s1">&#39;Value&#39;</span><span class="p">]</span>
+    <span class="n">lmd</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">power</span><span class="p">(</span><span class="n">lmd</span><span class="p">,</span> <span class="mi">1</span> <span class="o">/</span> <span class="n">t</span><span class="p">)</span>
+    <span class="n">F</span> <span class="o">=</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">lmd</span><span class="p">)</span> <span class="o">/</span> <span class="n">lmd</span> <span class="o">*</span> <span class="n">df2</span> <span class="o">/</span> <span class="n">df1</span>
+    <span class="n">results</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="s2">&quot;Wilks&#39; lambda&quot;</span><span class="p">,</span> <span class="s1">&#39;Num DF&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">df1</span>
+    <span class="n">results</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="s2">&quot;Wilks&#39; lambda&quot;</span><span class="p">,</span> <span class="s1">&#39;Den DF&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">df2</span>
+    <span class="n">results</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="s2">&quot;Wilks&#39; lambda&quot;</span><span class="p">,</span> <span class="s1">&#39;F Value&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">F</span>
+    <span class="n">pval</span> <span class="o">=</span> <span class="n">stats</span><span class="o">.</span><span class="n">f</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="n">F</span><span class="p">,</span> <span class="n">df1</span><span class="p">,</span> <span class="n">df2</span><span class="p">)</span>
+    <span class="n">results</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="s2">&quot;Wilks&#39; lambda&quot;</span><span class="p">,</span> <span class="s1">&#39;Pr &gt; F&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">pval</span>
+
+    <span class="n">V</span> <span class="o">=</span> <span class="n">results</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="s2">&quot;Pillai&#39;s trace&quot;</span><span class="p">,</span> <span class="s1">&#39;Value&#39;</span><span class="p">]</span>
+    <span class="n">df1</span> <span class="o">=</span> <span class="n">s</span> <span class="o">*</span> <span class="p">(</span><span class="mi">2</span><span class="o">*</span><span class="n">m</span> <span class="o">+</span> <span class="n">s</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span>
+    <span class="n">df2</span> <span class="o">=</span> <span class="n">s</span> <span class="o">*</span> <span class="p">(</span><span class="mi">2</span><span class="o">*</span><span class="n">n</span> <span class="o">+</span> <span class="n">s</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span>
+    <span class="n">F</span> <span class="o">=</span> <span class="n">df2</span> <span class="o">/</span> <span class="n">df1</span> <span class="o">*</span> <span class="n">V</span> <span class="o">/</span> <span class="p">(</span><span class="n">s</span> <span class="o">-</span> <span class="n">V</span><span class="p">)</span>
+    <span class="n">results</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="s2">&quot;Pillai&#39;s trace&quot;</span><span class="p">,</span> <span class="s1">&#39;Num DF&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">df1</span>
+    <span class="n">results</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="s2">&quot;Pillai&#39;s trace&quot;</span><span class="p">,</span> <span class="s1">&#39;Den DF&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">df2</span>
+    <span class="n">results</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="s2">&quot;Pillai&#39;s trace&quot;</span><span class="p">,</span> <span class="s1">&#39;F Value&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">F</span>
+    <span class="n">pval</span> <span class="o">=</span> <span class="n">stats</span><span class="o">.</span><span class="n">f</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="n">F</span><span class="p">,</span> <span class="n">df1</span><span class="p">,</span> <span class="n">df2</span><span class="p">)</span>
+    <span class="n">results</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="s2">&quot;Pillai&#39;s trace&quot;</span><span class="p">,</span> <span class="s1">&#39;Pr &gt; F&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">pval</span>
+
+    <span class="n">U</span> <span class="o">=</span> <span class="n">results</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="s2">&quot;Hotelling-Lawley trace&quot;</span><span class="p">,</span> <span class="s1">&#39;Value&#39;</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">n</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="n">b</span> <span class="o">=</span> <span class="p">(</span><span class="n">p</span> <span class="o">+</span> <span class="mi">2</span><span class="o">*</span><span class="n">n</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="n">q</span> <span class="o">+</span> <span class="mi">2</span><span class="o">*</span><span class="n">n</span><span class="p">)</span> <span class="o">/</span> <span class="mi">2</span> <span class="o">/</span> <span class="p">(</span><span class="mi">2</span><span class="o">*</span><span class="n">n</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="n">n</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="n">df1</span> <span class="o">=</span> <span class="n">p</span> <span class="o">*</span> <span class="n">q</span>
+        <span class="n">df2</span> <span class="o">=</span> <span class="mi">4</span> <span class="o">+</span> <span class="p">(</span><span class="n">p</span><span class="o">*</span><span class="n">q</span> <span class="o">+</span> <span class="mi">2</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="n">b</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="n">c</span> <span class="o">=</span> <span class="p">(</span><span class="n">df2</span> <span class="o">-</span> <span class="mi">2</span><span class="p">)</span> <span class="o">/</span> <span class="mi">2</span> <span class="o">/</span> <span class="n">n</span>
+        <span class="n">F</span> <span class="o">=</span> <span class="n">df2</span> <span class="o">/</span> <span class="n">df1</span> <span class="o">*</span> <span class="n">U</span> <span class="o">/</span> <span class="n">c</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">df1</span> <span class="o">=</span> <span class="n">s</span> <span class="o">*</span> <span class="p">(</span><span class="mi">2</span><span class="o">*</span><span class="n">m</span> <span class="o">+</span> <span class="n">s</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="n">df2</span> <span class="o">=</span> <span class="n">s</span> <span class="o">*</span> <span class="p">(</span><span class="n">s</span><span class="o">*</span><span class="n">n</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="n">F</span> <span class="o">=</span> <span class="n">df2</span> <span class="o">/</span> <span class="n">df1</span> <span class="o">/</span> <span class="n">s</span> <span class="o">*</span> <span class="n">U</span>
+    <span class="n">results</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="s2">&quot;Hotelling-Lawley trace&quot;</span><span class="p">,</span> <span class="s1">&#39;Num DF&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">df1</span>
+    <span class="n">results</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="s2">&quot;Hotelling-Lawley trace&quot;</span><span class="p">,</span> <span class="s1">&#39;Den DF&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">df2</span>
+    <span class="n">results</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="s2">&quot;Hotelling-Lawley trace&quot;</span><span class="p">,</span> <span class="s1">&#39;F Value&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">F</span>
+    <span class="n">pval</span> <span class="o">=</span> <span class="n">stats</span><span class="o">.</span><span class="n">f</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="n">F</span><span class="p">,</span> <span class="n">df1</span><span class="p">,</span> <span class="n">df2</span><span class="p">)</span>
+    <span class="n">results</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="s2">&quot;Hotelling-Lawley trace&quot;</span><span class="p">,</span> <span class="s1">&#39;Pr &gt; F&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">pval</span>
+
+    <span class="n">sigma</span> <span class="o">=</span> <span class="n">results</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="s2">&quot;Roy&#39;s greatest root&quot;</span><span class="p">,</span> <span class="s1">&#39;Value&#39;</span><span class="p">]</span>
+    <span class="n">r</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">([</span><span class="n">p</span><span class="p">,</span> <span class="n">q</span><span class="p">])</span>
+    <span class="n">df1</span> <span class="o">=</span> <span class="n">r</span>
+    <span class="n">df2</span> <span class="o">=</span> <span class="n">v</span> <span class="o">-</span> <span class="n">r</span> <span class="o">+</span> <span class="n">q</span>
+    <span class="n">F</span> <span class="o">=</span> <span class="n">df2</span> <span class="o">/</span> <span class="n">df1</span> <span class="o">*</span> <span class="n">sigma</span>
+    <span class="n">results</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="s2">&quot;Roy&#39;s greatest root&quot;</span><span class="p">,</span> <span class="s1">&#39;Num DF&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">df1</span>
+    <span class="n">results</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="s2">&quot;Roy&#39;s greatest root&quot;</span><span class="p">,</span> <span class="s1">&#39;Den DF&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">df2</span>
+    <span class="n">results</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="s2">&quot;Roy&#39;s greatest root&quot;</span><span class="p">,</span> <span class="s1">&#39;F Value&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">F</span>
+    <span class="n">pval</span> <span class="o">=</span> <span class="n">stats</span><span class="o">.</span><span class="n">f</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="n">F</span><span class="p">,</span> <span class="n">df1</span><span class="p">,</span> <span class="n">df2</span><span class="p">)</span>
+    <span class="n">results</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="s2">&quot;Roy&#39;s greatest root&quot;</span><span class="p">,</span> <span class="s1">&#39;Pr &gt; F&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">pval</span>
+    <span class="k">return</span> <span class="n">results</span>
+
+
+<span class="k">def</span> <span class="nf">_multivariate_ols_test</span><span class="p">(</span><span class="n">hypotheses</span><span class="p">,</span> <span class="n">fit_results</span><span class="p">,</span> <span class="n">exog_names</span><span class="p">,</span>
+                            <span class="n">endog_names</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">fn</span><span class="p">(</span><span class="n">L</span><span class="p">,</span> <span class="n">M</span><span class="p">,</span> <span class="n">C</span><span class="p">):</span>
+        <span class="c1"># .. [1] https://support.sas.com/documentation/cdl/en/statug/63033/HTML/default/viewer.htm#statug_introreg_sect012.htm</span>
+        <span class="n">params</span><span class="p">,</span> <span class="n">df_resid</span><span class="p">,</span> <span class="n">inv_cov</span><span class="p">,</span> <span class="n">sscpr</span> <span class="o">=</span> <span class="n">fit_results</span>
+        <span class="c1"># t1 = (L * params)M</span>
+        <span class="n">t1</span> <span class="o">=</span> <span class="n">L</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">params</span><span class="p">)</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">M</span><span class="p">)</span> <span class="o">-</span> <span class="n">C</span>
+        <span class="c1"># H = t1&#39;L(X&#39;X)^L&#39;t1</span>
+        <span class="n">t2</span> <span class="o">=</span> <span class="n">L</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">inv_cov</span><span class="p">)</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">L</span><span class="o">.</span><span class="n">T</span><span class="p">)</span>
+        <span class="n">q</span> <span class="o">=</span> <span class="n">matrix_rank</span><span class="p">(</span><span class="n">t2</span><span class="p">)</span>
+        <span class="n">H</span> <span class="o">=</span> <span class="n">t1</span><span class="o">.</span><span class="n">T</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">inv</span><span class="p">(</span><span class="n">t2</span><span class="p">))</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">t1</span><span class="p">)</span>
+
+        <span class="c1"># E = M&#39;(Y&#39;Y - B&#39;(X&#39;X)B)M</span>
+        <span class="n">E</span> <span class="o">=</span> <span class="n">M</span><span class="o">.</span><span class="n">T</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">sscpr</span><span class="p">)</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">M</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">E</span><span class="p">,</span> <span class="n">H</span><span class="p">,</span> <span class="n">q</span><span class="p">,</span> <span class="n">df_resid</span>
+
+    <span class="k">return</span> <span class="n">_multivariate_test</span><span class="p">(</span><span class="n">hypotheses</span><span class="p">,</span> <span class="n">exog_names</span><span class="p">,</span> <span class="n">endog_names</span><span class="p">,</span> <span class="n">fn</span><span class="p">)</span>
+
+
+<span class="k">def</span> <span class="nf">_multivariate_test</span><span class="p">(</span><span class="n">hypotheses</span><span class="p">,</span> <span class="n">exog_names</span><span class="p">,</span> <span class="n">endog_names</span><span class="p">,</span> <span class="n">fn</span><span class="p">):</span>
+    <span class="n">k_xvar</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">exog_names</span><span class="p">)</span>
+    <span class="n">k_yvar</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">endog_names</span><span class="p">)</span>
+    <span class="n">results</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">for</span> <span class="n">hypo</span> <span class="ow">in</span> <span class="n">hypotheses</span><span class="p">:</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">hypo</span><span class="p">)</span> <span class="o">==</span><span class="mi">2</span><span class="p">:</span>
+            <span class="n">name</span><span class="p">,</span> <span class="n">L</span> <span class="o">=</span> <span class="n">hypo</span>
+            <span class="n">M</span> <span class="o">=</span> <span class="kc">None</span>
+            <span class="n">C</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">elif</span> <span class="nb">len</span><span class="p">(</span><span class="n">hypo</span><span class="p">)</span> <span class="o">==</span> <span class="mi">3</span><span class="p">:</span>
+            <span class="n">name</span><span class="p">,</span> <span class="n">L</span><span class="p">,</span> <span class="n">M</span> <span class="o">=</span> <span class="n">hypo</span>
+            <span class="n">C</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">elif</span> <span class="nb">len</span><span class="p">(</span><span class="n">hypo</span><span class="p">)</span> <span class="o">==</span> <span class="mi">4</span><span class="p">:</span>
+            <span class="n">name</span><span class="p">,</span> <span class="n">L</span><span class="p">,</span> <span class="n">M</span><span class="p">,</span> <span class="n">C</span> <span class="o">=</span> <span class="n">hypo</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;hypotheses must be a tuple of length 2, 3 or 4.&#39;</span>
+                             <span class="s1">&#39; len(hypotheses)=</span><span class="si">%d</span><span class="s1">&#39;</span> <span class="o">%</span> <span class="nb">len</span><span class="p">(</span><span class="n">hypo</span><span class="p">))</span>
+        <span class="k">if</span> <span class="nb">any</span><span class="p">(</span><span class="nb">isinstance</span><span class="p">(</span><span class="n">j</span><span class="p">,</span> <span class="n">string_types</span><span class="p">)</span> <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="n">L</span><span class="p">):</span>
+            <span class="n">L</span> <span class="o">=</span> <span class="n">DesignInfo</span><span class="p">(</span><span class="n">exog_names</span><span class="p">)</span><span class="o">.</span><span class="n">linear_constraint</span><span class="p">(</span><span class="n">L</span><span class="p">)</span><span class="o">.</span><span class="n">coefs</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">L</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="ow">or</span> <span class="nb">len</span><span class="p">(</span><span class="n">L</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">2</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;Contrast matrix L must be a 2-d array!&#39;</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">L</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">!=</span> <span class="n">k_xvar</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;Contrast matrix L should have the same &#39;</span>
+                                 <span class="s1">&#39;number of columns as exog! </span><span class="si">%d</span><span class="s1"> != </span><span class="si">%d</span><span class="s1">&#39;</span> <span class="o">%</span>
+                                 <span class="p">(</span><span class="n">L</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">k_xvar</span><span class="p">))</span>
+        <span class="k">if</span> <span class="n">M</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">M</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="n">k_yvar</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="nb">any</span><span class="p">(</span><span class="nb">isinstance</span><span class="p">(</span><span class="n">j</span><span class="p">,</span> <span class="n">string_types</span><span class="p">)</span> <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="n">M</span><span class="p">):</span>
+            <span class="n">M</span> <span class="o">=</span> <span class="n">DesignInfo</span><span class="p">(</span><span class="n">endog_names</span><span class="p">)</span><span class="o">.</span><span class="n">linear_constraint</span><span class="p">(</span><span class="n">M</span><span class="p">)</span><span class="o">.</span><span class="n">coefs</span><span class="o">.</span><span class="n">T</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">M</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">M</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="ow">or</span> <span class="nb">len</span><span class="p">(</span><span class="n">M</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">2</span><span class="p">:</span>
+                    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;Transform matrix M must be a 2-d array!&#39;</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">M</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">!=</span> <span class="n">k_yvar</span><span class="p">:</span>
+                    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;Transform matrix M should have the same &#39;</span>
+                                     <span class="s1">&#39;number of rows as the number of columns &#39;</span>
+                                     <span class="s1">&#39;of endog! </span><span class="si">%d</span><span class="s1"> != </span><span class="si">%d</span><span class="s1">&#39;</span> <span class="o">%</span>
+                                     <span class="p">(</span><span class="n">M</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">k_yvar</span><span class="p">))</span>
+        <span class="k">if</span> <span class="n">C</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">C</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">([</span><span class="n">L</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">M</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]])</span>
+        <span class="k">elif</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">C</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;Constant matrix C must be a 2-d array!&#39;</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">C</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">!=</span> <span class="n">L</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;contrast L and constant C must have the same &#39;</span>
+                             <span class="s1">&#39;number of rows! </span><span class="si">%d</span><span class="s1">!=</span><span class="si">%d</span><span class="s1">&#39;</span>
+                             <span class="o">%</span> <span class="p">(</span><span class="n">L</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">C</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]))</span>
+        <span class="k">if</span> <span class="n">C</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">!=</span> <span class="n">M</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;transform M and constant C must have the same &#39;</span>
+                             <span class="s1">&#39;number of columns! </span><span class="si">%d</span><span class="s1">!=</span><span class="si">%d</span><span class="s1">&#39;</span>
+                             <span class="o">%</span> <span class="p">(</span><span class="n">M</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">C</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]))</span>
+        <span class="n">E</span><span class="p">,</span> <span class="n">H</span><span class="p">,</span> <span class="n">q</span><span class="p">,</span> <span class="n">df_resid</span> <span class="o">=</span> <span class="n">fn</span><span class="p">(</span><span class="n">L</span><span class="p">,</span> <span class="n">M</span><span class="p">,</span> <span class="n">C</span><span class="p">)</span>
+        <span class="n">EH</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">E</span><span class="p">,</span> <span class="n">H</span><span class="p">)</span>
+        <span class="n">p</span> <span class="o">=</span> <span class="n">matrix_rank</span><span class="p">(</span><span class="n">EH</span><span class="p">)</span>
+
+        <span class="c1"># eigenvalues of inv(E + H)H</span>
+        <span class="n">eigv2</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="n">eigvals</span><span class="p">(</span><span class="n">solve</span><span class="p">(</span><span class="n">EH</span><span class="p">,</span> <span class="n">H</span><span class="p">)))</span>
+        <span class="n">stat_table</span> <span class="o">=</span> <span class="n">multivariate_stats</span><span class="p">(</span><span class="n">eigv2</span><span class="p">,</span> <span class="n">p</span><span class="p">,</span> <span class="n">q</span><span class="p">,</span> <span class="n">df_resid</span><span class="p">)</span>
+
+        <span class="n">results</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;stat&#39;</span><span class="p">:</span><span class="n">stat_table</span><span class="p">,</span> <span class="s1">&#39;contrast_L&#39;</span><span class="p">:</span><span class="n">L</span><span class="p">,</span>
+                         <span class="s1">&#39;transform_M&#39;</span><span class="p">:</span><span class="n">M</span><span class="p">,</span> <span class="s1">&#39;constant_C&#39;</span><span class="p">:</span><span class="n">C</span><span class="p">}</span>
+    <span class="k">return</span> <span class="n">results</span>
+
+<span class="n">_multivariate_test</span><span class="o">.</span><span class="vm">__doc__</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Multivariate linear model hypotheses testing</span>
+
+<span class="sd">        For y = x * params, where y are the dependent variables and x are the</span>
+<span class="sd">        independent variables, testing L * params * M = 0 where L is the contrast</span>
+<span class="sd">        matrix for hypotheses testing and M is the transformation matrix for</span>
+<span class="sd">        transforming the dependent variables in y.</span>
+
+<span class="sd">        Algorithm:</span>
+<span class="sd">            T = L*inv(X&#39;X)*L&#39;</span>
+<span class="sd">            H = M&#39;B&#39;L&#39;*inv(T)*LBM</span>
+<span class="sd">            E =  M&#39;(Y&#39;Y - B&#39;X&#39;XB)M</span>
+<span class="sd">        And then finding the eigenvalues of inv(H + E)*H</span>
+
+<span class="sd">        .. [*] https://support.sas.com/documentation/cdl/en/statug/63033/HTML/default/viewer.htm#statug_introreg_sect012.htm</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        &quot;&quot;&quot;</span> <span class="o">+</span> <span class="n">_hypotheses_doc</span> <span class="o">+</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        k_xvar : int</span>
+<span class="sd">            The number of independent variables</span>
+<span class="sd">        k_yvar : int</span>
+<span class="sd">            The number of dependent variables</span>
+<span class="sd">        fn : function</span>
+<span class="sd">            a function fn(contrast_L, transform_M) that returns E, H, q, df_resid</span>
+<span class="sd">            where q is the rank of T matrix</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        results : MANOVAResults</span>
+
+<span class="sd">        &quot;&quot;&quot;</span><span class="p">)</span>
+
+<div class="viewcode-block" id="_MultivariateOLS"><a class="viewcode-back" href="../../../generated/statsmodels.multivariate.multivariate_ols._MultivariateOLS.html#statsmodels.multivariate.multivariate_ols._MultivariateOLS">[docs]</a><span class="k">class</span> <span class="nc">_MultivariateOLS</span><span class="p">(</span><span class="n">Model</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Multivariate linear model via least squares</span>
+
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    endog : array_like</span>
+<span class="sd">        Dependent variables. A nobs x k_endog array where nobs is</span>
+<span class="sd">        the number of observations and k_endog is the number of dependent</span>
+<span class="sd">        variables</span>
+<span class="sd">    exog : array_like</span>
+<span class="sd">        Independent variables. A nobs x k_exog array where nobs is the</span>
+<span class="sd">        number of observations and k_exog is the number of independent</span>
+<span class="sd">        variables. An intercept is not included by default and should be added</span>
+<span class="sd">        by the user (models specified using a formula include an intercept by</span>
+<span class="sd">        default)</span>
+
+<span class="sd">    Attributes</span>
+<span class="sd">    ----------</span>
+<span class="sd">    endog : array</span>
+<span class="sd">        See Parameters.</span>
+<span class="sd">    exog : array</span>
+<span class="sd">        See Parameters.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">endog</span><span class="p">,</span> <span class="n">exog</span><span class="p">,</span> <span class="n">missing</span><span class="o">=</span><span class="s1">&#39;none&#39;</span><span class="p">,</span> <span class="n">hasconst</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">endog</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span> <span class="ow">or</span> <span class="n">endog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;There must be more than one dependent variable&#39;</span>
+                             <span class="s1">&#39; to fit multivariate OLS!&#39;</span><span class="p">)</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">_MultivariateOLS</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">endog</span><span class="p">,</span> <span class="n">exog</span><span class="p">,</span> <span class="n">missing</span><span class="o">=</span><span class="n">missing</span><span class="p">,</span>
+                                               <span class="n">hasconst</span><span class="o">=</span><span class="n">hasconst</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+<div class="viewcode-block" id="_MultivariateOLS.fit"><a class="viewcode-back" href="../../../generated/statsmodels.multivariate.multivariate_ols._MultivariateOLS.fit.html#statsmodels.multivariate.multivariate_ols._MultivariateOLS.fit">[docs]</a>    <span class="k">def</span> <span class="nf">fit</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s1">&#39;svd&#39;</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_fittedmod</span> <span class="o">=</span> <span class="n">_multivariate_ols_fit</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">endog</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">exog</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="n">method</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">_MultivariateOLSResults</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span></div></div>
+
+
+<div class="viewcode-block" id="_MultivariateOLSResults"><a class="viewcode-back" href="../../../generated/statsmodels.multivariate.multivariate_ols._MultivariateOLSResults.html#statsmodels.multivariate.multivariate_ols._MultivariateOLSResults">[docs]</a><span class="k">class</span> <span class="nc">_MultivariateOLSResults</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    _MultivariateOLS results class</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fitted_mv_ols</span><span class="p">):</span>
+        <span class="k">if</span> <span class="p">(</span><span class="nb">hasattr</span><span class="p">(</span><span class="n">fitted_mv_ols</span><span class="p">,</span> <span class="s1">&#39;data&#39;</span><span class="p">)</span> <span class="ow">and</span>
+                <span class="nb">hasattr</span><span class="p">(</span><span class="n">fitted_mv_ols</span><span class="o">.</span><span class="n">data</span><span class="p">,</span> <span class="s1">&#39;design_info&#39;</span><span class="p">)):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">design_info</span> <span class="o">=</span> <span class="n">fitted_mv_ols</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">design_info</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">design_info</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">exog_names</span> <span class="o">=</span> <span class="n">fitted_mv_ols</span><span class="o">.</span><span class="n">exog_names</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">endog_names</span> <span class="o">=</span> <span class="n">fitted_mv_ols</span><span class="o">.</span><span class="n">endog_names</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_fittedmod</span> <span class="o">=</span> <span class="n">fitted_mv_ols</span><span class="o">.</span><span class="n">_fittedmod</span>
+
+    <span class="k">def</span> <span class="nf">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">summary</span><span class="p">()</span><span class="o">.</span><span class="fm">__str__</span><span class="p">()</span>
+
+<div class="viewcode-block" id="_MultivariateOLSResults.mv_test"><a class="viewcode-back" href="../../../generated/statsmodels.multivariate.multivariate_ols._MultivariateOLSResults.mv_test.html#statsmodels.multivariate.multivariate_ols._MultivariateOLSResults.mv_test">[docs]</a>    <span class="k">def</span> <span class="nf">mv_test</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">hypotheses</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+
+        <span class="n">k_xvar</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">exog_names</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">hypotheses</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">design_info</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">terms</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">design_info</span><span class="o">.</span><span class="n">term_name_slices</span>
+                <span class="n">hypotheses</span> <span class="o">=</span> <span class="p">[]</span>
+                <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">terms</span><span class="p">:</span>
+                    <span class="n">L_contrast</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="n">k_xvar</span><span class="p">)[</span><span class="n">terms</span><span class="p">[</span><span class="n">key</span><span class="p">],</span> <span class="p">:]</span>
+                    <span class="n">hypotheses</span><span class="o">.</span><span class="n">append</span><span class="p">([</span><span class="n">key</span><span class="p">,</span> <span class="n">L_contrast</span><span class="p">,</span> <span class="kc">None</span><span class="p">])</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">hypotheses</span> <span class="o">=</span> <span class="p">[]</span>
+                <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">k_xvar</span><span class="p">):</span>
+                    <span class="n">name</span> <span class="o">=</span> <span class="s1">&#39;x</span><span class="si">%d</span><span class="s1">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">i</span><span class="p">)</span>
+                    <span class="n">L</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="n">k_xvar</span><span class="p">])</span>
+                    <span class="n">L</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span>
+                    <span class="n">hypotheses</span><span class="o">.</span><span class="n">append</span><span class="p">([</span><span class="n">name</span><span class="p">,</span> <span class="n">L</span><span class="p">,</span> <span class="kc">None</span><span class="p">])</span>
+
+        <span class="n">results</span> <span class="o">=</span> <span class="n">_multivariate_ols_test</span><span class="p">(</span><span class="n">hypotheses</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_fittedmod</span><span class="p">,</span>
+                                          <span class="bp">self</span><span class="o">.</span><span class="n">exog_names</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">endog_names</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">MultivariateTestResults</span><span class="p">(</span><span class="n">results</span><span class="p">,</span>
+                                       <span class="bp">self</span><span class="o">.</span><span class="n">endog_names</span><span class="p">,</span>
+                                       <span class="bp">self</span><span class="o">.</span><span class="n">exog_names</span><span class="p">)</span></div>
+    <span class="n">mv_test</span><span class="o">.</span><span class="vm">__doc__</span> <span class="o">=</span> <span class="p">(</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">Linear hypotheses testing</span>
+
+<span class="s2">Parameters</span>
+<span class="s2">----------</span>
+<span class="s2">&quot;&quot;&quot;</span> <span class="o">+</span> <span class="n">_hypotheses_doc</span> <span class="o">+</span> <span class="s2">&quot;&quot;&quot;</span>
+
+<span class="s2">Returns</span>
+<span class="s2">-------</span>
+<span class="s2">results: _MultivariateOLSResults</span>
+
+<span class="s2">Notes</span>
+<span class="s2">-----</span>
+<span class="s2">Tests hypotheses of the form</span>
+
+<span class="s2">    L * params * M = C</span>
+
+<span class="s2">where `params` is the regression coefficient matrix for the</span>
+<span class="s2">linear model y = x * params, `L` is the contrast matrix, `M` is the</span>
+<span class="s2">dependent variable transform matrix and C is the constant matrix.</span>
+<span class="s2">&quot;&quot;&quot;</span><span class="p">)</span>
+<div class="viewcode-block" id="_MultivariateOLSResults.summary"><a class="viewcode-back" href="../../../generated/statsmodels.multivariate.multivariate_ols._MultivariateOLSResults.summary.html#statsmodels.multivariate.multivariate_ols._MultivariateOLSResults.summary">[docs]</a>    <span class="k">def</span> <span class="nf">summary</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span></div></div>
+
+
+<div class="viewcode-block" id="MultivariateTestResults"><a class="viewcode-back" href="../../../generated/statsmodels.multivariate.multivariate_ols.MultivariateTestResults.html#statsmodels.multivariate.multivariate_ols.MultivariateTestResults">[docs]</a><span class="k">class</span> <span class="nc">MultivariateTestResults</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot; Multivariate test results class</span>
+<span class="sd">    Returned by `mv_test` method of `_MultivariateOLSResults` class</span>
+
+<span class="sd">    Attributes</span>
+<span class="sd">    ----------</span>
+<span class="sd">    results : dict</span>
+<span class="sd">       For hypothesis name `key`:</span>
+<span class="sd">           results[key][&#39;stat&#39;] contains the multivaraite test results</span>
+<span class="sd">           results[key][&#39;contrast_L&#39;] contains the contrast_L matrix</span>
+<span class="sd">           results[key][&#39;transform_M&#39;] contains the transform_M matrix</span>
+<span class="sd">           results[key][&#39;constant_C&#39;] contains the constant_C matrix</span>
+<span class="sd">    endog_names : string</span>
+<span class="sd">    exog_names : string</span>
+<span class="sd">    summary_frame : multiindex dataframe</span>
+<span class="sd">        Returns results as a multiindex dataframe</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">mv_test_df</span><span class="p">,</span> <span class="n">endog_names</span><span class="p">,</span> <span class="n">exog_names</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">results</span> <span class="o">=</span> <span class="n">mv_test_df</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">endog_names</span> <span class="o">=</span> <span class="n">endog_names</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">exog_names</span> <span class="o">=</span> <span class="n">exog_names</span>
+
+    <span class="k">def</span> <span class="nf">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">summary</span><span class="p">()</span><span class="o">.</span><span class="fm">__str__</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">__getitem__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">item</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="p">[</span><span class="n">item</span><span class="p">]</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">summary_frame</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return results as a multiindex dataframe</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">df</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="p">:</span>
+            <span class="n">tmp</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="p">[</span><span class="n">key</span><span class="p">][</span><span class="s1">&#39;stat&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+            <span class="n">tmp</span><span class="o">.</span><span class="n">loc</span><span class="p">[:,</span> <span class="s1">&#39;Effect&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">key</span>
+            <span class="n">df</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">tmp</span><span class="o">.</span><span class="n">reset_index</span><span class="p">())</span>
+        <span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">concat</span><span class="p">(</span><span class="n">df</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+        <span class="n">df</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">set_index</span><span class="p">([</span><span class="s1">&#39;Effect&#39;</span><span class="p">,</span> <span class="s1">&#39;index&#39;</span><span class="p">])</span>
+        <span class="n">df</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">set_names</span><span class="p">([</span><span class="s1">&#39;Effect&#39;</span><span class="p">,</span> <span class="s1">&#39;Statistic&#39;</span><span class="p">],</span> <span class="n">inplace</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">df</span>
+
+<div class="viewcode-block" id="MultivariateTestResults.summary"><a class="viewcode-back" href="../../../generated/statsmodels.multivariate.multivariate_ols.MultivariateTestResults.summary.html#statsmodels.multivariate.multivariate_ols.MultivariateTestResults.summary">[docs]</a>    <span class="k">def</span> <span class="nf">summary</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">show_contrast_L</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">show_transform_M</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+                <span class="n">show_constant_C</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        contrast_L : True or False</span>
+<span class="sd">            Whether to show contrast_L matrix</span>
+<span class="sd">        transform_M : True or False</span>
+<span class="sd">            Whether to show transform_M matrix</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">summ</span> <span class="o">=</span> <span class="n">summary2</span><span class="o">.</span><span class="n">Summary</span><span class="p">()</span>
+        <span class="n">summ</span><span class="o">.</span><span class="n">add_title</span><span class="p">(</span><span class="s1">&#39;Multivariate linear model&#39;</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="p">:</span>
+            <span class="n">summ</span><span class="o">.</span><span class="n">add_dict</span><span class="p">({</span><span class="s1">&#39;&#39;</span><span class="p">:</span><span class="s1">&#39;&#39;</span><span class="p">})</span>
+            <span class="n">df</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="p">[</span><span class="n">key</span><span class="p">][</span><span class="s1">&#39;stat&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+            <span class="n">df</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">reset_index</span><span class="p">()</span>
+            <span class="n">c</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">columns</span><span class="o">.</span><span class="n">values</span>
+            <span class="n">c</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">key</span>
+            <span class="n">df</span><span class="o">.</span><span class="n">columns</span> <span class="o">=</span> <span class="n">c</span>
+            <span class="n">df</span><span class="o">.</span><span class="n">index</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;&#39;</span><span class="p">,</span> <span class="s1">&#39;&#39;</span><span class="p">,</span> <span class="s1">&#39;&#39;</span><span class="p">,</span> <span class="s1">&#39;&#39;</span><span class="p">]</span>
+            <span class="n">summ</span><span class="o">.</span><span class="n">add_df</span><span class="p">(</span><span class="n">df</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">show_contrast_L</span><span class="p">:</span>
+                <span class="n">summ</span><span class="o">.</span><span class="n">add_dict</span><span class="p">({</span><span class="n">key</span><span class="p">:</span><span class="s1">&#39; contrast L=&#39;</span><span class="p">})</span>
+                <span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="p">[</span><span class="n">key</span><span class="p">][</span><span class="s1">&#39;contrast_L&#39;</span><span class="p">],</span>
+                                  <span class="n">columns</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">exog_names</span><span class="p">)</span>
+                <span class="n">summ</span><span class="o">.</span><span class="n">add_df</span><span class="p">(</span><span class="n">df</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">show_transform_M</span><span class="p">:</span>
+                <span class="n">summ</span><span class="o">.</span><span class="n">add_dict</span><span class="p">({</span><span class="n">key</span><span class="p">:</span><span class="s1">&#39; transform M=&#39;</span><span class="p">})</span>
+                <span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="p">[</span><span class="n">key</span><span class="p">][</span><span class="s1">&#39;transform_M&#39;</span><span class="p">],</span>
+                                  <span class="n">index</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">endog_names</span><span class="p">)</span>
+                <span class="n">summ</span><span class="o">.</span><span class="n">add_df</span><span class="p">(</span><span class="n">df</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">show_constant_C</span><span class="p">:</span>
+                <span class="n">summ</span><span class="o">.</span><span class="n">add_dict</span><span class="p">({</span><span class="n">key</span><span class="p">:</span><span class="s1">&#39; constant C=&#39;</span><span class="p">})</span>
+                <span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="p">[</span><span class="n">key</span><span class="p">][</span><span class="s1">&#39;constant_C&#39;</span><span class="p">])</span>
+                <span class="n">summ</span><span class="o">.</span><span class="n">add_df</span><span class="p">(</span><span class="n">df</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">summ</span></div></div>
+</pre></div>
+
+
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../../../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" />
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer" role="contentinfo">
+        &#169; Copyright 2009-2018, Josef Perktold, Skipper Seabold, Jonathan Taylor, statsmodels-developers.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 2.2.1.
+    </div>
+  </body>
+</html>

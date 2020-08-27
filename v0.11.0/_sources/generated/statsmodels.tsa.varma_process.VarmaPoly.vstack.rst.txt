@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.tsa.varma\_process.VarmaPoly.vstack
+===============================================
+
+.. currentmodule:: statsmodels.tsa.varma_process
+
+.. automethod:: VarmaPoly.vstack

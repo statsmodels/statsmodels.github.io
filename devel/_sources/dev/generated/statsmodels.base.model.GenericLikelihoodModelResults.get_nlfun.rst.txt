@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.base.model.GenericLikelihoodModelResults.get\_nlfun
+===============================================================
+
+.. currentmodule:: statsmodels.base.model
+
+.. automethod:: GenericLikelihoodModelResults.get_nlfun

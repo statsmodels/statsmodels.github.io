@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.discrete.discrete\_model.NegativeBinomialResults.summary2
+=====================================================================
+
+.. currentmodule:: statsmodels.discrete.discrete_model
+
+.. automethod:: NegativeBinomialResults.summary2

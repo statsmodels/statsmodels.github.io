@@ -1,0 +1,6 @@
+statsmodels.sandbox.stats.runs.runstest\_2samp
+==============================================
+
+.. currentmodule:: statsmodels.sandbox.stats.runs
+
+.. autofunction:: runstest_2samp

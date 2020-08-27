@@ -1,0 +1,1157 @@
+
+
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta charset="utf-8" />
+    <title>statsmodels.tsa.statespace.varmax &#8212; statsmodels v0.10.1 documentation</title>
+    <link rel="stylesheet" href="../../../../_static/nature.css" type="text/css" />
+    <link rel="stylesheet" href="../../../../_static/pygments.css" type="text/css" />
+    <link rel="stylesheet" type="text/css" href="../../../../_static/graphviz.css" />
+    <script type="text/javascript" id="documentation_options" data-url_root="../../../../" src="../../../../_static/documentation_options.js"></script>
+    <script type="text/javascript" src="../../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../../_static/doctools.js"></script>
+    <script type="text/javascript" src="../../../../_static/language_data.js"></script>
+    <script async="async" type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/latest.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="shortcut icon" href="../../../../_static/statsmodels_hybi_favico.ico"/>
+    <link rel="author" title="About these documents" href="../../../../about.html" />
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" />
+<link rel="stylesheet" href="../../../../_static/examples.css" type="text/css" />
+<link rel="stylesheet" href="../../../../_static/facebox.css" type="text/css" />
+<script type="text/javascript" src="../../../../_static/scripts.js">
+</script>
+<script type="text/javascript" src="../../../../_static/facebox.js">
+</script>
+<script type="text/javascript">
+$.facebox.settings.closeImage = "../../../../_static/closelabel.png"
+$.facebox.settings.loadingImage = "../../../../_static/loading.gif"
+</script>
+
+<script>
+$(document).ready(function() {
+  $.getJSON("../../../../../versions.json", function(versions) {
+    var dropdown = document.createElement("div");
+    dropdown.className = "dropdown";
+    var button = document.createElement("button");
+    button.className = "dropbtn";
+    button.innerHTML = "Other Versions";
+    var content = document.createElement("div");
+    content.className = "dropdown-content";
+    dropdown.appendChild(button);
+    dropdown.appendChild(content);
+    $(".header").prepend(dropdown);
+    for (var i = 0; i < versions.length; i++) {
+      if (versions[i].substring(0, 1) == "v") {
+        versions[i] = [versions[i], versions[i].substring(1)];
+      } else {
+        versions[i] = [versions[i], versions[i]];
+      };
+    };
+    for (var i = 0; i < versions.length; i++) {
+      var a = document.createElement("a");
+      a.innerHTML = versions[i][1];
+      a.href = "../../../../../" + versions[i][0] + "/index.html";
+      a.title = versions[i][1];
+      $(".dropdown-content").append(a);
+    };
+  });
+});
+</script>
+
+
+  </head><body>
+<div class="headerwrap">
+    <div class = "header">
+        
+        <a href = "../../../../index.html">
+<img src="../../../../_static/statsmodels_hybi_banner.png" alt="Logo"
+    style="padding-left: 15px"/></a>
+        
+    </div>
+</div>
+
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+<li><a href ="../../../../install.html">Install</a></li> &nbsp;|&nbsp;
+<li><a href="https://groups.google.com/forum/?hl=en#!forum/pystatsmodels">Support</a></li> &nbsp;|&nbsp;
+<li><a href="https://github.com/statsmodels/statsmodels/issues">Bugs</a></li> &nbsp;|&nbsp;
+<li><a href="../../../../dev/index.html">Develop</a></li> &nbsp;|&nbsp;
+<li><a href="../../../../examples/index.html">Examples</a></li> &nbsp;|&nbsp;
+<li><a href="../../../../faq.html">FAQ</a></li> &nbsp;|&nbsp;
+
+          <li class="nav-item nav-item-1"><a href="../../../index.html" accesskey="U">Module code</a> |</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+
+
+
+
+  <h1>Source code for statsmodels.tsa.statespace.varmax</h1><div class="highlight"><pre>
+<span></span><span class="c1"># -*- coding: utf-8 -*-</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Vector Autoregressive Moving Average with eXogenous regressors model</span>
+
+<span class="sd">Author: Chad Fulton</span>
+<span class="sd">License: Simplified-BSD</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="kn">from</span> <span class="nn">__future__</span> <span class="k">import</span> <span class="n">division</span><span class="p">,</span> <span class="n">absolute_import</span><span class="p">,</span> <span class="n">print_function</span>
+
+<span class="kn">from</span> <span class="nn">warnings</span> <span class="k">import</span> <span class="n">warn</span>
+<span class="kn">from</span> <span class="nn">collections</span> <span class="k">import</span> <span class="n">OrderedDict</span>
+
+<span class="kn">import</span> <span class="nn">pandas</span> <span class="k">as</span> <span class="nn">pd</span>
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+
+<span class="kn">from</span> <span class="nn">statsmodels.tools.tools</span> <span class="k">import</span> <span class="n">Bunch</span>
+<span class="kn">from</span> <span class="nn">statsmodels.tools.data</span> <span class="k">import</span> <span class="n">_is_using_pandas</span>
+<span class="kn">from</span> <span class="nn">statsmodels.tsa.vector_ar</span> <span class="k">import</span> <span class="n">var_model</span>
+<span class="kn">import</span> <span class="nn">statsmodels.base.wrapper</span> <span class="k">as</span> <span class="nn">wrap</span>
+<span class="kn">from</span> <span class="nn">statsmodels.tools.sm_exceptions</span> <span class="k">import</span> <span class="n">EstimationWarning</span><span class="p">,</span> <span class="n">ValueWarning</span>
+
+<span class="kn">from</span> <span class="nn">.kalman_filter</span> <span class="k">import</span> <span class="n">INVERT_UNIVARIATE</span><span class="p">,</span> <span class="n">SOLVE_LU</span>
+<span class="kn">from</span> <span class="nn">.mlemodel</span> <span class="k">import</span> <span class="n">MLEModel</span><span class="p">,</span> <span class="n">MLEResults</span><span class="p">,</span> <span class="n">MLEResultsWrapper</span>
+<span class="kn">from</span> <span class="nn">.tools</span> <span class="k">import</span> <span class="p">(</span>
+    <span class="n">is_invertible</span><span class="p">,</span> <span class="n">prepare_exog</span><span class="p">,</span>
+    <span class="n">constrain_stationary_multivariate</span><span class="p">,</span> <span class="n">unconstrain_stationary_multivariate</span><span class="p">,</span>
+    <span class="n">prepare_trend_spec</span><span class="p">,</span> <span class="n">prepare_trend_data</span>
+<span class="p">)</span>
+
+
+<div class="viewcode-block" id="VARMAX"><a class="viewcode-back" href="../../../../generated/statsmodels.tsa.statespace.varmax.VARMAX.html#statsmodels.tsa.statespace.varmax.VARMAX">[docs]</a><span class="k">class</span> <span class="nc">VARMAX</span><span class="p">(</span><span class="n">MLEModel</span><span class="p">):</span>
+    <span class="sa">r</span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Vector Autoregressive Moving Average with eXogenous regressors model</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    endog : array_like</span>
+<span class="sd">        The observed time-series process :math:`y`, , shaped nobs x k_endog.</span>
+<span class="sd">    exog : array_like, optional</span>
+<span class="sd">        Array of exogenous regressors, shaped nobs x k.</span>
+<span class="sd">    order : iterable</span>
+<span class="sd">        The (p,q) order of the model for the number of AR and MA parameters to</span>
+<span class="sd">        use.</span>
+<span class="sd">    trend : str{&#39;n&#39;,&#39;c&#39;,&#39;t&#39;,&#39;ct&#39;} or iterable, optional</span>
+<span class="sd">        Parameter controlling the deterministic trend polynomial :math:`A(t)`.</span>
+<span class="sd">        Can be specified as a string where &#39;c&#39; indicates a constant (i.e. a</span>
+<span class="sd">        degree zero component of the trend polynomial), &#39;t&#39; indicates a</span>
+<span class="sd">        linear trend with time, and &#39;ct&#39; is both. Can also be specified as an</span>
+<span class="sd">        iterable defining the polynomial as in `numpy.poly1d`, where</span>
+<span class="sd">        `[1,1,0,1]` would denote :math:`a + bt + ct^3`. Default is a constant</span>
+<span class="sd">        trend component.</span>
+<span class="sd">    error_cov_type : {&#39;diagonal&#39;, &#39;unstructured&#39;}, optional</span>
+<span class="sd">        The structure of the covariance matrix of the error term, where</span>
+<span class="sd">        &quot;unstructured&quot; puts no restrictions on the matrix and &quot;diagonal&quot;</span>
+<span class="sd">        requires it to be a diagonal matrix (uncorrelated errors). Default is</span>
+<span class="sd">        &quot;unstructured&quot;.</span>
+<span class="sd">    measurement_error : boolean, optional</span>
+<span class="sd">        Whether or not to assume the endogenous observations `endog` were</span>
+<span class="sd">        measured with error. Default is False.</span>
+<span class="sd">    enforce_stationarity : boolean, optional</span>
+<span class="sd">        Whether or not to transform the AR parameters to enforce stationarity</span>
+<span class="sd">        in the autoregressive component of the model. Default is True.</span>
+<span class="sd">    enforce_invertibility : boolean, optional</span>
+<span class="sd">        Whether or not to transform the MA parameters to enforce invertibility</span>
+<span class="sd">        in the moving average component of the model. Default is True.</span>
+<span class="sd">    kwargs</span>
+<span class="sd">        Keyword arguments may be used to provide default values for state space</span>
+<span class="sd">        matrices or for Kalman filtering options. See `Representation`, and</span>
+<span class="sd">        `KalmanFilter` for more details.</span>
+
+<span class="sd">    Attributes</span>
+<span class="sd">    ----------</span>
+<span class="sd">    order : iterable</span>
+<span class="sd">        The (p,q) order of the model for the number of AR and MA parameters to</span>
+<span class="sd">        use.</span>
+<span class="sd">    trend : str{&#39;n&#39;,&#39;c&#39;,&#39;t&#39;,&#39;ct&#39;} or iterable</span>
+<span class="sd">        Parameter controlling the deterministic trend polynomial :math:`A(t)`.</span>
+<span class="sd">        Can be specified as a string where &#39;c&#39; indicates a constant (i.e. a</span>
+<span class="sd">        degree zero component of the trend polynomial), &#39;t&#39; indicates a</span>
+<span class="sd">        linear trend with time, and &#39;ct&#39; is both. Can also be specified as an</span>
+<span class="sd">        iterable defining the polynomial as in `numpy.poly1d`, where</span>
+<span class="sd">        `[1,1,0,1]` would denote :math:`a + bt + ct^3`.</span>
+<span class="sd">    error_cov_type : {&#39;diagonal&#39;, &#39;unstructured&#39;}, optional</span>
+<span class="sd">        The structure of the covariance matrix of the error term, where</span>
+<span class="sd">        &quot;unstructured&quot; puts no restrictions on the matrix and &quot;diagonal&quot;</span>
+<span class="sd">        requires it to be a diagonal matrix (uncorrelated errors). Default is</span>
+<span class="sd">        &quot;unstructured&quot;.</span>
+<span class="sd">    measurement_error : boolean, optional</span>
+<span class="sd">        Whether or not to assume the endogenous observations `endog` were</span>
+<span class="sd">        measured with error. Default is False.</span>
+<span class="sd">    enforce_stationarity : boolean, optional</span>
+<span class="sd">        Whether or not to transform the AR parameters to enforce stationarity</span>
+<span class="sd">        in the autoregressive component of the model. Default is True.</span>
+<span class="sd">    enforce_invertibility : boolean, optional</span>
+<span class="sd">        Whether or not to transform the MA parameters to enforce invertibility</span>
+<span class="sd">        in the moving average component of the model. Default is True.</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    Generically, the VARMAX model is specified (see for example chapter 18 of</span>
+<span class="sd">    [1]_):</span>
+
+<span class="sd">    .. math::</span>
+
+<span class="sd">        y_t = A(t) + A_1 y_{t-1} + \dots + A_p y_{t-p} + B x_t + \epsilon_t +</span>
+<span class="sd">        M_1 \epsilon_{t-1} + \dots M_q \epsilon_{t-q}</span>
+
+<span class="sd">    where :math:`\epsilon_t \sim N(0, \Omega)`, and where :math:`y_t` is a</span>
+<span class="sd">    `k_endog x 1` vector. Additionally, this model allows considering the case</span>
+<span class="sd">    where the variables are measured with error.</span>
+
+<span class="sd">    Note that in the full VARMA(p,q) case there is a fundamental identification</span>
+<span class="sd">    problem in that the coefficient matrices :math:`\{A_i, M_j\}` are not</span>
+<span class="sd">    generally unique, meaning that for a given time series process there may</span>
+<span class="sd">    be multiple sets of matrices that equivalently represent it. See Chapter 12</span>
+<span class="sd">    of [1]_ for more information. Although this class can be used to estimate</span>
+<span class="sd">    VARMA(p,q) models, a warning is issued to remind users that no steps have</span>
+<span class="sd">    been taken to ensure identification in this case.</span>
+
+<span class="sd">    References</span>
+<span class="sd">    ----------</span>
+<span class="sd">    .. [1] Lütkepohl, Helmut. 2007.</span>
+<span class="sd">       New Introduction to Multiple Time Series Analysis.</span>
+<span class="sd">       Berlin: Springer.</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">endog</span><span class="p">,</span> <span class="n">exog</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span> <span class="n">trend</span><span class="o">=</span><span class="s1">&#39;c&#39;</span><span class="p">,</span>
+                 <span class="n">error_cov_type</span><span class="o">=</span><span class="s1">&#39;unstructured&#39;</span><span class="p">,</span> <span class="n">measurement_error</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+                 <span class="n">enforce_stationarity</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">enforce_invertibility</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+                 <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+
+        <span class="c1"># Model parameters</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">error_cov_type</span> <span class="o">=</span> <span class="n">error_cov_type</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">measurement_error</span> <span class="o">=</span> <span class="n">measurement_error</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">enforce_stationarity</span> <span class="o">=</span> <span class="n">enforce_stationarity</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">enforce_invertibility</span> <span class="o">=</span> <span class="n">enforce_invertibility</span>
+
+        <span class="c1"># Save the given orders</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">order</span> <span class="o">=</span> <span class="n">order</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">trend</span> <span class="o">=</span> <span class="n">trend</span>
+
+        <span class="c1"># Model orders</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">k_ar</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">order</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">k_ma</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">order</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+
+        <span class="c1"># Check for valid model</span>
+        <span class="k">if</span> <span class="n">error_cov_type</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;diagonal&#39;</span><span class="p">,</span> <span class="s1">&#39;unstructured&#39;</span><span class="p">]:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;Invalid error covariance matrix type&#39;</span>
+                             <span class="s1">&#39; specification.&#39;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_ar</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_ma</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;Invalid VARMAX(p,q) specification; at least one&#39;</span>
+                             <span class="s1">&#39; p,q must be greater than zero.&#39;</span><span class="p">)</span>
+
+        <span class="c1"># Warn for VARMA model</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_ar</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_ma</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">warn</span><span class="p">(</span><span class="s1">&#39;Estimation of VARMA(p,q) models is not generically robust,&#39;</span>
+                 <span class="s1">&#39; due especially to identification issues.&#39;</span><span class="p">,</span>
+                 <span class="n">EstimationWarning</span><span class="p">)</span>
+
+        <span class="c1"># Trend</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">trend</span> <span class="o">=</span> <span class="n">trend</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">polynomial_trend</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_trend</span> <span class="o">=</span> <span class="n">prepare_trend_spec</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">trend</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_trend_is_const</span> <span class="o">=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">polynomial_trend</span><span class="o">.</span><span class="n">size</span> <span class="o">==</span> <span class="mi">1</span> <span class="ow">and</span>
+                                <span class="bp">self</span><span class="o">.</span><span class="n">polynomial_trend</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="mi">1</span><span class="p">)</span>
+
+        <span class="c1"># Exogenous data</span>
+        <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">k_exog</span><span class="p">,</span> <span class="n">exog</span><span class="p">)</span> <span class="o">=</span> <span class="n">prepare_exog</span><span class="p">(</span><span class="n">exog</span><span class="p">)</span>
+
+        <span class="c1"># Note: at some point in the future might add state regression, as in</span>
+        <span class="c1"># SARIMAX.</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">mle_regression</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_exog</span> <span class="o">&gt;</span> <span class="mi">0</span>
+
+        <span class="c1"># We need to have an array or pandas at this point</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">_is_using_pandas</span><span class="p">(</span><span class="n">endog</span><span class="p">,</span> <span class="kc">None</span><span class="p">):</span>
+            <span class="n">endog</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asanyarray</span><span class="p">(</span><span class="n">endog</span><span class="p">)</span>
+
+        <span class="c1"># Model order</span>
+        <span class="c1"># Used internally in various places</span>
+        <span class="n">_min_k_ar</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">k_ar</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_k_order</span> <span class="o">=</span> <span class="n">_min_k_ar</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_ma</span>
+
+        <span class="c1"># Number of states</span>
+        <span class="n">k_endog</span> <span class="o">=</span> <span class="n">endog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+        <span class="n">k_posdef</span> <span class="o">=</span> <span class="n">k_endog</span>
+        <span class="n">k_states</span> <span class="o">=</span> <span class="n">k_endog</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">_k_order</span>
+
+        <span class="c1"># By default, initialize as stationary</span>
+        <span class="n">kwargs</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s1">&#39;initialization&#39;</span><span class="p">,</span> <span class="s1">&#39;stationary&#39;</span><span class="p">)</span>
+
+        <span class="c1"># By default, use LU decomposition</span>
+        <span class="n">kwargs</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s1">&#39;inversion_method&#39;</span><span class="p">,</span> <span class="n">INVERT_UNIVARIATE</span> <span class="o">|</span> <span class="n">SOLVE_LU</span><span class="p">)</span>
+
+        <span class="c1"># Initialize the state space model</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">VARMAX</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span>
+            <span class="n">endog</span><span class="p">,</span> <span class="n">exog</span><span class="o">=</span><span class="n">exog</span><span class="p">,</span> <span class="n">k_states</span><span class="o">=</span><span class="n">k_states</span><span class="p">,</span> <span class="n">k_posdef</span><span class="o">=</span><span class="n">k_posdef</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span>
+        <span class="p">)</span>
+
+        <span class="c1"># Set as time-varying model if we have time-trend or exog</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_exog</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="ow">or</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">k_trend</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="ow">and</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_trend_is_const</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">ssm</span><span class="o">.</span><span class="n">_time_invariant</span> <span class="o">=</span> <span class="kc">False</span>
+
+        <span class="c1"># Initialize the parameters</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">parameters</span> <span class="o">=</span> <span class="n">OrderedDict</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">parameters</span><span class="p">[</span><span class="s1">&#39;trend&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_trend</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">parameters</span><span class="p">[</span><span class="s1">&#39;ar&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span><span class="o">**</span><span class="mi">2</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_ar</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">parameters</span><span class="p">[</span><span class="s1">&#39;ma&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span><span class="o">**</span><span class="mi">2</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_ma</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">parameters</span><span class="p">[</span><span class="s1">&#39;regression&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_exog</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">error_cov_type</span> <span class="o">==</span> <span class="s1">&#39;diagonal&#39;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">parameters</span><span class="p">[</span><span class="s1">&#39;state_cov&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span>
+        <span class="c1"># These parameters fill in a lower-triangular matrix which is then</span>
+        <span class="c1"># dotted with itself to get a positive definite matrix.</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">error_cov_type</span> <span class="o">==</span> <span class="s1">&#39;unstructured&#39;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">parameters</span><span class="p">[</span><span class="s1">&#39;state_cov&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="nb">int</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span> <span class="o">*</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="o">/</span> <span class="mi">2</span><span class="p">)</span>
+            <span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">parameters</span><span class="p">[</span><span class="s1">&#39;obs_cov&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">measurement_error</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">k_params</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">parameters</span><span class="o">.</span><span class="n">values</span><span class="p">())</span>
+
+        <span class="c1"># Initialize trend data</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_trend_data</span> <span class="o">=</span> <span class="n">prepare_trend_data</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">polynomial_trend</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_trend</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span><span class="p">,</span> <span class="n">offset</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+
+        <span class="c1"># Initialize known elements of the state space matrices</span>
+
+        <span class="c1"># If we have exog effects, then the state intercept needs to be</span>
+        <span class="c1"># time-varying</span>
+        <span class="k">if</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">k_trend</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="ow">and</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_trend_is_const</span><span class="p">)</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_exog</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">ssm</span><span class="p">[</span><span class="s1">&#39;state_intercept&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="bp">self</span><span class="o">.</span><span class="n">k_states</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span><span class="p">))</span>
+            <span class="c1"># self.ssm[&#39;obs_intercept&#39;] = np.zeros((self.k_endog, self.nobs))</span>
+
+        <span class="c1"># The design matrix is just an identity for the first k_endog states</span>
+        <span class="n">idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">diag_indices</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">ssm</span><span class="p">[(</span><span class="s1">&#39;design&#39;</span><span class="p">,)</span> <span class="o">+</span> <span class="n">idx</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span>
+
+        <span class="c1"># The transition matrix is described in four blocks, where the upper</span>
+        <span class="c1"># left block is in companion form with the autoregressive coefficient</span>
+        <span class="c1"># matrices (so it is shaped k_endog * k_ar x k_endog * k_ar) ...</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_ar</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">diag_indices</span><span class="p">((</span><span class="bp">self</span><span class="o">.</span><span class="n">k_ar</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span><span class="p">)</span>
+            <span class="n">idx</span> <span class="o">=</span> <span class="n">idx</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span><span class="p">,</span> <span class="n">idx</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">ssm</span><span class="p">[(</span><span class="s1">&#39;transition&#39;</span><span class="p">,)</span> <span class="o">+</span> <span class="n">idx</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span>
+        <span class="c1"># ... and the  lower right block is in companion form with zeros as the</span>
+        <span class="c1"># coefficient matrices (it is shaped k_endog * k_ma x k_endog * k_ma).</span>
+        <span class="n">idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">diag_indices</span><span class="p">((</span><span class="bp">self</span><span class="o">.</span><span class="n">k_ma</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span><span class="p">)</span>
+        <span class="n">idx</span> <span class="o">=</span> <span class="p">(</span><span class="n">idx</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">+</span> <span class="p">(</span><span class="n">_min_k_ar</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span><span class="p">,</span>
+               <span class="n">idx</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="n">_min_k_ar</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">ssm</span><span class="p">[(</span><span class="s1">&#39;transition&#39;</span><span class="p">,)</span> <span class="o">+</span> <span class="n">idx</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span>
+
+        <span class="c1"># The selection matrix is described in two blocks, where the upper</span>
+        <span class="c1"># block selects the all k_posdef errors in the first k_endog rows</span>
+        <span class="c1"># (the upper block is shaped k_endog * k_ar x k) and the lower block</span>
+        <span class="c1"># also selects all k_posdef errors in the first k_endog rows (the lower</span>
+        <span class="c1"># block is shaped k_endog * k_ma x k).</span>
+        <span class="n">idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">diag_indices</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">ssm</span><span class="p">[(</span><span class="s1">&#39;selection&#39;</span><span class="p">,)</span> <span class="o">+</span> <span class="n">idx</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span>
+        <span class="n">idx</span> <span class="o">=</span> <span class="n">idx</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">+</span> <span class="n">_min_k_ar</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span><span class="p">,</span> <span class="n">idx</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_ma</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">ssm</span><span class="p">[(</span><span class="s1">&#39;selection&#39;</span><span class="p">,)</span> <span class="o">+</span> <span class="n">idx</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span>
+
+        <span class="c1"># Cache some indices</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_trend_is_const</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_exog</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_idx_state_intercept</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">s_</span><span class="p">[</span><span class="s1">&#39;state_intercept&#39;</span><span class="p">,</span> <span class="p">:</span><span class="n">k_endog</span><span class="p">,</span> <span class="p">:]</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_trend</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_exog</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_idx_state_intercept</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">s_</span><span class="p">[</span><span class="s1">&#39;state_intercept&#39;</span><span class="p">,</span> <span class="p">:</span><span class="n">k_endog</span><span class="p">,</span> <span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_ar</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_idx_transition</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">s_</span><span class="p">[</span><span class="s1">&#39;transition&#39;</span><span class="p">,</span> <span class="p">:</span><span class="n">k_endog</span><span class="p">,</span> <span class="p">:]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_idx_transition</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">s_</span><span class="p">[</span><span class="s1">&#39;transition&#39;</span><span class="p">,</span> <span class="p">:</span><span class="n">k_endog</span><span class="p">,</span> <span class="n">k_endog</span><span class="p">:]</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">error_cov_type</span> <span class="o">==</span> <span class="s1">&#39;diagonal&#39;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_idx_state_cov</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="p">(</span><span class="s1">&#39;state_cov&#39;</span><span class="p">,)</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">diag_indices</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span><span class="p">))</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">error_cov_type</span> <span class="o">==</span> <span class="s1">&#39;unstructured&#39;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_idx_lower_state_cov</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">tril_indices</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">measurement_error</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_idx_obs_cov</span> <span class="o">=</span> <span class="p">(</span><span class="s1">&#39;obs_cov&#39;</span><span class="p">,)</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">diag_indices</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span><span class="p">)</span>
+
+        <span class="c1"># Cache some slices</span>
+        <span class="k">def</span> <span class="nf">_slice</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">offset</span><span class="p">):</span>
+            <span class="n">length</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">parameters</span><span class="p">[</span><span class="n">key</span><span class="p">]</span>
+            <span class="n">param_slice</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">s_</span><span class="p">[</span><span class="n">offset</span><span class="p">:</span><span class="n">offset</span> <span class="o">+</span> <span class="n">length</span><span class="p">]</span>
+            <span class="n">offset</span> <span class="o">+=</span> <span class="n">length</span>
+            <span class="k">return</span> <span class="n">param_slice</span><span class="p">,</span> <span class="n">offset</span>
+
+        <span class="n">offset</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_params_trend</span><span class="p">,</span> <span class="n">offset</span> <span class="o">=</span> <span class="n">_slice</span><span class="p">(</span><span class="s1">&#39;trend&#39;</span><span class="p">,</span> <span class="n">offset</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_params_ar</span><span class="p">,</span> <span class="n">offset</span> <span class="o">=</span> <span class="n">_slice</span><span class="p">(</span><span class="s1">&#39;ar&#39;</span><span class="p">,</span> <span class="n">offset</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_params_ma</span><span class="p">,</span> <span class="n">offset</span> <span class="o">=</span> <span class="n">_slice</span><span class="p">(</span><span class="s1">&#39;ma&#39;</span><span class="p">,</span> <span class="n">offset</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_params_regression</span><span class="p">,</span> <span class="n">offset</span> <span class="o">=</span> <span class="n">_slice</span><span class="p">(</span><span class="s1">&#39;regression&#39;</span><span class="p">,</span> <span class="n">offset</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_params_state_cov</span><span class="p">,</span> <span class="n">offset</span> <span class="o">=</span> <span class="n">_slice</span><span class="p">(</span><span class="s1">&#39;state_cov&#39;</span><span class="p">,</span> <span class="n">offset</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_params_obs_cov</span><span class="p">,</span> <span class="n">offset</span> <span class="o">=</span> <span class="n">_slice</span><span class="p">(</span><span class="s1">&#39;obs_cov&#39;</span><span class="p">,</span> <span class="n">offset</span><span class="p">)</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">_res_classes</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">{</span><span class="s1">&#39;fit&#39;</span><span class="p">:</span> <span class="p">(</span><span class="n">VARMAXResults</span><span class="p">,</span> <span class="n">VARMAXResultsWrapper</span><span class="p">)}</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">start_params</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">params</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">k_params</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
+
+        <span class="c1"># A. Run a multivariate regression to get beta estimates</span>
+        <span class="n">endog</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">endog</span><span class="o">.</span><span class="n">copy</span><span class="p">())</span>
+        <span class="c1"># Pandas &lt; 0.13 didn&#39;t support the same type of DataFrame interpolation</span>
+        <span class="c1"># TODO remove this now that we have dropped support for Pandas &lt; 0.13</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">endog</span> <span class="o">=</span> <span class="n">endog</span><span class="o">.</span><span class="n">interpolate</span><span class="p">()</span>
+        <span class="k">except</span> <span class="ne">TypeError</span><span class="p">:</span>
+            <span class="k">pass</span>
+        <span class="n">endog</span> <span class="o">=</span> <span class="n">endog</span><span class="o">.</span><span class="n">fillna</span><span class="p">(</span><span class="n">method</span><span class="o">=</span><span class="s1">&#39;backfill&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">values</span>
+        <span class="n">exog</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_trend</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_exog</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">exog</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">c_</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_trend_data</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">exog</span><span class="p">]</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_trend</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">exog</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_trend_data</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_exog</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">exog</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">exog</span>
+
+        <span class="c1"># Although the Kalman filter can deal with missing values in endog,</span>
+        <span class="c1"># conditional sum of squares cannot</span>
+        <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">endog</span><span class="p">)):</span>
+            <span class="n">mask</span> <span class="o">=</span> <span class="o">~</span><span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">endog</span><span class="p">),</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+            <span class="n">endog</span> <span class="o">=</span> <span class="n">endog</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span>
+            <span class="k">if</span> <span class="n">exog</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">exog</span> <span class="o">=</span> <span class="n">exog</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span>
+
+        <span class="c1"># Regression and trend effects via OLS</span>
+        <span class="n">trend_params</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+        <span class="n">exog_params</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_trend</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_exog</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">trendexog_params</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">pinv</span><span class="p">(</span><span class="n">exog</span><span class="p">)</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">endog</span><span class="p">)</span>
+            <span class="n">endog</span> <span class="o">-=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">exog</span><span class="p">,</span> <span class="n">trendexog_params</span><span class="p">)</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_trend</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="n">trend_params</span> <span class="o">=</span> <span class="n">trendexog_params</span><span class="p">[:</span><span class="bp">self</span><span class="o">.</span><span class="n">k_trend</span><span class="p">]</span><span class="o">.</span><span class="n">T</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="n">exog_params</span> <span class="o">=</span> <span class="n">trendexog_params</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">k_trend</span><span class="p">:]</span><span class="o">.</span><span class="n">T</span>
+
+        <span class="c1"># B. Run a VAR model on endog to get trend, AR parameters</span>
+        <span class="n">ar_params</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">k_ar</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_ar</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_ar</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="k">else</span> <span class="mi">1</span>
+        <span class="n">mod_ar</span> <span class="o">=</span> <span class="n">var_model</span><span class="o">.</span><span class="n">VAR</span><span class="p">(</span><span class="n">endog</span><span class="p">)</span>
+        <span class="n">res_ar</span> <span class="o">=</span> <span class="n">mod_ar</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">maxlags</span><span class="o">=</span><span class="n">k_ar</span><span class="p">,</span> <span class="n">ic</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">trend</span><span class="o">=</span><span class="s1">&#39;nc&#39;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_ar</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">ar_params</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">res_ar</span><span class="o">.</span><span class="n">params</span><span class="p">)</span><span class="o">.</span><span class="n">T</span><span class="o">.</span><span class="n">ravel</span><span class="p">()</span>
+        <span class="n">endog</span> <span class="o">=</span> <span class="n">res_ar</span><span class="o">.</span><span class="n">resid</span>
+
+        <span class="c1"># Test for stationarity</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_ar</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">enforce_stationarity</span><span class="p">:</span>
+            <span class="n">coefficient_matrices</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="n">ar_params</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_ar</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span>
+                <span class="p">)</span><span class="o">.</span><span class="n">T</span>
+            <span class="p">)</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_ar</span><span class="p">)</span><span class="o">.</span><span class="n">T</span>
+
+            <span class="n">stationary</span> <span class="o">=</span> <span class="n">is_invertible</span><span class="p">([</span><span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="nb">list</span><span class="p">(</span><span class="o">-</span><span class="n">coefficient_matrices</span><span class="p">))</span>
+
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">stationary</span><span class="p">:</span>
+                <span class="n">warn</span><span class="p">(</span><span class="s1">&#39;Non-stationary starting autoregressive parameters&#39;</span>
+                     <span class="s1">&#39; found. Using zeros as starting parameters.&#39;</span><span class="p">)</span>
+                <span class="n">ar_params</span> <span class="o">*=</span> <span class="mi">0</span>
+
+        <span class="c1"># C. Run a VAR model on the residuals to get MA parameters</span>
+        <span class="n">ma_params</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_ma</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">mod_ma</span> <span class="o">=</span> <span class="n">var_model</span><span class="o">.</span><span class="n">VAR</span><span class="p">(</span><span class="n">endog</span><span class="p">)</span>
+            <span class="n">res_ma</span> <span class="o">=</span> <span class="n">mod_ma</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">maxlags</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">k_ma</span><span class="p">,</span> <span class="n">ic</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">trend</span><span class="o">=</span><span class="s1">&#39;nc&#39;</span><span class="p">)</span>
+            <span class="n">ma_params</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">res_ma</span><span class="o">.</span><span class="n">params</span><span class="o">.</span><span class="n">T</span><span class="p">)</span><span class="o">.</span><span class="n">ravel</span><span class="p">()</span>
+
+            <span class="c1"># Test for invertibility</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">enforce_invertibility</span><span class="p">:</span>
+                <span class="n">coefficient_matrices</span> <span class="o">=</span> <span class="p">(</span>
+                    <span class="n">ma_params</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_ma</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span>
+                    <span class="p">)</span><span class="o">.</span><span class="n">T</span>
+                <span class="p">)</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_ma</span><span class="p">)</span><span class="o">.</span><span class="n">T</span>
+
+                <span class="n">invertible</span> <span class="o">=</span> <span class="n">is_invertible</span><span class="p">([</span><span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="nb">list</span><span class="p">(</span><span class="o">-</span><span class="n">coefficient_matrices</span><span class="p">))</span>
+
+                <span class="k">if</span> <span class="ow">not</span> <span class="n">invertible</span><span class="p">:</span>
+                    <span class="n">warn</span><span class="p">(</span><span class="s1">&#39;Non-stationary starting moving-average parameters&#39;</span>
+                         <span class="s1">&#39; found. Using zeros as starting parameters.&#39;</span><span class="p">)</span>
+                    <span class="n">ma_params</span> <span class="o">*=</span> <span class="mi">0</span>
+
+        <span class="c1"># Transform trend / exog params from mean form to intercept form</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_ar</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_trend</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">mle_regression</span><span class="p">:</span>
+            <span class="n">coefficient_matrices</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="n">ar_params</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_ar</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span>
+                <span class="p">)</span><span class="o">.</span><span class="n">T</span>
+            <span class="p">)</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_ar</span><span class="p">)</span><span class="o">.</span><span class="n">T</span>
+
+            <span class="n">tmp</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span><span class="p">)</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">coefficient_matrices</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_trend</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="n">trend_params</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">tmp</span><span class="p">,</span> <span class="n">trend_params</span><span class="p">)</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">mle_regression</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="n">exog_params</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">tmp</span><span class="p">,</span> <span class="n">exog_params</span><span class="p">)</span>
+
+        <span class="c1"># 1. Intercept terms</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_trend</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">params</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_params_trend</span><span class="p">]</span> <span class="o">=</span> <span class="n">trend_params</span><span class="o">.</span><span class="n">ravel</span><span class="p">()</span>
+
+        <span class="c1"># 2. AR terms</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_ar</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">params</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_params_ar</span><span class="p">]</span> <span class="o">=</span> <span class="n">ar_params</span>
+
+        <span class="c1"># 3. MA terms</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_ma</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">params</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_params_ma</span><span class="p">]</span> <span class="o">=</span> <span class="n">ma_params</span>
+
+        <span class="c1"># 4. Regression terms</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">mle_regression</span><span class="p">:</span>
+            <span class="n">params</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_params_regression</span><span class="p">]</span> <span class="o">=</span> <span class="n">exog_params</span><span class="o">.</span><span class="n">ravel</span><span class="p">()</span>
+
+        <span class="c1"># 5. State covariance terms</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">error_cov_type</span> <span class="o">==</span> <span class="s1">&#39;diagonal&#39;</span><span class="p">:</span>
+            <span class="n">params</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_params_state_cov</span><span class="p">]</span> <span class="o">=</span> <span class="n">res_ar</span><span class="o">.</span><span class="n">sigma_u</span><span class="o">.</span><span class="n">diagonal</span><span class="p">()</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">error_cov_type</span> <span class="o">==</span> <span class="s1">&#39;unstructured&#39;</span><span class="p">:</span>
+            <span class="n">cov_factor</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">cholesky</span><span class="p">(</span><span class="n">res_ar</span><span class="o">.</span><span class="n">sigma_u</span><span class="p">)</span>
+            <span class="n">params</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_params_state_cov</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="n">cov_factor</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_idx_lower_state_cov</span><span class="p">]</span><span class="o">.</span><span class="n">ravel</span><span class="p">())</span>
+
+        <span class="c1"># 5. Measurement error variance terms</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">measurement_error</span><span class="p">:</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_ma</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="n">params</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_params_obs_cov</span><span class="p">]</span> <span class="o">=</span> <span class="n">res_ma</span><span class="o">.</span><span class="n">sigma_u</span><span class="o">.</span><span class="n">diagonal</span><span class="p">()</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">params</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_params_obs_cov</span><span class="p">]</span> <span class="o">=</span> <span class="n">res_ar</span><span class="o">.</span><span class="n">sigma_u</span><span class="o">.</span><span class="n">diagonal</span><span class="p">()</span>
+
+        <span class="k">return</span> <span class="n">params</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">param_names</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">param_names</span> <span class="o">=</span> <span class="p">[]</span>
+
+        <span class="c1"># 1. Intercept terms</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_trend</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">polynomial_trend</span><span class="o">.</span><span class="n">nonzero</span><span class="p">()[</span><span class="mi">0</span><span class="p">]:</span>
+                <span class="k">if</span> <span class="n">i</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                    <span class="n">param_names</span> <span class="o">+=</span> <span class="p">[</span><span class="s1">&#39;intercept.</span><span class="si">%s</span><span class="s1">&#39;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">endog_names</span><span class="p">[</span><span class="n">j</span><span class="p">]</span>
+                                    <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span><span class="p">)]</span>
+                <span class="k">elif</span> <span class="n">i</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+                    <span class="n">param_names</span> <span class="o">+=</span> <span class="p">[</span><span class="s1">&#39;drift.</span><span class="si">%s</span><span class="s1">&#39;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">endog_names</span><span class="p">[</span><span class="n">j</span><span class="p">]</span>
+                                    <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span><span class="p">)]</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">param_names</span> <span class="o">+=</span> <span class="p">[</span><span class="s1">&#39;trend.</span><span class="si">%d</span><span class="s1">.</span><span class="si">%s</span><span class="s1">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">endog_names</span><span class="p">[</span><span class="n">j</span><span class="p">])</span>
+                                    <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span><span class="p">)]</span>
+
+        <span class="c1"># 2. AR terms</span>
+        <span class="n">param_names</span> <span class="o">+=</span> <span class="p">[</span>
+            <span class="s1">&#39;L</span><span class="si">%d</span><span class="s1">.</span><span class="si">%s</span><span class="s1">.</span><span class="si">%s</span><span class="s1">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">endog_names</span><span class="p">[</span><span class="n">k</span><span class="p">],</span> <span class="bp">self</span><span class="o">.</span><span class="n">endog_names</span><span class="p">[</span><span class="n">j</span><span class="p">])</span>
+            <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">k_ar</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span><span class="p">)</span>
+        <span class="p">]</span>
+
+        <span class="c1"># 3. MA terms</span>
+        <span class="n">param_names</span> <span class="o">+=</span> <span class="p">[</span>
+            <span class="s1">&#39;L</span><span class="si">%d</span><span class="s1">.e(</span><span class="si">%s</span><span class="s1">).</span><span class="si">%s</span><span class="s1">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">endog_names</span><span class="p">[</span><span class="n">k</span><span class="p">],</span> <span class="bp">self</span><span class="o">.</span><span class="n">endog_names</span><span class="p">[</span><span class="n">j</span><span class="p">])</span>
+            <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">k_ma</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span><span class="p">)</span>
+        <span class="p">]</span>
+
+        <span class="c1"># 4. Regression terms</span>
+        <span class="n">param_names</span> <span class="o">+=</span> <span class="p">[</span>
+            <span class="s1">&#39;beta.</span><span class="si">%s</span><span class="s1">.</span><span class="si">%s</span><span class="s1">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">exog_names</span><span class="p">[</span><span class="n">j</span><span class="p">],</span> <span class="bp">self</span><span class="o">.</span><span class="n">endog_names</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
+            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">k_exog</span><span class="p">)</span>
+        <span class="p">]</span>
+
+        <span class="c1"># 5. State covariance terms</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">error_cov_type</span> <span class="o">==</span> <span class="s1">&#39;diagonal&#39;</span><span class="p">:</span>
+            <span class="n">param_names</span> <span class="o">+=</span> <span class="p">[</span>
+                <span class="s1">&#39;sigma2.</span><span class="si">%s</span><span class="s1">&#39;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">endog_names</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+                <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span><span class="p">)</span>
+            <span class="p">]</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">error_cov_type</span> <span class="o">==</span> <span class="s1">&#39;unstructured&#39;</span><span class="p">:</span>
+            <span class="n">param_names</span> <span class="o">+=</span> <span class="p">[</span>
+                <span class="p">(</span><span class="s1">&#39;sqrt.var.</span><span class="si">%s</span><span class="s1">&#39;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">endog_names</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="k">if</span> <span class="n">i</span> <span class="o">==</span> <span class="n">j</span> <span class="k">else</span>
+                 <span class="s1">&#39;sqrt.cov.</span><span class="si">%s</span><span class="s1">.</span><span class="si">%s</span><span class="s1">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">endog_names</span><span class="p">[</span><span class="n">j</span><span class="p">],</span> <span class="bp">self</span><span class="o">.</span><span class="n">endog_names</span><span class="p">[</span><span class="n">i</span><span class="p">]))</span>
+                <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span><span class="p">)</span>
+                <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="p">)</span>
+            <span class="p">]</span>
+
+        <span class="c1"># 5. Measurement error variance terms</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">measurement_error</span><span class="p">:</span>
+            <span class="n">param_names</span> <span class="o">+=</span> <span class="p">[</span>
+                <span class="s1">&#39;measurement_variance.</span><span class="si">%s</span><span class="s1">&#39;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">endog_names</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+                <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span><span class="p">)</span>
+            <span class="p">]</span>
+
+        <span class="k">return</span> <span class="n">param_names</span>
+
+<div class="viewcode-block" id="VARMAX.transform_params"><a class="viewcode-back" href="../../../../generated/statsmodels.tsa.statespace.varmax.VARMAX.transform_params.html#statsmodels.tsa.statespace.varmax.VARMAX.transform_params">[docs]</a>    <span class="k">def</span> <span class="nf">transform_params</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">unconstrained</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Transform unconstrained parameters used by the optimizer to constrained</span>
+<span class="sd">        parameters used in likelihood evaluation</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        unconstrained : array_like</span>
+<span class="sd">            Array of unconstrained parameters used by the optimizer, to be</span>
+<span class="sd">            transformed.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        constrained : array_like</span>
+<span class="sd">            Array of constrained parameters which may be used in likelihood</span>
+<span class="sd">            evalation.</span>
+
+<span class="sd">        Notes</span>
+<span class="sd">        -----</span>
+<span class="sd">        Constrains the factor transition to be stationary and variances to be</span>
+<span class="sd">        positive.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">unconstrained</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">unconstrained</span><span class="p">,</span> <span class="n">ndmin</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+        <span class="n">constrained</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">unconstrained</span><span class="o">.</span><span class="n">shape</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">unconstrained</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span>
+
+        <span class="c1"># 1. Intercept terms: nothing to do</span>
+        <span class="n">constrained</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_params_trend</span><span class="p">]</span> <span class="o">=</span> <span class="n">unconstrained</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_params_trend</span><span class="p">]</span>
+
+        <span class="c1"># 2. AR terms: optionally force to be stationary</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_ar</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">enforce_stationarity</span><span class="p">:</span>
+            <span class="c1"># Create the state covariance matrix</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">error_cov_type</span> <span class="o">==</span> <span class="s1">&#39;diagonal&#39;</span><span class="p">:</span>
+                <span class="n">state_cov</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">diag</span><span class="p">(</span><span class="n">unconstrained</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_params_state_cov</span><span class="p">]</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span>
+            <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">error_cov_type</span> <span class="o">==</span> <span class="s1">&#39;unstructured&#39;</span><span class="p">:</span>
+                <span class="n">state_cov_lower</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ssm</span><span class="p">[</span><span class="s1">&#39;state_cov&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">shape</span><span class="p">,</span>
+                                           <span class="n">dtype</span><span class="o">=</span><span class="n">unconstrained</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span>
+                <span class="n">state_cov_lower</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_idx_lower_state_cov</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+                    <span class="n">unconstrained</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_params_state_cov</span><span class="p">])</span>
+                <span class="n">state_cov</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">state_cov_lower</span><span class="p">,</span> <span class="n">state_cov_lower</span><span class="o">.</span><span class="n">T</span><span class="p">)</span>
+
+            <span class="c1"># Transform the parameters</span>
+            <span class="n">coefficients</span> <span class="o">=</span> <span class="n">unconstrained</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_params_ar</span><span class="p">]</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_ar</span><span class="p">)</span>
+            <span class="n">coefficient_matrices</span><span class="p">,</span> <span class="n">variance</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="n">constrain_stationary_multivariate</span><span class="p">(</span><span class="n">coefficients</span><span class="p">,</span> <span class="n">state_cov</span><span class="p">))</span>
+            <span class="n">constrained</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_params_ar</span><span class="p">]</span> <span class="o">=</span> <span class="n">coefficient_matrices</span><span class="o">.</span><span class="n">ravel</span><span class="p">()</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">constrained</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_params_ar</span><span class="p">]</span> <span class="o">=</span> <span class="n">unconstrained</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_params_ar</span><span class="p">]</span>
+
+        <span class="c1"># 3. MA terms: optionally force to be invertible</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_ma</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">enforce_invertibility</span><span class="p">:</span>
+            <span class="c1"># Transform the parameters, using an identity variance matrix</span>
+            <span class="n">state_cov</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">unconstrained</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span>
+            <span class="n">coefficients</span> <span class="o">=</span> <span class="n">unconstrained</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_params_ma</span><span class="p">]</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_ma</span><span class="p">)</span>
+            <span class="n">coefficient_matrices</span><span class="p">,</span> <span class="n">variance</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="n">constrain_stationary_multivariate</span><span class="p">(</span><span class="n">coefficients</span><span class="p">,</span> <span class="n">state_cov</span><span class="p">))</span>
+            <span class="n">constrained</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_params_ma</span><span class="p">]</span> <span class="o">=</span> <span class="n">coefficient_matrices</span><span class="o">.</span><span class="n">ravel</span><span class="p">()</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">constrained</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_params_ma</span><span class="p">]</span> <span class="o">=</span> <span class="n">unconstrained</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_params_ma</span><span class="p">]</span>
+
+        <span class="c1"># 4. Regression terms: nothing to do</span>
+        <span class="n">constrained</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_params_regression</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="n">unconstrained</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_params_regression</span><span class="p">])</span>
+
+        <span class="c1"># 5. State covariance terms</span>
+        <span class="c1"># If we have variances, force them to be positive</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">error_cov_type</span> <span class="o">==</span> <span class="s1">&#39;diagonal&#39;</span><span class="p">:</span>
+            <span class="n">constrained</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_params_state_cov</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="n">unconstrained</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_params_state_cov</span><span class="p">]</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span>
+        <span class="c1"># Otherwise, nothing needs to be done</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">error_cov_type</span> <span class="o">==</span> <span class="s1">&#39;unstructured&#39;</span><span class="p">:</span>
+            <span class="n">constrained</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_params_state_cov</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="n">unconstrained</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_params_state_cov</span><span class="p">])</span>
+
+        <span class="c1"># 5. Measurement error variance terms</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">measurement_error</span><span class="p">:</span>
+            <span class="c1"># Force these to be positive</span>
+            <span class="n">constrained</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_params_obs_cov</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="n">unconstrained</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_params_obs_cov</span><span class="p">]</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">constrained</span></div>
+
+<div class="viewcode-block" id="VARMAX.untransform_params"><a class="viewcode-back" href="../../../../generated/statsmodels.tsa.statespace.varmax.VARMAX.untransform_params.html#statsmodels.tsa.statespace.varmax.VARMAX.untransform_params">[docs]</a>    <span class="k">def</span> <span class="nf">untransform_params</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">constrained</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Transform constrained parameters used in likelihood evaluation</span>
+<span class="sd">        to unconstrained parameters used by the optimizer.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        constrained : array_like</span>
+<span class="sd">            Array of constrained parameters used in likelihood evalution, to be</span>
+<span class="sd">            transformed.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        unconstrained : array_like</span>
+<span class="sd">            Array of unconstrained parameters used by the optimizer.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">constrained</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">constrained</span><span class="p">,</span> <span class="n">ndmin</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+        <span class="n">unconstrained</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">constrained</span><span class="o">.</span><span class="n">shape</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">constrained</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span>
+
+        <span class="c1"># 1. Intercept terms: nothing to do</span>
+        <span class="n">unconstrained</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_params_trend</span><span class="p">]</span> <span class="o">=</span> <span class="n">constrained</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_params_trend</span><span class="p">]</span>
+
+        <span class="c1"># 2. AR terms: optionally were forced to be stationary</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_ar</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">enforce_stationarity</span><span class="p">:</span>
+            <span class="c1"># Create the state covariance matrix</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">error_cov_type</span> <span class="o">==</span> <span class="s1">&#39;diagonal&#39;</span><span class="p">:</span>
+                <span class="n">state_cov</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">diag</span><span class="p">(</span><span class="n">constrained</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_params_state_cov</span><span class="p">])</span>
+            <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">error_cov_type</span> <span class="o">==</span> <span class="s1">&#39;unstructured&#39;</span><span class="p">:</span>
+                <span class="n">state_cov_lower</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ssm</span><span class="p">[</span><span class="s1">&#39;state_cov&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">shape</span><span class="p">,</span>
+                                           <span class="n">dtype</span><span class="o">=</span><span class="n">constrained</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span>
+                <span class="n">state_cov_lower</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_idx_lower_state_cov</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+                    <span class="n">constrained</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_params_state_cov</span><span class="p">])</span>
+                <span class="n">state_cov</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">state_cov_lower</span><span class="p">,</span> <span class="n">state_cov_lower</span><span class="o">.</span><span class="n">T</span><span class="p">)</span>
+
+            <span class="c1"># Transform the parameters</span>
+            <span class="n">coefficients</span> <span class="o">=</span> <span class="n">constrained</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_params_ar</span><span class="p">]</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_ar</span><span class="p">)</span>
+            <span class="n">unconstrained_matrices</span><span class="p">,</span> <span class="n">variance</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="n">unconstrain_stationary_multivariate</span><span class="p">(</span><span class="n">coefficients</span><span class="p">,</span> <span class="n">state_cov</span><span class="p">))</span>
+            <span class="n">unconstrained</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_params_ar</span><span class="p">]</span> <span class="o">=</span> <span class="n">unconstrained_matrices</span><span class="o">.</span><span class="n">ravel</span><span class="p">()</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">unconstrained</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_params_ar</span><span class="p">]</span> <span class="o">=</span> <span class="n">constrained</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_params_ar</span><span class="p">]</span>
+
+        <span class="c1"># 3. MA terms: optionally were forced to be invertible</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_ma</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">enforce_invertibility</span><span class="p">:</span>
+            <span class="c1"># Transform the parameters, using an identity variance matrix</span>
+            <span class="n">state_cov</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">constrained</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span>
+            <span class="n">coefficients</span> <span class="o">=</span> <span class="n">constrained</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_params_ma</span><span class="p">]</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_ma</span><span class="p">)</span>
+            <span class="n">unconstrained_matrices</span><span class="p">,</span> <span class="n">variance</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="n">unconstrain_stationary_multivariate</span><span class="p">(</span><span class="n">coefficients</span><span class="p">,</span> <span class="n">state_cov</span><span class="p">))</span>
+            <span class="n">unconstrained</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_params_ma</span><span class="p">]</span> <span class="o">=</span> <span class="n">unconstrained_matrices</span><span class="o">.</span><span class="n">ravel</span><span class="p">()</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">unconstrained</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_params_ma</span><span class="p">]</span> <span class="o">=</span> <span class="n">constrained</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_params_ma</span><span class="p">]</span>
+
+        <span class="c1"># 4. Regression terms: nothing to do</span>
+        <span class="n">unconstrained</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_params_regression</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="n">constrained</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_params_regression</span><span class="p">])</span>
+
+        <span class="c1"># 5. State covariance terms</span>
+        <span class="c1"># If we have variances, then these were forced to be positive</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">error_cov_type</span> <span class="o">==</span> <span class="s1">&#39;diagonal&#39;</span><span class="p">:</span>
+            <span class="n">unconstrained</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_params_state_cov</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="n">constrained</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_params_state_cov</span><span class="p">]</span><span class="o">**</span><span class="mf">0.5</span><span class="p">)</span>
+        <span class="c1"># Otherwise, nothing needs to be done</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">error_cov_type</span> <span class="o">==</span> <span class="s1">&#39;unstructured&#39;</span><span class="p">:</span>
+            <span class="n">unconstrained</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_params_state_cov</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="n">constrained</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_params_state_cov</span><span class="p">])</span>
+
+        <span class="c1"># 5. Measurement error variance terms</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">measurement_error</span><span class="p">:</span>
+            <span class="c1"># These were forced to be positive</span>
+            <span class="n">unconstrained</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_params_obs_cov</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="n">constrained</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_params_obs_cov</span><span class="p">]</span><span class="o">**</span><span class="mf">0.5</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">unconstrained</span></div>
+
+<div class="viewcode-block" id="VARMAX.update"><a class="viewcode-back" href="../../../../generated/statsmodels.tsa.statespace.varmax.VARMAX.update.html#statsmodels.tsa.statespace.varmax.VARMAX.update">[docs]</a>    <span class="k">def</span> <span class="nf">update</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="n">params</span> <span class="o">=</span> <span class="nb">super</span><span class="p">(</span><span class="n">VARMAX</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+        <span class="c1"># 1. State intercept</span>
+        <span class="c1"># - Exog</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">mle_regression</span><span class="p">:</span>
+            <span class="n">exog_params</span> <span class="o">=</span> <span class="n">params</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_params_regression</span><span class="p">]</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_exog</span><span class="p">)</span><span class="o">.</span><span class="n">T</span>
+            <span class="n">intercept</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">exog</span><span class="p">[</span><span class="mi">1</span><span class="p">:],</span> <span class="n">exog_params</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">ssm</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_idx_state_intercept</span><span class="p">]</span> <span class="o">=</span> <span class="n">intercept</span><span class="o">.</span><span class="n">T</span>
+
+        <span class="c1"># - Trend</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_trend</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="c1"># If we didn&#39;t set the intercept above, zero it out so we can</span>
+            <span class="c1"># just += later</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">mle_regression</span><span class="p">:</span>
+                <span class="n">zero</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">params</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">ssm</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_idx_state_intercept</span><span class="p">]</span> <span class="o">=</span> <span class="n">zero</span>
+
+            <span class="n">trend_params</span> <span class="o">=</span> <span class="n">params</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_params_trend</span><span class="p">]</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_trend</span><span class="p">)</span><span class="o">.</span><span class="n">T</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_trend_is_const</span><span class="p">:</span>
+                <span class="n">intercept</span> <span class="o">=</span> <span class="n">trend_params</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">intercept</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_trend_data</span><span class="p">[</span><span class="mi">1</span><span class="p">:],</span> <span class="n">trend_params</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">ssm</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_idx_state_intercept</span><span class="p">]</span> <span class="o">+=</span> <span class="n">intercept</span><span class="o">.</span><span class="n">T</span>
+
+        <span class="c1"># Need to set the last state intercept to np.nan (with appropriate</span>
+        <span class="c1"># dtype)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">mle_regression</span><span class="p">:</span>
+            <span class="n">nan</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">nan</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">params</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">ssm</span><span class="p">[</span><span class="s1">&#39;state_intercept&#39;</span><span class="p">,</span> <span class="p">:</span><span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">nan</span>
+
+        <span class="c1"># 2. Transition</span>
+        <span class="n">ar</span> <span class="o">=</span> <span class="n">params</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_params_ar</span><span class="p">]</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_ar</span><span class="p">)</span>
+        <span class="n">ma</span> <span class="o">=</span> <span class="n">params</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_params_ma</span><span class="p">]</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_endog</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_ma</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">ssm</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_idx_transition</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">c_</span><span class="p">[</span><span class="n">ar</span><span class="p">,</span> <span class="n">ma</span><span class="p">]</span>
+
+        <span class="c1"># 3. State covariance</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">error_cov_type</span> <span class="o">==</span> <span class="s1">&#39;diagonal&#39;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">ssm</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_idx_state_cov</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="n">params</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_params_state_cov</span><span class="p">]</span>
+            <span class="p">)</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">error_cov_type</span> <span class="o">==</span> <span class="s1">&#39;unstructured&#39;</span><span class="p">:</span>
+            <span class="n">state_cov_lower</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ssm</span><span class="p">[</span><span class="s1">&#39;state_cov&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">shape</span><span class="p">,</span>
+                                       <span class="n">dtype</span><span class="o">=</span><span class="n">params</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span>
+            <span class="n">state_cov_lower</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_idx_lower_state_cov</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="n">params</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_params_state_cov</span><span class="p">])</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">ssm</span><span class="p">[</span><span class="s1">&#39;state_cov&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">state_cov_lower</span><span class="p">,</span> <span class="n">state_cov_lower</span><span class="o">.</span><span class="n">T</span><span class="p">)</span>
+
+        <span class="c1"># 4. Observation covariance</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">measurement_error</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">ssm</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_idx_obs_cov</span><span class="p">]</span> <span class="o">=</span> <span class="n">params</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_params_obs_cov</span><span class="p">]</span></div></div>
+
+
+<div class="viewcode-block" id="VARMAXResults"><a class="viewcode-back" href="../../../../generated/statsmodels.tsa.statespace.varmax.VARMAXResults.html#statsmodels.tsa.statespace.varmax.VARMAXResults">[docs]</a><span class="k">class</span> <span class="nc">VARMAXResults</span><span class="p">(</span><span class="n">MLEResults</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Class to hold results from fitting an VARMAX model.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    model : VARMAX instance</span>
+<span class="sd">        The fitted model instance</span>
+
+<span class="sd">    Attributes</span>
+<span class="sd">    ----------</span>
+<span class="sd">    specification : dictionary</span>
+<span class="sd">        Dictionary including all attributes from the VARMAX model instance.</span>
+<span class="sd">    coefficient_matrices_var : array</span>
+<span class="sd">        Array containing autoregressive lag polynomial coefficient matrices,</span>
+<span class="sd">        ordered from lowest degree to highest.</span>
+<span class="sd">    coefficient_matrices_vma : array</span>
+<span class="sd">        Array containing moving average lag polynomial coefficients,</span>
+<span class="sd">        ordered from lowest degree to highest.</span>
+
+<span class="sd">    See Also</span>
+<span class="sd">    --------</span>
+<span class="sd">    statsmodels.tsa.statespace.kalman_filter.FilterResults</span>
+<span class="sd">    statsmodels.tsa.statespace.mlemodel.MLEResults</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">filter_results</span><span class="p">,</span> <span class="n">cov_type</span><span class="o">=</span><span class="s1">&#39;opg&#39;</span><span class="p">,</span>
+                 <span class="n">cov_kwds</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">VARMAXResults</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">filter_results</span><span class="p">,</span>
+                                            <span class="n">cov_type</span><span class="p">,</span> <span class="n">cov_kwds</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">specification</span> <span class="o">=</span> <span class="n">Bunch</span><span class="p">(</span><span class="o">**</span><span class="p">{</span>
+            <span class="c1"># Set additional model parameters</span>
+            <span class="s1">&#39;error_cov_type&#39;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">error_cov_type</span><span class="p">,</span>
+            <span class="s1">&#39;measurement_error&#39;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">measurement_error</span><span class="p">,</span>
+            <span class="s1">&#39;enforce_stationarity&#39;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">enforce_stationarity</span><span class="p">,</span>
+            <span class="s1">&#39;enforce_invertibility&#39;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">enforce_invertibility</span><span class="p">,</span>
+
+            <span class="s1">&#39;order&#39;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">order</span><span class="p">,</span>
+
+            <span class="c1"># Model order</span>
+            <span class="s1">&#39;k_ar&#39;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">k_ar</span><span class="p">,</span>
+            <span class="s1">&#39;k_ma&#39;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">k_ma</span><span class="p">,</span>
+
+            <span class="c1"># Trend / Regression</span>
+            <span class="s1">&#39;trend&#39;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">trend</span><span class="p">,</span>
+            <span class="s1">&#39;k_trend&#39;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">k_trend</span><span class="p">,</span>
+            <span class="s1">&#39;k_exog&#39;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">k_exog</span><span class="p">,</span>
+        <span class="p">})</span>
+
+        <span class="c1"># Polynomials / coefficient matrices</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">coefficient_matrices_var</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">coefficient_matrices_vma</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">k_ar</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">ar_params</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">params</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">_params_ar</span><span class="p">])</span>
+            <span class="n">k_endog</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">k_endog</span>
+            <span class="n">k_ar</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">k_ar</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">coefficient_matrices_var</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="n">ar_params</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">k_endog</span> <span class="o">*</span> <span class="n">k_ar</span><span class="p">,</span> <span class="n">k_endog</span><span class="p">)</span><span class="o">.</span><span class="n">T</span>
+            <span class="p">)</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">k_endog</span><span class="p">,</span> <span class="n">k_endog</span><span class="p">,</span> <span class="n">k_ar</span><span class="p">)</span><span class="o">.</span><span class="n">T</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">k_ma</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">ma_params</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">params</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">_params_ma</span><span class="p">])</span>
+            <span class="n">k_endog</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">k_endog</span>
+            <span class="n">k_ma</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">k_ma</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">coefficient_matrices_vma</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="n">ma_params</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">k_endog</span> <span class="o">*</span> <span class="n">k_ma</span><span class="p">,</span> <span class="n">k_endog</span><span class="p">)</span><span class="o">.</span><span class="n">T</span>
+            <span class="p">)</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">k_endog</span><span class="p">,</span> <span class="n">k_endog</span><span class="p">,</span> <span class="n">k_ma</span><span class="p">)</span><span class="o">.</span><span class="n">T</span>
+
+<div class="viewcode-block" id="VARMAXResults.get_prediction"><a class="viewcode-back" href="../../../../generated/statsmodels.tsa.statespace.varmax.VARMAXResults.get_prediction.html#statsmodels.tsa.statespace.varmax.VARMAXResults.get_prediction">[docs]</a>    <span class="k">def</span> <span class="nf">get_prediction</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">start</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">end</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">dynamic</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">index</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                       <span class="n">exog</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        In-sample prediction and out-of-sample forecasting</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        start : int, str, or datetime, optional</span>
+<span class="sd">            Zero-indexed observation number at which to start forecasting, ie.,</span>
+<span class="sd">            the first forecast is start. Can also be a date string to</span>
+<span class="sd">            parse or a datetime type. Default is the the zeroth observation.</span>
+<span class="sd">        end : int, str, or datetime, optional</span>
+<span class="sd">            Zero-indexed observation number at which to end forecasting, ie.,</span>
+<span class="sd">            the first forecast is start. Can also be a date string to</span>
+<span class="sd">            parse or a datetime type. However, if the dates index does not</span>
+<span class="sd">            have a fixed frequency, end must be an integer index if you</span>
+<span class="sd">            want out of sample prediction. Default is the last observation in</span>
+<span class="sd">            the sample.</span>
+<span class="sd">        exog : array_like, optional</span>
+<span class="sd">            If the model includes exogenous regressors, you must provide</span>
+<span class="sd">            exactly enough out-of-sample values for the exogenous variables if</span>
+<span class="sd">            end is beyond the last observation in the sample.</span>
+<span class="sd">        dynamic : boolean, int, str, or datetime, optional</span>
+<span class="sd">            Integer offset relative to `start` at which to begin dynamic</span>
+<span class="sd">            prediction. Can also be an absolute date string to parse or a</span>
+<span class="sd">            datetime type (these are not interpreted as offsets).</span>
+<span class="sd">            Prior to this observation, true endogenous values will be used for</span>
+<span class="sd">            prediction; starting with this observation and continuing through</span>
+<span class="sd">            the end of prediction, forecasted endogenous values will be used</span>
+<span class="sd">            instead.</span>
+<span class="sd">        kwargs</span>
+<span class="sd">            Additional arguments may required for forecasting beyond the end</span>
+<span class="sd">            of the sample. See `FilterResults.predict` for more details.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        forecast : array</span>
+<span class="sd">            Array of out of sample forecasts.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">start</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">start</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">_index</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+        <span class="c1"># Handle end (e.g. date)</span>
+        <span class="n">_start</span><span class="p">,</span> <span class="n">_end</span><span class="p">,</span> <span class="n">_out_of_sample</span><span class="p">,</span> <span class="n">prediction_index</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">_get_prediction_index</span><span class="p">(</span><span class="n">start</span><span class="p">,</span> <span class="n">end</span><span class="p">,</span> <span class="n">index</span><span class="p">,</span> <span class="n">silent</span><span class="o">=</span><span class="kc">True</span><span class="p">))</span>
+
+        <span class="c1"># Handle exogenous parameters</span>
+        <span class="n">last_intercept</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="n">_out_of_sample</span> <span class="ow">and</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">k_exog</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">k_trend</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">):</span>
+            <span class="c1"># Create a new faux VARMAX model for the extended dataset</span>
+            <span class="n">nobs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">orig_endog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">+</span> <span class="n">_out_of_sample</span>
+            <span class="n">endog</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">nobs</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">k_endog</span><span class="p">))</span>
+
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">k_exog</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">exog</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;Out-of-sample forecasting in a model&#39;</span>
+                                     <span class="s1">&#39; with a regression component requires&#39;</span>
+                                     <span class="s1">&#39; additional exogenous values via the&#39;</span>
+                                     <span class="s1">&#39; `exog` argument.&#39;</span><span class="p">)</span>
+                <span class="n">exog</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">exog</span><span class="p">)</span>
+                <span class="n">required_exog_shape</span> <span class="o">=</span> <span class="p">(</span><span class="n">_out_of_sample</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">k_exog</span><span class="p">)</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="n">exog</span><span class="o">.</span><span class="n">shape</span> <span class="o">==</span> <span class="n">required_exog_shape</span><span class="p">:</span>
+                    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;Provided exogenous values are not of the&#39;</span>
+                                     <span class="s1">&#39; appropriate shape. Required </span><span class="si">%s</span><span class="s1">, got </span><span class="si">%s</span><span class="s1">.&#39;</span>
+                                     <span class="o">%</span> <span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">required_exog_shape</span><span class="p">),</span>
+                                        <span class="nb">str</span><span class="p">(</span><span class="n">exog</span><span class="o">.</span><span class="n">shape</span><span class="p">)))</span>
+                <span class="n">exog</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">c_</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">orig_exog</span><span class="o">.</span><span class="n">T</span><span class="p">,</span> <span class="n">exog</span><span class="o">.</span><span class="n">T</span><span class="p">]</span><span class="o">.</span><span class="n">T</span>
+
+            <span class="c1"># TODO replace with init_kwds or specification or similar</span>
+            <span class="n">model</span> <span class="o">=</span> <span class="n">VARMAX</span><span class="p">(</span>
+                <span class="n">endog</span><span class="p">,</span>
+                <span class="n">exog</span><span class="o">=</span><span class="n">exog</span><span class="p">,</span>
+                <span class="n">order</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">order</span><span class="p">,</span>
+                <span class="n">trend</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">trend</span><span class="p">,</span>
+                <span class="n">error_cov_type</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">error_cov_type</span><span class="p">,</span>
+                <span class="n">measurement_error</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">measurement_error</span><span class="p">,</span>
+                <span class="n">enforce_stationarity</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">enforce_stationarity</span><span class="p">,</span>
+                <span class="n">enforce_invertibility</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">enforce_invertibility</span>
+            <span class="p">)</span>
+            <span class="n">model</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">params</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">model</span><span class="p">[</span><span class="s1">&#39;state_intercept&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">ndim</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="n">last_intercept</span> <span class="o">=</span> <span class="n">model</span><span class="p">[</span><span class="s1">&#39;state_intercept&#39;</span><span class="p">,</span> <span class="p">:,</span> <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span> <span class="o">-</span> <span class="mi">1</span><span class="p">]</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">last_intercept</span> <span class="o">=</span> <span class="n">model</span><span class="p">[</span><span class="s1">&#39;state_intercept&#39;</span><span class="p">,</span> <span class="p">:,</span> <span class="mi">0</span><span class="p">]</span>
+
+            <span class="c1"># Set the kwargs with the update time-varying state space</span>
+            <span class="c1"># representation matrices</span>
+            <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">filter_results</span><span class="o">.</span><span class="n">shapes</span><span class="o">.</span><span class="n">keys</span><span class="p">():</span>
+                <span class="k">if</span> <span class="n">name</span> <span class="o">==</span> <span class="s1">&#39;obs&#39;</span><span class="p">:</span>
+                    <span class="k">continue</span>
+                <span class="n">mat</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">ssm</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">mat</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+                    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">mat</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
+                        <span class="n">kwargs</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">mat</span><span class="p">[:,</span> <span class="o">-</span><span class="n">_out_of_sample</span><span class="p">:]</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="n">kwargs</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">mat</span><span class="p">[:,</span> <span class="p">:,</span> <span class="o">-</span><span class="n">_out_of_sample</span><span class="p">:]</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">k_exog</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">exog</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">warn</span><span class="p">(</span><span class="s1">&#39;Exogenous array provided to predict, but additional data not&#39;</span>
+                 <span class="s1">&#39; required. `exog` argument ignored.&#39;</span><span class="p">,</span> <span class="n">ValueWarning</span><span class="p">)</span>
+
+        <span class="c1"># If we had exog, then the last predicted_state has been set to NaN</span>
+        <span class="c1"># since we didn&#39;t have the appropriate exog to create it. Then, if</span>
+        <span class="c1"># we are forecasting, we now have new exog that we need to put into</span>
+        <span class="c1"># the existing state_intercept array (and we will take it out, below)</span>
+        <span class="k">if</span> <span class="n">last_intercept</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">filter_results</span><span class="o">.</span><span class="n">state_intercept</span><span class="p">[:,</span> <span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">last_intercept</span>
+
+        <span class="n">res</span> <span class="o">=</span> <span class="nb">super</span><span class="p">(</span><span class="n">VARMAXResults</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">get_prediction</span><span class="p">(</span>
+            <span class="n">start</span><span class="o">=</span><span class="n">start</span><span class="p">,</span> <span class="n">end</span><span class="o">=</span><span class="n">end</span><span class="p">,</span> <span class="n">dynamic</span><span class="o">=</span><span class="n">dynamic</span><span class="p">,</span> <span class="n">index</span><span class="o">=</span><span class="n">index</span><span class="p">,</span> <span class="n">exog</span><span class="o">=</span><span class="n">exog</span><span class="p">,</span>
+            <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">last_intercept</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">filter_results</span><span class="o">.</span><span class="n">state_intercept</span><span class="p">[:,</span> <span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span>
+
+        <span class="k">return</span> <span class="n">res</span></div>
+
+<div class="viewcode-block" id="VARMAXResults.summary"><a class="viewcode-back" href="../../../../generated/statsmodels.tsa.statespace.varmax.VARMAXResults.summary.html#statsmodels.tsa.statespace.varmax.VARMAXResults.summary">[docs]</a>    <span class="k">def</span> <span class="nf">summary</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=.</span><span class="mi">05</span><span class="p">,</span> <span class="n">start</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">separate_params</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+        <span class="kn">from</span> <span class="nn">statsmodels.iolib.summary</span> <span class="k">import</span> <span class="n">summary_params</span>
+
+        <span class="c1"># Create the model name</span>
+        <span class="n">spec</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">specification</span>
+        <span class="k">if</span> <span class="n">spec</span><span class="o">.</span><span class="n">k_ar</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">spec</span><span class="o">.</span><span class="n">k_ma</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">model_name</span> <span class="o">=</span> <span class="s1">&#39;VARMA&#39;</span>
+            <span class="n">order</span> <span class="o">=</span> <span class="s1">&#39;(</span><span class="si">%s</span><span class="s1">,</span><span class="si">%s</span><span class="s1">)&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">spec</span><span class="o">.</span><span class="n">k_ar</span><span class="p">,</span> <span class="n">spec</span><span class="o">.</span><span class="n">k_ma</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">spec</span><span class="o">.</span><span class="n">k_ar</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">model_name</span> <span class="o">=</span> <span class="s1">&#39;VAR&#39;</span>
+            <span class="n">order</span> <span class="o">=</span> <span class="s1">&#39;(</span><span class="si">%s</span><span class="s1">)&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">spec</span><span class="o">.</span><span class="n">k_ar</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">model_name</span> <span class="o">=</span> <span class="s1">&#39;VMA&#39;</span>
+            <span class="n">order</span> <span class="o">=</span> <span class="s1">&#39;(</span><span class="si">%s</span><span class="s1">)&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">spec</span><span class="o">.</span><span class="n">k_ma</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">spec</span><span class="o">.</span><span class="n">k_exog</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">model_name</span> <span class="o">+=</span> <span class="s1">&#39;X&#39;</span>
+        <span class="n">model_name</span> <span class="o">=</span> <span class="p">[</span><span class="n">model_name</span> <span class="o">+</span> <span class="n">order</span><span class="p">]</span>
+
+        <span class="k">if</span> <span class="n">spec</span><span class="o">.</span><span class="n">k_trend</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">model_name</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;intercept&#39;</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">spec</span><span class="o">.</span><span class="n">measurement_error</span><span class="p">:</span>
+            <span class="n">model_name</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;measurement error&#39;</span><span class="p">)</span>
+
+        <span class="n">summary</span> <span class="o">=</span> <span class="nb">super</span><span class="p">(</span><span class="n">VARMAXResults</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">summary</span><span class="p">(</span>
+            <span class="n">alpha</span><span class="o">=</span><span class="n">alpha</span><span class="p">,</span> <span class="n">start</span><span class="o">=</span><span class="n">start</span><span class="p">,</span> <span class="n">model_name</span><span class="o">=</span><span class="n">model_name</span><span class="p">,</span>
+            <span class="n">display_params</span><span class="o">=</span><span class="ow">not</span> <span class="n">separate_params</span>
+        <span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">separate_params</span><span class="p">:</span>
+            <span class="n">indices</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">params</span><span class="p">))</span>
+
+            <span class="k">def</span> <span class="nf">make_table</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">mask</span><span class="p">,</span> <span class="n">title</span><span class="p">,</span> <span class="n">strip_end</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+                <span class="n">res</span> <span class="o">=</span> <span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">params</span><span class="p">[</span><span class="n">mask</span><span class="p">],</span> <span class="bp">self</span><span class="o">.</span><span class="n">bse</span><span class="p">[</span><span class="n">mask</span><span class="p">],</span>
+                       <span class="bp">self</span><span class="o">.</span><span class="n">zvalues</span><span class="p">[</span><span class="n">mask</span><span class="p">],</span> <span class="bp">self</span><span class="o">.</span><span class="n">pvalues</span><span class="p">[</span><span class="n">mask</span><span class="p">],</span>
+                       <span class="bp">self</span><span class="o">.</span><span class="n">conf_int</span><span class="p">(</span><span class="n">alpha</span><span class="p">)[</span><span class="n">mask</span><span class="p">])</span>
+
+                <span class="n">param_names</span> <span class="o">=</span> <span class="p">[</span>
+                    <span class="s1">&#39;.&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">name</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;.&#39;</span><span class="p">)[:</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span> <span class="k">if</span> <span class="n">strip_end</span> <span class="k">else</span> <span class="n">name</span>
+                    <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span>
+                    <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">param_names</span><span class="p">)[</span><span class="n">mask</span><span class="p">]</span><span class="o">.</span><span class="n">tolist</span><span class="p">()</span>
+                <span class="p">]</span>
+
+                <span class="k">return</span> <span class="n">summary_params</span><span class="p">(</span><span class="n">res</span><span class="p">,</span> <span class="n">yname</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">xname</span><span class="o">=</span><span class="n">param_names</span><span class="p">,</span>
+                                      <span class="n">alpha</span><span class="o">=</span><span class="n">alpha</span><span class="p">,</span> <span class="n">use_t</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">title</span><span class="o">=</span><span class="n">title</span><span class="p">)</span>
+
+            <span class="c1"># Add parameter tables for each endogenous variable</span>
+            <span class="n">k_endog</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">k_endog</span>
+            <span class="n">k_ar</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">k_ar</span>
+            <span class="n">k_ma</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">k_ma</span>
+            <span class="n">k_trend</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">k_trend</span>
+            <span class="n">k_exog</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">k_exog</span>
+            <span class="n">endog_masks</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">k_endog</span><span class="p">):</span>
+                <span class="n">masks</span> <span class="o">=</span> <span class="p">[]</span>
+                <span class="n">offset</span> <span class="o">=</span> <span class="mi">0</span>
+
+                <span class="c1"># 1. Intercept terms</span>
+                <span class="k">if</span> <span class="n">k_trend</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                    <span class="n">masks</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">i</span> <span class="o">+</span> <span class="n">k_endog</span> <span class="o">*</span> <span class="n">k_trend</span><span class="p">,</span> <span class="n">k_endog</span><span class="p">))</span>
+                    <span class="n">offset</span> <span class="o">+=</span> <span class="n">k_endog</span> <span class="o">*</span> <span class="n">k_trend</span>
+
+                <span class="c1"># 2. AR terms</span>
+                <span class="k">if</span> <span class="n">k_ar</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                    <span class="n">start</span> <span class="o">=</span> <span class="n">i</span> <span class="o">*</span> <span class="n">k_endog</span> <span class="o">*</span> <span class="n">k_ar</span>
+                    <span class="n">end</span> <span class="o">=</span> <span class="p">(</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="o">*</span> <span class="n">k_endog</span> <span class="o">*</span> <span class="n">k_ar</span>
+                    <span class="n">masks</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                        <span class="n">offset</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">start</span><span class="p">,</span> <span class="n">end</span><span class="p">))</span>
+                    <span class="n">offset</span> <span class="o">+=</span> <span class="n">k_ar</span> <span class="o">*</span> <span class="n">k_endog</span><span class="o">**</span><span class="mi">2</span>
+
+                <span class="c1"># 3. MA terms</span>
+                <span class="k">if</span> <span class="n">k_ma</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                    <span class="n">start</span> <span class="o">=</span> <span class="n">i</span> <span class="o">*</span> <span class="n">k_endog</span> <span class="o">*</span> <span class="n">k_ma</span>
+                    <span class="n">end</span> <span class="o">=</span> <span class="p">(</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="o">*</span> <span class="n">k_endog</span> <span class="o">*</span> <span class="n">k_ma</span>
+                    <span class="n">masks</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                        <span class="n">offset</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">start</span><span class="p">,</span> <span class="n">end</span><span class="p">))</span>
+                    <span class="n">offset</span> <span class="o">+=</span> <span class="n">k_ma</span> <span class="o">*</span> <span class="n">k_endog</span><span class="o">**</span><span class="mi">2</span>
+
+                <span class="c1"># 4. Regression terms</span>
+                <span class="k">if</span> <span class="n">k_exog</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                    <span class="n">masks</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                        <span class="n">offset</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">i</span> <span class="o">*</span> <span class="n">k_exog</span><span class="p">,</span> <span class="p">(</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="o">*</span> <span class="n">k_exog</span><span class="p">))</span>
+                    <span class="n">offset</span> <span class="o">+=</span> <span class="n">k_endog</span> <span class="o">*</span> <span class="n">k_exog</span>
+
+                <span class="c1"># 5. Measurement error variance terms</span>
+                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">measurement_error</span><span class="p">:</span>
+                    <span class="n">masks</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                        <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">k_params</span> <span class="o">-</span> <span class="n">i</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span> <span class="n">ndmin</span><span class="o">=</span><span class="mi">1</span><span class="p">))</span>
+
+                <span class="c1"># Create the table</span>
+                <span class="n">mask</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(</span><span class="n">masks</span><span class="p">)</span>
+                <span class="n">endog_masks</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">mask</span><span class="p">)</span>
+
+                <span class="n">title</span> <span class="o">=</span> <span class="s2">&quot;Results for equation </span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">endog_names</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+                <span class="n">table</span> <span class="o">=</span> <span class="n">make_table</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">mask</span><span class="p">,</span> <span class="n">title</span><span class="p">)</span>
+                <span class="n">summary</span><span class="o">.</span><span class="n">tables</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">table</span><span class="p">)</span>
+
+            <span class="c1"># State covariance terms</span>
+            <span class="n">state_cov_mask</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">params</span><span class="p">))[</span><span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">_params_state_cov</span><span class="p">])</span>
+            <span class="n">table</span> <span class="o">=</span> <span class="n">make_table</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state_cov_mask</span><span class="p">,</span> <span class="s2">&quot;Error covariance matrix&quot;</span><span class="p">,</span>
+                               <span class="n">strip_end</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+            <span class="n">summary</span><span class="o">.</span><span class="n">tables</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">table</span><span class="p">)</span>
+
+            <span class="c1"># Add a table for all other parameters</span>
+            <span class="n">masks</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="p">(</span><span class="n">endog_masks</span><span class="p">,</span> <span class="p">[</span><span class="n">state_cov_mask</span><span class="p">]):</span>
+                <span class="n">m</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">m</span><span class="p">)</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span>
+                <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">m</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                    <span class="n">masks</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">m</span><span class="p">)</span>
+            <span class="n">masks</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(</span><span class="n">masks</span><span class="p">)</span>
+            <span class="n">inverse_mask</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="n">indices</span><span class="p">)</span><span class="o">.</span><span class="n">difference</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="n">masks</span><span class="p">))))</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">inverse_mask</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="n">table</span> <span class="o">=</span> <span class="n">make_table</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">inverse_mask</span><span class="p">,</span> <span class="s2">&quot;Other parameters&quot;</span><span class="p">,</span>
+                                   <span class="n">strip_end</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+                <span class="n">summary</span><span class="o">.</span><span class="n">tables</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">table</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">summary</span></div>
+    <span class="n">summary</span><span class="o">.</span><span class="vm">__doc__</span> <span class="o">=</span> <span class="n">MLEResults</span><span class="o">.</span><span class="n">summary</span><span class="o">.</span><span class="vm">__doc__</span></div>
+
+
+<span class="k">class</span> <span class="nc">VARMAXResultsWrapper</span><span class="p">(</span><span class="n">MLEResultsWrapper</span><span class="p">):</span>
+    <span class="n">_attrs</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="n">_wrap_attrs</span> <span class="o">=</span> <span class="n">wrap</span><span class="o">.</span><span class="n">union_dicts</span><span class="p">(</span><span class="n">MLEResultsWrapper</span><span class="o">.</span><span class="n">_wrap_attrs</span><span class="p">,</span>
+                                   <span class="n">_attrs</span><span class="p">)</span>
+    <span class="n">_methods</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="n">_wrap_methods</span> <span class="o">=</span> <span class="n">wrap</span><span class="o">.</span><span class="n">union_dicts</span><span class="p">(</span><span class="n">MLEResultsWrapper</span><span class="o">.</span><span class="n">_wrap_methods</span><span class="p">,</span>
+                                     <span class="n">_methods</span><span class="p">)</span>
+<span class="n">wrap</span><span class="o">.</span><span class="n">populate_wrapper</span><span class="p">(</span><span class="n">VARMAXResultsWrapper</span><span class="p">,</span> <span class="n">VARMAXResults</span><span class="p">)</span>  <span class="c1"># noqa:E305</span>
+</pre></div>
+
+
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../../../../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" />
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer" role="contentinfo">
+        &#169; Copyright 2009-2018, Josef Perktold, Skipper Seabold, Jonathan Taylor, statsmodels-developers.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 2.1.2.
+    </div>
+  </body>
+</html>

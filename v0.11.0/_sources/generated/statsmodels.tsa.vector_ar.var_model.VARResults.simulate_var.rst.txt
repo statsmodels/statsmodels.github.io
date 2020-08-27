@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.tsa.vector\_ar.var\_model.VARResults.simulate\_var
+==============================================================
+
+.. currentmodule:: statsmodels.tsa.vector_ar.var_model
+
+.. automethod:: VARResults.simulate_var

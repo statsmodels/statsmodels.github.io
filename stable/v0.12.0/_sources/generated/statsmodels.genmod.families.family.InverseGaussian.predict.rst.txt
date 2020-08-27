@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.genmod.families.family.InverseGaussian.predict
+==========================================================
+
+.. currentmodule:: statsmodels.genmod.families.family
+
+.. automethod:: InverseGaussian.predict

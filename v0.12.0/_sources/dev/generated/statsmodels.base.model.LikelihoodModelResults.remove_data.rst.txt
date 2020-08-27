@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.base.model.LikelihoodModelResults.remove\_data
+==========================================================
+
+.. currentmodule:: statsmodels.base.model
+
+.. automethod:: LikelihoodModelResults.remove_data
