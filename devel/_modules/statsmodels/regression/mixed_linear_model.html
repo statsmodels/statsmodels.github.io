@@ -108,7 +108,7 @@
       </div>
       <div class="md-flex__cell md-flex__cell--stretch">
         <div class="md-flex__ellipsis md-header-nav__title" data-md-component="title">
-          <span class="md-header-nav__topic">statsmodels v0.13.0.dev0 (+67)</span>
+          <span class="md-header-nav__topic">statsmodels v0.13.0.dev0 (+72)</span>
           <span class="md-header-nav__topic"> statsmodels.regression.mixed_linear_model </span>
         </div>
       </div>
@@ -200,7 +200,7 @@
       
     </a>
     <a href="../../../index.html"
-       title="statsmodels">statsmodels v0.13.0.dev0 (+67)</a>
+       title="statsmodels">statsmodels v0.13.0.dev0 (+72)</a>
   </label>
     <div class="md-nav__source">
       <a href="https://github.com/statsmodels/statsmodels" title="Go to repository" class="md-source" data-md-source="github">
@@ -429,14 +429,14 @@
 <span class="sd">triangle or Cholesky square root of the dependence structure, followed</span>
 <span class="sd">by the variance parameters for the variance components.  The are</span>
 <span class="sd">stored as square roots if (and only if) the random effects covariance</span>
-<span class="sd">matrix is stored as its Choleky factor.  Note that when unpacking, it</span>
+<span class="sd">matrix is stored as its Cholesky factor.  Note that when unpacking, it</span>
 <span class="sd">is important to either square or reflect the dependence structure</span>
 <span class="sd">depending on which parameterization is being used.</span>
 
 <span class="sd">Two score methods are implemented.  One takes the score with respect</span>
 <span class="sd">to the elements of the random effects covariance matrix (used for</span>
 <span class="sd">inference once the MLE is reached), and the other takes the score with</span>
-<span class="sd">respect to the parameters of the Choleky square root of the random</span>
+<span class="sd">respect to the parameters of the Cholesky square root of the random</span>
 <span class="sd">effects covariance matrix (used for optimization).</span>
 
 <span class="sd">The numerical optimization uses GLS to avoid explicitly optimizing</span>
@@ -461,6 +461,8 @@
 <span class="kn">from</span> <span class="nn">statsmodels.tools.decorators</span> <span class="kn">import</span> <span class="n">cache_readonly</span>
 <span class="kn">from</span> <span class="nn">statsmodels.tools</span> <span class="kn">import</span> <span class="n">data</span> <span class="k">as</span> <span class="n">data_tools</span>
 <span class="kn">from</span> <span class="nn">statsmodels.tools.sm_exceptions</span> <span class="kn">import</span> <span class="n">ConvergenceWarning</span>
+
+<span class="n">_warn_cov_sing</span> <span class="o">=</span> <span class="s2">"The random effects covariance matrix is singular."</span>
 
 
 <span class="k">def</span> <span class="nf">_dot</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">):</span>
@@ -719,7 +721,10 @@
 
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_re</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
             <span class="k">if</span> <span class="n">use_sqrt</span><span class="p">:</span>
-                <span class="n">L</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">cholesky</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">cov_re</span><span class="p">)</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="n">L</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">cholesky</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">cov_re</span><span class="p">)</span>
+                <span class="k">except</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">LinAlgError</span><span class="p">:</span>
+                    <span class="n">L</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">diag</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">diag</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">cov_re</span><span class="p">)))</span>
                 <span class="n">cpa</span> <span class="o">=</span> <span class="n">L</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_ix</span><span class="p">]</span>
             <span class="k">else</span><span class="p">:</span>
                 <span class="n">cpa</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">cov_re</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_ix</span><span class="p">]</span>
@@ -1538,7 +1543,10 @@
 
         <span class="c1"># Get the Hessian including only the nonzero fixed effects,</span>
         <span class="c1"># then blow back up to the full size after inverting.</span>
-        <span class="n">hess</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">hessian</span><span class="p">(</span><span class="n">params_prof</span><span class="p">)</span>
+        <span class="n">hess</span><span class="p">,</span> <span class="n">sing</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">hessian</span><span class="p">(</span><span class="n">params_prof</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">sing</span><span class="p">:</span>
+            <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="n">_warn_cov_sing</span><span class="p">)</span>
+
         <span class="n">pcov</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">ones_like</span><span class="p">(</span><span class="n">hess</span><span class="p">)</span>
         <span class="n">ii</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">params_prof</span><span class="p">)</span> <span class="o">&gt;</span> <span class="n">ceps</span>
         <span class="n">ii</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">k_fe</span><span class="p">:]</span> <span class="o">=</span> <span class="kc">True</span>
@@ -1564,27 +1572,49 @@
 
         <span class="k">return</span> <span class="n">MixedLMResultsWrapper</span><span class="p">(</span><span class="n">results</span><span class="p">)</span></div>
 
-<div class="viewcode-block" id="MixedLM.get_fe_params"><a class="viewcode-back" href="../../../generated/statsmodels.regression.mixed_linear_model.MixedLM.get_fe_params.html#statsmodels.regression.mixed_linear_model.MixedLM.get_fe_params">[docs]</a>    <span class="k">def</span> <span class="nf">get_fe_params</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cov_re</span><span class="p">,</span> <span class="n">vcomp</span><span class="p">):</span>
+<div class="viewcode-block" id="MixedLM.get_fe_params"><a class="viewcode-back" href="../../../generated/statsmodels.regression.mixed_linear_model.MixedLM.get_fe_params.html#statsmodels.regression.mixed_linear_model.MixedLM.get_fe_params">[docs]</a>    <span class="k">def</span> <span class="nf">get_fe_params</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cov_re</span><span class="p">,</span> <span class="n">vcomp</span><span class="p">,</span> <span class="n">tol</span><span class="o">=</span><span class="mf">1e-10</span><span class="p">):</span>
         <span class="sd">"""</span>
 <span class="sd">        Use GLS to update the fixed effects parameter estimates.</span>
 
 <span class="sd">        Parameters</span>
 <span class="sd">        ----------</span>
-<span class="sd">        cov_re : array_like</span>
+<span class="sd">        cov_re : array_like (2d)</span>
 <span class="sd">            The covariance matrix of the random effects.</span>
+<span class="sd">        vcomp : array_like (1d)</span>
+<span class="sd">            The variance components.</span>
+<span class="sd">        tol : float</span>
+<span class="sd">            A tolerance parameter to determine when covariances</span>
+<span class="sd">            are singular.</span>
 
 <span class="sd">        Returns</span>
 <span class="sd">        -------</span>
-<span class="sd">        The GLS estimates of the fixed effects parameters.</span>
+<span class="sd">        params : ndarray</span>
+<span class="sd">            The GLS estimates of the fixed effects parameters.</span>
+<span class="sd">        singular : bool</span>
+<span class="sd">            True if the covariance is singular</span>
 <span class="sd">        """</span>
 
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_fe</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
-            <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([])</span>
+            <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([]),</span> <span class="kc">False</span>
+
+        <span class="n">sing</span> <span class="o">=</span> <span class="kc">False</span>
 
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_re</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
             <span class="n">cov_re_inv</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">((</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">))</span>
         <span class="k">else</span><span class="p">:</span>
-            <span class="n">cov_re_inv</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">inv</span><span class="p">(</span><span class="n">cov_re</span><span class="p">)</span>
+            <span class="n">w</span><span class="p">,</span> <span class="n">v</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">eigh</span><span class="p">(</span><span class="n">cov_re</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">w</span><span class="o">.</span><span class="n">min</span><span class="p">()</span> <span class="o">&lt;</span> <span class="n">tol</span><span class="p">:</span>
+                <span class="c1"># Singular, use pseudo-inverse</span>
+                <span class="n">sing</span> <span class="o">=</span> <span class="kc">True</span>
+                <span class="n">ii</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">flatnonzero</span><span class="p">(</span><span class="n">w</span> <span class="o">&gt;=</span> <span class="n">tol</span><span class="p">)</span>
+                <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">ii</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                    <span class="n">cov_re_inv</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros_like</span><span class="p">(</span><span class="n">cov_re</span><span class="p">)</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">vi</span> <span class="o">=</span> <span class="n">v</span><span class="p">[:,</span> <span class="n">ii</span><span class="p">]</span>
+                    <span class="n">wi</span> <span class="o">=</span> <span class="n">w</span><span class="p">[</span><span class="n">ii</span><span class="p">]</span>
+                    <span class="n">cov_re_inv</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">vi</span> <span class="o">/</span> <span class="n">wi</span><span class="p">,</span> <span class="n">vi</span><span class="o">.</span><span class="n">T</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">cov_re_inv</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">inv</span><span class="p">(</span><span class="n">cov_re</span><span class="p">)</span>
 
         <span class="c1"># Cache these quantities that do not change.</span>
         <span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">"_endex_li"</span><span class="p">):</span>
@@ -1598,15 +1628,29 @@
         <span class="n">xtxy</span> <span class="o">=</span> <span class="mf">0.</span>
         <span class="k">for</span> <span class="n">group_ix</span><span class="p">,</span> <span class="n">group</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">group_labels</span><span class="p">):</span>
             <span class="n">vc_var</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_expand_vcomp</span><span class="p">(</span><span class="n">vcomp</span><span class="p">,</span> <span class="n">group_ix</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">vc_var</span><span class="o">.</span><span class="n">size</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">vc_var</span><span class="o">.</span><span class="n">min</span><span class="p">()</span> <span class="o">&lt;</span> <span class="n">tol</span><span class="p">:</span>
+                    <span class="c1"># Pseudo-inverse</span>
+                    <span class="n">sing</span> <span class="o">=</span> <span class="kc">True</span>
+                    <span class="n">ii</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">flatnonzero</span><span class="p">(</span><span class="n">vc_var</span> <span class="o">&gt;=</span> <span class="n">tol</span><span class="p">)</span>
+                    <span class="n">vc_vari</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros_like</span><span class="p">(</span><span class="n">vc_var</span><span class="p">)</span>
+                    <span class="n">vc_vari</span><span class="p">[</span><span class="n">ii</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">/</span> <span class="n">vc_var</span><span class="p">[</span><span class="n">ii</span><span class="p">]</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">vc_vari</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">/</span> <span class="n">vc_var</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">vc_vari</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
             <span class="n">exog</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">exog_li</span><span class="p">[</span><span class="n">group_ix</span><span class="p">]</span>
             <span class="n">ex_r</span><span class="p">,</span> <span class="n">ex2_r</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_aex_r</span><span class="p">[</span><span class="n">group_ix</span><span class="p">],</span> <span class="bp">self</span><span class="o">.</span><span class="n">_aex_r2</span><span class="p">[</span><span class="n">group_ix</span><span class="p">]</span>
-            <span class="n">solver</span> <span class="o">=</span> <span class="n">_smw_solver</span><span class="p">(</span><span class="mf">1.</span><span class="p">,</span> <span class="n">ex_r</span><span class="p">,</span> <span class="n">ex2_r</span><span class="p">,</span> <span class="n">cov_re_inv</span><span class="p">,</span> <span class="mi">1</span> <span class="o">/</span> <span class="n">vc_var</span><span class="p">)</span>
+            <span class="n">solver</span> <span class="o">=</span> <span class="n">_smw_solver</span><span class="p">(</span><span class="mf">1.</span><span class="p">,</span> <span class="n">ex_r</span><span class="p">,</span> <span class="n">ex2_r</span><span class="p">,</span> <span class="n">cov_re_inv</span><span class="p">,</span> <span class="n">vc_vari</span><span class="p">)</span>
             <span class="n">u</span> <span class="o">=</span> <span class="n">solver</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_endex_li</span><span class="p">[</span><span class="n">group_ix</span><span class="p">])</span>
             <span class="n">xtxy</span> <span class="o">+=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">exog</span><span class="o">.</span><span class="n">T</span><span class="p">,</span> <span class="n">u</span><span class="p">)</span>
 
-        <span class="n">fe_params</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">solve</span><span class="p">(</span><span class="n">xtxy</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span> <span class="n">xtxy</span><span class="p">[:,</span> <span class="o">-</span><span class="mi">1</span><span class="p">])</span>
+        <span class="k">if</span> <span class="n">sing</span><span class="p">:</span>
+            <span class="n">fe_params</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">pinv</span><span class="p">(</span><span class="n">xtxy</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">]),</span> <span class="n">xtxy</span><span class="p">[:,</span> <span class="o">-</span><span class="mi">1</span><span class="p">])</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">fe_params</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">solve</span><span class="p">(</span><span class="n">xtxy</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span> <span class="n">xtxy</span><span class="p">[:,</span> <span class="o">-</span><span class="mi">1</span><span class="p">])</span>
 
-        <span class="k">return</span> <span class="n">fe_params</span></div>
+        <span class="k">return</span> <span class="n">fe_params</span><span class="p">,</span> <span class="n">sing</span></div>
 
     <span class="k">def</span> <span class="nf">_reparam</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="sd">"""</span>
@@ -1757,7 +1801,9 @@
 
         <span class="c1"># Move to the profile set</span>
         <span class="k">if</span> <span class="n">profile_fe</span><span class="p">:</span>
-            <span class="n">fe_params</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_fe_params</span><span class="p">(</span><span class="n">cov_re</span><span class="p">,</span> <span class="n">vcomp</span><span class="p">)</span>
+            <span class="n">fe_params</span><span class="p">,</span> <span class="n">sing</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_fe_params</span><span class="p">(</span><span class="n">cov_re</span><span class="p">,</span> <span class="n">vcomp</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">sing</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_cov_sing</span> <span class="o">+=</span> <span class="mi">1</span>
         <span class="k">else</span><span class="p">:</span>
             <span class="n">fe_params</span> <span class="o">=</span> <span class="n">params</span><span class="o">.</span><span class="n">fe_params</span>
 
@@ -1765,7 +1811,8 @@
             <span class="k">try</span><span class="p">:</span>
                 <span class="n">cov_re_inv</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">inv</span><span class="p">(</span><span class="n">cov_re</span><span class="p">)</span>
             <span class="k">except</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">LinAlgError</span><span class="p">:</span>
-                <span class="n">cov_re_inv</span> <span class="o">=</span> <span class="kc">None</span>
+                <span class="n">cov_re_inv</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">pinv</span><span class="p">(</span><span class="n">cov_re</span><span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_cov_sing</span> <span class="o">+=</span> <span class="mi">1</span>
             <span class="n">_</span><span class="p">,</span> <span class="n">cov_re_logdet</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">slogdet</span><span class="p">(</span><span class="n">cov_re</span><span class="p">)</span>
         <span class="k">else</span><span class="p">:</span>
             <span class="n">cov_re_inv</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">))</span>
@@ -1885,7 +1932,12 @@
                 <span class="n">has_fe</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
 
         <span class="k">if</span> <span class="n">profile_fe</span><span class="p">:</span>
-            <span class="n">params</span><span class="o">.</span><span class="n">fe_params</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_fe_params</span><span class="p">(</span><span class="n">params</span><span class="o">.</span><span class="n">cov_re</span><span class="p">,</span> <span class="n">params</span><span class="o">.</span><span class="n">vcomp</span><span class="p">)</span>
+            <span class="n">params</span><span class="o">.</span><span class="n">fe_params</span><span class="p">,</span> <span class="n">sing</span> <span class="o">=</span> \
+                <span class="bp">self</span><span class="o">.</span><span class="n">get_fe_params</span><span class="p">(</span><span class="n">params</span><span class="o">.</span><span class="n">cov_re</span><span class="p">,</span> <span class="n">params</span><span class="o">.</span><span class="n">vcomp</span><span class="p">)</span>
+
+            <span class="k">if</span> <span class="n">sing</span><span class="p">:</span>
+                <span class="n">msg</span> <span class="o">=</span> <span class="s2">"Random effects covariance is singular"</span>
+                <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
 
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">use_sqrt</span><span class="p">:</span>
             <span class="n">score_fe</span><span class="p">,</span> <span class="n">score_re</span><span class="p">,</span> <span class="n">score_vc</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">score_sqrt</span><span class="p">(</span>
@@ -1950,7 +2002,8 @@
         <span class="k">try</span><span class="p">:</span>
             <span class="n">cov_re_inv</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">inv</span><span class="p">(</span><span class="n">cov_re</span><span class="p">)</span>
         <span class="k">except</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">LinAlgError</span><span class="p">:</span>
-            <span class="n">cov_re_inv</span> <span class="o">=</span> <span class="kc">None</span>
+            <span class="n">cov_re_inv</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">pinv</span><span class="p">(</span><span class="n">cov_re</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_cov_sing</span> <span class="o">+=</span> <span class="mi">1</span>
 
         <span class="n">score_fe</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">k_fe</span><span class="p">)</span>
         <span class="n">score_re</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">k_re2</span><span class="p">)</span>
@@ -2124,6 +2177,9 @@
 <span class="sd">        -------</span>
 <span class="sd">        hess : 2d ndarray</span>
 <span class="sd">            The Hessian matrix, evaluated at `params`.</span>
+<span class="sd">        sing : boolean</span>
+<span class="sd">            If True, the covariance matrix is singular and a</span>
+<span class="sd">            pseudo-inverse is returned.</span>
 <span class="sd">        """</span>
 
         <span class="k">if</span> <span class="nb">type</span><span class="p">(</span><span class="n">params</span><span class="p">)</span> <span class="ow">is</span> <span class="ow">not</span> <span class="n">MixedLMParams</span><span class="p">:</span>
@@ -2134,8 +2190,14 @@
         <span class="n">fe_params</span> <span class="o">=</span> <span class="n">params</span><span class="o">.</span><span class="n">fe_params</span>
         <span class="n">vcomp</span> <span class="o">=</span> <span class="n">params</span><span class="o">.</span><span class="n">vcomp</span>
         <span class="n">cov_re</span> <span class="o">=</span> <span class="n">params</span><span class="o">.</span><span class="n">cov_re</span>
+        <span class="n">sing</span> <span class="o">=</span> <span class="kc">False</span>
+
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_re</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
-            <span class="n">cov_re_inv</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">inv</span><span class="p">(</span><span class="n">cov_re</span><span class="p">)</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">cov_re_inv</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">inv</span><span class="p">(</span><span class="n">cov_re</span><span class="p">)</span>
+            <span class="k">except</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">LinAlgError</span><span class="p">:</span>
+                <span class="n">cov_re_inv</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">pinv</span><span class="p">(</span><span class="n">cov_re</span><span class="p">)</span>
+                <span class="n">sing</span> <span class="o">=</span> <span class="kc">True</span>
         <span class="k">else</span><span class="p">:</span>
             <span class="n">cov_re_inv</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">((</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">))</span>
 
@@ -2158,10 +2220,16 @@
         <span class="k">for</span> <span class="n">group_ix</span><span class="p">,</span> <span class="n">group</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">group_labels</span><span class="p">):</span>
 
             <span class="n">vc_var</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_expand_vcomp</span><span class="p">(</span><span class="n">vcomp</span><span class="p">,</span> <span class="n">group_ix</span><span class="p">)</span>
+            <span class="n">vc_vari</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros_like</span><span class="p">(</span><span class="n">vc_var</span><span class="p">)</span>
+            <span class="n">ii</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">flatnonzero</span><span class="p">(</span><span class="n">vc_var</span> <span class="o">&gt;=</span> <span class="mf">1e-10</span><span class="p">)</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">ii</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="n">vc_vari</span><span class="p">[</span><span class="n">ii</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">/</span> <span class="n">vc_var</span><span class="p">[</span><span class="n">ii</span><span class="p">]</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">ii</span><span class="p">)</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="n">vc_var</span><span class="p">):</span>
+                <span class="n">sing</span> <span class="o">=</span> <span class="kc">True</span>
 
             <span class="n">exog</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">exog_li</span><span class="p">[</span><span class="n">group_ix</span><span class="p">]</span>
             <span class="n">ex_r</span><span class="p">,</span> <span class="n">ex2_r</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_aex_r</span><span class="p">[</span><span class="n">group_ix</span><span class="p">],</span> <span class="bp">self</span><span class="o">.</span><span class="n">_aex_r2</span><span class="p">[</span><span class="n">group_ix</span><span class="p">]</span>
-            <span class="n">solver</span> <span class="o">=</span> <span class="n">_smw_solver</span><span class="p">(</span><span class="mf">1.</span><span class="p">,</span> <span class="n">ex_r</span><span class="p">,</span> <span class="n">ex2_r</span><span class="p">,</span> <span class="n">cov_re_inv</span><span class="p">,</span> <span class="mi">1</span> <span class="o">/</span> <span class="n">vc_var</span><span class="p">)</span>
+            <span class="n">solver</span> <span class="o">=</span> <span class="n">_smw_solver</span><span class="p">(</span><span class="mf">1.</span><span class="p">,</span> <span class="n">ex_r</span><span class="p">,</span> <span class="n">ex2_r</span><span class="p">,</span> <span class="n">cov_re_inv</span><span class="p">,</span> <span class="n">vc_vari</span><span class="p">)</span>
 
             <span class="c1"># The residuals</span>
             <span class="n">resid</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">endog_li</span><span class="p">[</span><span class="n">group_ix</span><span class="p">]</span>
@@ -2263,7 +2331,7 @@
         <span class="n">hess</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">k_fe</span><span class="p">:,</span> <span class="mi">0</span><span class="p">:</span><span class="bp">self</span><span class="o">.</span><span class="n">k_fe</span><span class="p">]</span> <span class="o">=</span> <span class="n">hess_fere</span>
         <span class="n">hess</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">k_fe</span><span class="p">:,</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_fe</span><span class="p">:]</span> <span class="o">=</span> <span class="n">hess_re</span>
 
-        <span class="k">return</span> <span class="n">hess</span></div>
+        <span class="k">return</span> <span class="n">hess</span><span class="p">,</span> <span class="n">sing</span></div>
 
 <div class="viewcode-block" id="MixedLM.get_scale"><a class="viewcode-back" href="../../../generated/statsmodels.regression.mixed_linear_model.MixedLM.get_scale.html#statsmodels.regression.mixed_linear_model.MixedLM.get_scale">[docs]</a>    <span class="k">def</span> <span class="nf">get_scale</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fe_params</span><span class="p">,</span> <span class="n">cov_re</span><span class="p">,</span> <span class="n">vcomp</span><span class="p">):</span>
         <span class="sd">"""</span>
@@ -2288,7 +2356,8 @@
         <span class="k">try</span><span class="p">:</span>
             <span class="n">cov_re_inv</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">inv</span><span class="p">(</span><span class="n">cov_re</span><span class="p">)</span>
         <span class="k">except</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">LinAlgError</span><span class="p">:</span>
-            <span class="n">cov_re_inv</span> <span class="o">=</span> <span class="kc">None</span>
+            <span class="n">cov_re_inv</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">pinv</span><span class="p">(</span><span class="n">cov_re</span><span class="p">)</span>
+            <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="n">_warn_cov_sing</span><span class="p">)</span>
 
         <span class="n">qf</span> <span class="o">=</span> <span class="mf">0.</span>
         <span class="k">for</span> <span class="n">group_ix</span><span class="p">,</span> <span class="n">group</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">group_labels</span><span class="p">):</span>
@@ -2385,7 +2454,7 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">reml</span> <span class="o">=</span> <span class="n">reml</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">cov_pen</span> <span class="o">=</span> <span class="n">cov_pen</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">fe_pen</span> <span class="o">=</span> <span class="n">fe_pen</span>
-
+        <span class="bp">self</span><span class="o">.</span><span class="n">_cov_sing</span> <span class="o">=</span> <span class="mi">0</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_freepat</span> <span class="o">=</span> <span class="n">free</span>
 
         <span class="k">if</span> <span class="n">full_output</span><span class="p">:</span>
@@ -2461,7 +2530,7 @@
             <span class="n">params</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_fe</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_re</span><span class="p">,</span> <span class="n">use_sqrt</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">use_sqrt</span><span class="p">,</span> <span class="n">has_fe</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
         <span class="n">cov_re_unscaled</span> <span class="o">=</span> <span class="n">params</span><span class="o">.</span><span class="n">cov_re</span>
         <span class="n">vcomp_unscaled</span> <span class="o">=</span> <span class="n">params</span><span class="o">.</span><span class="n">vcomp</span>
-        <span class="n">fe_params</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_fe_params</span><span class="p">(</span><span class="n">cov_re_unscaled</span><span class="p">,</span> <span class="n">vcomp_unscaled</span><span class="p">)</span>
+        <span class="n">fe_params</span><span class="p">,</span> <span class="n">sing</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_fe_params</span><span class="p">(</span><span class="n">cov_re_unscaled</span><span class="p">,</span> <span class="n">vcomp_unscaled</span><span class="p">)</span>
         <span class="n">params</span><span class="o">.</span><span class="n">fe_params</span> <span class="o">=</span> <span class="n">fe_params</span>
         <span class="n">scale</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_scale</span><span class="p">(</span><span class="n">fe_params</span><span class="p">,</span> <span class="n">cov_re_unscaled</span><span class="p">,</span> <span class="n">vcomp_unscaled</span><span class="p">)</span>
         <span class="n">cov_re</span> <span class="o">=</span> <span class="n">scale</span> <span class="o">*</span> <span class="n">cov_re_unscaled</span>
@@ -2477,7 +2546,10 @@
         <span class="c1"># Hessian with respect to the random effects covariance matrix</span>
         <span class="c1"># (not its square root).  It is used for obtaining standard</span>
         <span class="c1"># errors, not for optimization.</span>
-        <span class="n">hess</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">hessian</span><span class="p">(</span><span class="n">params</span><span class="p">)</span>
+        <span class="n">hess</span><span class="p">,</span> <span class="n">sing</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">hessian</span><span class="p">(</span><span class="n">params</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">sing</span><span class="p">:</span>
+            <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="n">_warn_cov_sing</span><span class="p">)</span>
+
         <span class="n">hess_diag</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">diag</span><span class="p">(</span><span class="n">hess</span><span class="p">)</span>
         <span class="k">if</span> <span class="n">free</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
             <span class="n">pcov</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros_like</span><span class="p">(</span><span class="n">hess</span><span class="p">)</span>
@@ -3214,7 +3286,7 @@
               
           </div>
             Last updated on
-              Oct 01, 2020.
+              Oct 03, 2020.
             <br/>
             Created using
             <a href="http://www.sphinx-doc.org/">Sphinx</a> 3.2.1.
