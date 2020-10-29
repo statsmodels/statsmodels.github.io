@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.discrete.discrete\_model.BinaryResults.set\_null\_options
+=====================================================================
+
+.. currentmodule:: statsmodels.discrete.discrete_model
+
+.. automethod:: BinaryResults.set_null_options

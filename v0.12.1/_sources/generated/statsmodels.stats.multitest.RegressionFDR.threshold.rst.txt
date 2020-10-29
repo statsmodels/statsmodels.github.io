@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.stats.multitest.RegressionFDR.threshold
+===================================================
+
+.. currentmodule:: statsmodels.stats.multitest
+
+.. automethod:: RegressionFDR.threshold

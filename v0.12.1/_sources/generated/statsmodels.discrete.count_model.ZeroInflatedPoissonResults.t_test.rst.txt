@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.discrete.count\_model.ZeroInflatedPoissonResults.t\_test
+====================================================================
+
+.. currentmodule:: statsmodels.discrete.count_model
+
+.. automethod:: ZeroInflatedPoissonResults.t_test

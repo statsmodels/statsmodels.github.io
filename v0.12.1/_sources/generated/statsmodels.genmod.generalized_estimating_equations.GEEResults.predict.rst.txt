@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.genmod.generalized\_estimating\_equations.GEEResults.predict
+========================================================================
+
+.. currentmodule:: statsmodels.genmod.generalized_estimating_equations
+
+.. automethod:: GEEResults.predict

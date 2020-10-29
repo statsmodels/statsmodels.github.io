@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.gam.generalized\_additive\_model.LogitGam.cov\_params\_func\_l1
+===========================================================================
+
+.. currentmodule:: statsmodels.gam.generalized_additive_model
+
+.. automethod:: LogitGam.cov_params_func_l1

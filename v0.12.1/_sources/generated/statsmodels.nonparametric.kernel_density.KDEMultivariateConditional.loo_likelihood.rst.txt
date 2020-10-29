@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.nonparametric.kernel\_density.KDEMultivariateConditional.loo\_likelihood
+====================================================================================
+
+.. currentmodule:: statsmodels.nonparametric.kernel_density
+
+.. automethod:: KDEMultivariateConditional.loo_likelihood

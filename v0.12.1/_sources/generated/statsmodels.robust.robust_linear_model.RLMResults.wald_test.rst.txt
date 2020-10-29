@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.robust.robust\_linear\_model.RLMResults.wald\_test
+==============================================================
+
+.. currentmodule:: statsmodels.robust.robust_linear_model
+
+.. automethod:: RLMResults.wald_test

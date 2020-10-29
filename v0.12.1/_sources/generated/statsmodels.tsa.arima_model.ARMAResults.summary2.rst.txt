@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.tsa.arima\_model.ARMAResults.summary2
+=================================================
+
+.. currentmodule:: statsmodels.tsa.arima_model
+
+.. automethod:: ARMAResults.summary2

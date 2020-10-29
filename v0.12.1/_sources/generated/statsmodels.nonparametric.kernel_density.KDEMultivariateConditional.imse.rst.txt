@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.nonparametric.kernel\_density.KDEMultivariateConditional.imse
+=========================================================================
+
+.. currentmodule:: statsmodels.nonparametric.kernel_density
+
+.. automethod:: KDEMultivariateConditional.imse

@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.sandbox.regression.gmm.IVGMM.set\_param\_names
+==========================================================
+
+.. currentmodule:: statsmodels.sandbox.regression.gmm
+
+.. automethod:: IVGMM.set_param_names

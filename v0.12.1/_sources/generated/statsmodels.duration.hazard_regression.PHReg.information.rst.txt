@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.duration.hazard\_regression.PHReg.information
+=========================================================
+
+.. currentmodule:: statsmodels.duration.hazard_regression
+
+.. automethod:: PHReg.information

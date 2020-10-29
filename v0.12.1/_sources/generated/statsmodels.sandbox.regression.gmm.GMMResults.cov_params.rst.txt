@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.sandbox.regression.gmm.GMMResults.cov\_params
+=========================================================
+
+.. currentmodule:: statsmodels.sandbox.regression.gmm
+
+.. automethod:: GMMResults.cov_params

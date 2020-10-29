@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.sandbox.distributions.transformed.Transf\_gen.mean
+==============================================================
+
+.. currentmodule:: statsmodels.sandbox.distributions.transformed
+
+.. automethod:: Transf_gen.mean

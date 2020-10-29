@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.tsa.statespace.sarimax.SARIMAXResults.test\_serial\_correlation
+===========================================================================
+
+.. currentmodule:: statsmodels.tsa.statespace.sarimax
+
+.. automethod:: SARIMAXResults.test_serial_correlation
