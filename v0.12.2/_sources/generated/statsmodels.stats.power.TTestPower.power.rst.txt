@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.stats.power.TTestPower.power
+========================================
+
+.. currentmodule:: statsmodels.stats.power
+
+.. automethod:: TTestPower.power

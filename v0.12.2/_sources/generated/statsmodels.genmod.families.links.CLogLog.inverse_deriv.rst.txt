@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.genmod.families.links.CLogLog.inverse\_deriv
+========================================================
+
+.. currentmodule:: statsmodels.genmod.families.links
+
+.. automethod:: CLogLog.inverse_deriv

@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.genmod.families.links.identity.deriv
+================================================
+
+.. currentmodule:: statsmodels.genmod.families.links
+
+.. automethod:: identity.deriv

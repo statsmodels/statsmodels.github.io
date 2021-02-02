@@ -1,0 +1,391 @@
+{
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# Generalized Least Squares"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 1,
+   "metadata": {
+    "collapsed": false,
+    "execution": {
+     "iopub.execute_input": "2021-02-02T07:02:18.783140Z",
+     "iopub.status.busy": "2021-02-02T07:02:18.782333Z",
+     "iopub.status.idle": "2021-02-02T07:02:21.768011Z",
+     "shell.execute_reply": "2021-02-02T07:02:21.767043Z"
+    }
+   },
+   "outputs": [],
+   "source": [
+    "import statsmodels.api as sm\n"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "The Longley dataset is a time series dataset: "
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 2,
+   "metadata": {
+    "collapsed": false,
+    "execution": {
+     "iopub.execute_input": "2021-02-02T07:02:21.772527Z",
+     "iopub.status.busy": "2021-02-02T07:02:21.771294Z",
+     "iopub.status.idle": "2021-02-02T07:02:21.822201Z",
+     "shell.execute_reply": "2021-02-02T07:02:21.821334Z"
+    }
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "[[1.00000e+00 8.30000e+01 2.34289e+05 2.35600e+03 1.59000e+03 1.07608e+05\n",
+      "  1.94700e+03]\n",
+      " [1.00000e+00 8.85000e+01 2.59426e+05 2.32500e+03 1.45600e+03 1.08632e+05\n",
+      "  1.94800e+03]\n",
+      " [1.00000e+00 8.82000e+01 2.58054e+05 3.68200e+03 1.61600e+03 1.09773e+05\n",
+      "  1.94900e+03]\n",
+      " [1.00000e+00 8.95000e+01 2.84599e+05 3.35100e+03 1.65000e+03 1.10929e+05\n",
+      "  1.95000e+03]\n",
+      " [1.00000e+00 9.62000e+01 3.28975e+05 2.09900e+03 3.09900e+03 1.12075e+05\n",
+      "  1.95100e+03]]\n"
+     ]
+    }
+   ],
+   "source": [
+    "data = sm.datasets.longley.load(as_pandas=False)\n",
+    "data.exog = sm.add_constant(data.exog)\n",
+    "print(data.exog[:5])"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "\n",
+    " Let's assume that the data is heteroskedastic and that we know\n",
+    " the nature of the heteroskedasticity.  We can then define\n",
+    " `sigma` and use it to give us a GLS model\n",
+    "\n",
+    " First we will obtain the residuals from an OLS fit"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 3,
+   "metadata": {
+    "collapsed": false,
+    "execution": {
+     "iopub.execute_input": "2021-02-02T07:02:21.825808Z",
+     "iopub.status.busy": "2021-02-02T07:02:21.825103Z",
+     "iopub.status.idle": "2021-02-02T07:02:21.845437Z",
+     "shell.execute_reply": "2021-02-02T07:02:21.844598Z"
+    }
+   },
+   "outputs": [],
+   "source": [
+    "ols_resid = sm.OLS(data.endog, data.exog).fit().resid"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Assume that the error terms follow an AR(1) process with a trend:\n",
+    "\n",
+    "$\\epsilon_i = \\beta_0 + \\rho\\epsilon_{i-1} + \\eta_i$\n",
+    "\n",
+    "where $\\eta \\sim N(0,\\Sigma^2)$\n",
+    "\n",
+    "and that $\\rho$ is simply the correlation of the residual a consistent estimator for rho is to regress the residuals on the lagged residuals"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 4,
+   "metadata": {
+    "collapsed": false,
+    "execution": {
+     "iopub.execute_input": "2021-02-02T07:02:21.851277Z",
+     "iopub.status.busy": "2021-02-02T07:02:21.850417Z",
+     "iopub.status.idle": "2021-02-02T07:02:21.865399Z",
+     "shell.execute_reply": "2021-02-02T07:02:21.866218Z"
+    }
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "-1.4390229839731974\n",
+      "0.17378444788825434\n"
+     ]
+    }
+   ],
+   "source": [
+    "resid_fit = sm.OLS(ols_resid[1:], sm.add_constant(ols_resid[:-1])).fit()\n",
+    "print(resid_fit.tvalues[1])\n",
+    "print(resid_fit.pvalues[1])"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    " While we do not have strong evidence that the errors follow an AR(1)\n",
+    " process we continue"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 5,
+   "metadata": {
+    "collapsed": false,
+    "execution": {
+     "iopub.execute_input": "2021-02-02T07:02:21.869654Z",
+     "iopub.status.busy": "2021-02-02T07:02:21.868926Z",
+     "iopub.status.idle": "2021-02-02T07:02:21.874557Z",
+     "shell.execute_reply": "2021-02-02T07:02:21.875165Z"
+    }
+   },
+   "outputs": [],
+   "source": [
+    "rho = resid_fit.params[1]"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "As we know, an AR(1) process means that near-neighbors have a stronger\n",
+    " relation so we can give this structure by using a toeplitz matrix"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 6,
+   "metadata": {
+    "collapsed": false,
+    "execution": {
+     "iopub.execute_input": "2021-02-02T07:02:21.885349Z",
+     "iopub.status.busy": "2021-02-02T07:02:21.884537Z",
+     "iopub.status.idle": "2021-02-02T07:02:21.923864Z",
+     "shell.execute_reply": "2021-02-02T07:02:21.923030Z"
+    }
+   },
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "array([[0, 1, 2, 3, 4],\n",
+       "       [1, 0, 1, 2, 3],\n",
+       "       [2, 1, 0, 1, 2],\n",
+       "       [3, 2, 1, 0, 1],\n",
+       "       [4, 3, 2, 1, 0]])"
+      ]
+     },
+     "execution_count": 1,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "from scipy.linalg import toeplitz\n",
+    "\n",
+    "toeplitz(range(5))"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 7,
+   "metadata": {
+    "collapsed": false,
+    "execution": {
+     "iopub.execute_input": "2021-02-02T07:02:21.929404Z",
+     "iopub.status.busy": "2021-02-02T07:02:21.928588Z",
+     "iopub.status.idle": "2021-02-02T07:02:21.935948Z",
+     "shell.execute_reply": "2021-02-02T07:02:21.936585Z"
+    }
+   },
+   "outputs": [],
+   "source": [
+    "order = toeplitz(range(len(ols_resid)))"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "so that our error covariance structure is actually rho**order\n",
+    " which defines an autocorrelation structure"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 8,
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2021-02-02T07:02:21.939918Z",
+     "iopub.status.busy": "2021-02-02T07:02:21.939223Z",
+     "iopub.status.idle": "2021-02-02T07:02:21.949693Z",
+     "shell.execute_reply": "2021-02-02T07:02:21.951231Z"
+    }
+   },
+   "outputs": [],
+   "source": [
+    "sigma = rho**order\n",
+    "gls_model = sm.GLS(data.endog, data.exog, sigma=sigma)\n",
+    "gls_results = gls_model.fit()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Of course, the exact rho in this instance is not known so it it might make more sense to use feasible gls, which currently only has experimental support.\n",
+    "\n",
+    "We can use the GLSAR model with one lag, to get to a similar result:"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 9,
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2021-02-02T07:02:21.954539Z",
+     "iopub.status.busy": "2021-02-02T07:02:21.953862Z",
+     "iopub.status.idle": "2021-02-02T07:02:22.009712Z",
+     "shell.execute_reply": "2021-02-02T07:02:22.010511Z"
+    }
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "                           GLSAR Regression Results                           \n",
+      "==============================================================================\n",
+      "Dep. Variable:                      y   R-squared:                       0.996\n",
+      "Model:                          GLSAR   Adj. R-squared:                  0.992\n",
+      "Method:                 Least Squares   F-statistic:                     295.2\n",
+      "Date:                Tue, 02 Feb 2021   Prob (F-statistic):           6.09e-09\n",
+      "Time:                        07:02:21   Log-Likelihood:                -102.04\n",
+      "No. Observations:                  15   AIC:                             218.1\n",
+      "Df Residuals:                       8   BIC:                             223.0\n",
+      "Df Model:                           6                                         \n",
+      "Covariance Type:            nonrobust                                         \n",
+      "==============================================================================\n",
+      "                 coef    std err          t      P>|t|      [0.025      0.975]\n",
+      "------------------------------------------------------------------------------\n",
+      "const      -3.468e+06   8.72e+05     -3.979      0.004   -5.48e+06   -1.46e+06\n",
+      "x1            34.5568     84.734      0.408      0.694    -160.840     229.953\n",
+      "x2            -0.0343      0.033     -1.047      0.326      -0.110       0.041\n",
+      "x3            -1.9621      0.481     -4.083      0.004      -3.070      -0.854\n",
+      "x4            -1.0020      0.211     -4.740      0.001      -1.489      -0.515\n",
+      "x5            -0.0978      0.225     -0.435      0.675      -0.616       0.421\n",
+      "x6          1823.1829    445.829      4.089      0.003     795.100    2851.266\n",
+      "==============================================================================\n",
+      "Omnibus:                        1.960   Durbin-Watson:                   2.554\n",
+      "Prob(Omnibus):                  0.375   Jarque-Bera (JB):                1.423\n",
+      "Skew:                           0.713   Prob(JB):                        0.491\n",
+      "Kurtosis:                       2.508   Cond. No.                     4.80e+09\n",
+      "==============================================================================\n",
+      "\n",
+      "Notes:\n",
+      "[1] Standard Errors assume that the covariance matrix of the errors is correctly specified.\n",
+      "[2] The condition number is large, 4.8e+09. This might indicate that there are\n",
+      "strong multicollinearity or other numerical problems.\n"
+     ]
+    },
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "/home/travis/miniconda/envs/statsmodels-test/lib/python3.7/site-packages/scipy/stats/stats.py:1604: UserWarning: kurtosistest only valid for n>=20 ... continuing anyway, n=15\n",
+      "  \"anyway, n=%i\" % int(n))\n"
+     ]
+    }
+   ],
+   "source": [
+    "glsar_model = sm.GLSAR(data.endog, data.exog, 1)\n",
+    "glsar_results = glsar_model.iterative_fit(1)\n",
+    "print(glsar_results.summary())"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Comparing gls and glsar results, we see that there are some small\n",
+    " differences in the parameter estimates and the resulting standard\n",
+    " errors of the parameter estimate. This might be do to the numerical\n",
+    " differences in the algorithm, e.g. the treatment of initial conditions,\n",
+    " because of the small number of observations in the longley dataset."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 10,
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2021-02-02T07:02:22.013870Z",
+     "iopub.status.busy": "2021-02-02T07:02:22.013208Z",
+     "iopub.status.idle": "2021-02-02T07:02:22.023258Z",
+     "shell.execute_reply": "2021-02-02T07:02:22.024057Z"
+    }
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "[-3.79785490e+06 -1.27656454e+01 -3.80013250e-02 -2.18694871e+00\n",
+      " -1.15177649e+00 -6.80535580e-02  1.99395293e+03]\n",
+      "[-3.46796063e+06  3.45567846e+01 -3.43410090e-02 -1.96214395e+00\n",
+      " -1.00197296e+00 -9.78045986e-02  1.82318289e+03]\n",
+      "[6.70688699e+05 6.94308073e+01 2.62476822e-02 3.82393151e-01\n",
+      " 1.65252692e-01 1.76428334e-01 3.42634628e+02]\n",
+      "[8.71584052e+05 8.47337145e+01 3.28032450e-02 4.80544865e-01\n",
+      " 2.11383871e-01 2.24774369e-01 4.45828748e+02]\n"
+     ]
+    }
+   ],
+   "source": [
+    "print(gls_results.params)\n",
+    "print(glsar_results.params)\n",
+    "print(gls_results.bse)\n",
+    "print(glsar_results.bse)"
+   ]
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "Python 3",
+   "language": "python",
+   "name": "python3"
+  },
+  "language_info": {
+   "codemirror_mode": {
+    "name": "ipython",
+    "version": 3
+   },
+   "file_extension": ".py",
+   "mimetype": "text/x-python",
+   "name": "python",
+   "nbconvert_exporter": "python",
+   "pygments_lexer": "ipython3",
+   "version": "3.7.9"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 1
+}

@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.tsa.vector\_ar.var\_model.VARResults.ma\_rep
+========================================================
+
+.. currentmodule:: statsmodels.tsa.vector_ar.var_model
+
+.. automethod:: VARResults.ma_rep

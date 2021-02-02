@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.iolib.foreign.StataWriter.write\_file
+=================================================
+
+.. currentmodule:: statsmodels.iolib.foreign
+
+.. automethod:: StataWriter.write_file

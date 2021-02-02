@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.genmod.generalized\_linear\_model.GLMResults.t\_test
+================================================================
+
+.. currentmodule:: statsmodels.genmod.generalized_linear_model
+
+.. automethod:: GLMResults.t_test

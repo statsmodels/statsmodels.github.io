@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.discrete.discrete\_model.MultinomialResults.remove\_data
+====================================================================
+
+.. currentmodule:: statsmodels.discrete.discrete_model
+
+.. automethod:: MultinomialResults.remove_data

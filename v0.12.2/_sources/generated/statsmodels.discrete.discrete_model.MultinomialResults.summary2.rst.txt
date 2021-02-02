@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.discrete.discrete\_model.MultinomialResults.summary2
+================================================================
+
+.. currentmodule:: statsmodels.discrete.discrete_model
+
+.. automethod:: MultinomialResults.summary2

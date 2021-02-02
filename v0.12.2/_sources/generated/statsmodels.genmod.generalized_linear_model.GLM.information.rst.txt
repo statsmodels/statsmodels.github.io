@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.genmod.generalized\_linear\_model.GLM.information
+=============================================================
+
+.. currentmodule:: statsmodels.genmod.generalized_linear_model
+
+.. automethod:: GLM.information

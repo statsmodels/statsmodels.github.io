@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.genmod.families.family.InverseGaussian.starting\_mu
+===============================================================
+
+.. currentmodule:: statsmodels.genmod.families.family
+
+.. automethod:: InverseGaussian.starting_mu

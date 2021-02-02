@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.tsa.statespace.kalman\_filter.FilterResults.update\_representation
+==============================================================================
+
+.. currentmodule:: statsmodels.tsa.statespace.kalman_filter
+
+.. automethod:: FilterResults.update_representation

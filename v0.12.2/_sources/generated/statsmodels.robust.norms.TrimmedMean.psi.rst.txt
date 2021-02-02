@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.robust.norms.TrimmedMean.psi
+========================================
+
+.. currentmodule:: statsmodels.robust.norms
+
+.. automethod:: TrimmedMean.psi

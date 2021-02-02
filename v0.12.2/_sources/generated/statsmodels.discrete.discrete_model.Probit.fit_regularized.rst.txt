@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.discrete.discrete\_model.Probit.fit\_regularized
+============================================================
+
+.. currentmodule:: statsmodels.discrete.discrete_model
+
+.. automethod:: Probit.fit_regularized

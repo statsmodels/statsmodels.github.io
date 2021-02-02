@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.tsa.statespace.varmax.VARMAX.opg\_information\_matrix
+=================================================================
+
+.. currentmodule:: statsmodels.tsa.statespace.varmax
+
+.. automethod:: VARMAX.opg_information_matrix

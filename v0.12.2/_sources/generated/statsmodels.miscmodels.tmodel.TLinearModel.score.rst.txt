@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.miscmodels.tmodel.TLinearModel.score
+================================================
+
+.. currentmodule:: statsmodels.miscmodels.tmodel
+
+.. automethod:: TLinearModel.score

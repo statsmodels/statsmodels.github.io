@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.genmod.cov\_struct.GlobalOddsRatio.summary
+======================================================
+
+.. currentmodule:: statsmodels.genmod.cov_struct
+
+.. automethod:: GlobalOddsRatio.summary

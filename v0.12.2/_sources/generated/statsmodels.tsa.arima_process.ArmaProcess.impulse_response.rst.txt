@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.tsa.arima\_process.ArmaProcess.impulse\_response
+============================================================
+
+.. currentmodule:: statsmodels.tsa.arima_process
+
+.. automethod:: ArmaProcess.impulse_response

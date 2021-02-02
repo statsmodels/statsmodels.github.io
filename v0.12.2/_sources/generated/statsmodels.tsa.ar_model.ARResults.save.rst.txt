@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.tsa.ar\_model.ARResults.save
+========================================
+
+.. currentmodule:: statsmodels.tsa.ar_model
+
+.. automethod:: ARResults.save
