@@ -1,0 +1,1174 @@
+
+
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta charset="utf-8" />
+    <title>statsmodels.stats.correlation_tools &#8212; statsmodels v0.10.2 documentation</title>
+    <link rel="stylesheet" href="../../../_static/nature.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css" />
+    <script type="text/javascript" id="documentation_options" data-url_root="../../../" src="../../../_static/documentation_options.js"></script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <script type="text/javascript" src="../../../_static/language_data.js"></script>
+    <script async="async" type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/latest.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="shortcut icon" href="../../../_static/statsmodels_hybi_favico.ico"/>
+    <link rel="author" title="About these documents" href="../../../about.html" />
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+<link rel="stylesheet" href="../../../_static/examples.css" type="text/css" />
+<link rel="stylesheet" href="../../../_static/facebox.css" type="text/css" />
+<script type="text/javascript" src="../../../_static/scripts.js">
+</script>
+<script type="text/javascript" src="../../../_static/facebox.js">
+</script>
+<script type="text/javascript">
+$.facebox.settings.closeImage = "../../../_static/closelabel.png"
+$.facebox.settings.loadingImage = "../../../_static/loading.gif"
+</script>
+
+<script>
+$(document).ready(function() {
+  $.getJSON("../../../../versions.json", function(versions) {
+    var dropdown = document.createElement("div");
+    dropdown.className = "dropdown";
+    var button = document.createElement("button");
+    button.className = "dropbtn";
+    button.innerHTML = "Other Versions";
+    var content = document.createElement("div");
+    content.className = "dropdown-content";
+    dropdown.appendChild(button);
+    dropdown.appendChild(content);
+    $(".header").prepend(dropdown);
+    for (var i = 0; i < versions.length; i++) {
+      if (versions[i].substring(0, 1) == "v") {
+        versions[i] = [versions[i], versions[i].substring(1)];
+      } else {
+        versions[i] = [versions[i], versions[i]];
+      };
+    };
+    for (var i = 0; i < versions.length; i++) {
+      var a = document.createElement("a");
+      a.innerHTML = versions[i][1];
+      a.href = "../../../../" + versions[i][0] + "/index.html";
+      a.title = versions[i][1];
+      $(".dropdown-content").append(a);
+    };
+  });
+});
+</script>
+
+
+  </head><body>
+<div class="headerwrap">
+    <div class = "header">
+        
+        <a href = "../../../index.html">
+<img src="../../../_static/statsmodels_hybi_banner.png" alt="Logo"
+    style="padding-left: 15px"/></a>
+        
+    </div>
+</div>
+
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+<li><a href ="../../../install.html">Install</a></li> &nbsp;|&nbsp;
+<li><a href="https://groups.google.com/forum/?hl=en#!forum/pystatsmodels">Support</a></li> &nbsp;|&nbsp;
+<li><a href="https://github.com/statsmodels/statsmodels/issues">Bugs</a></li> &nbsp;|&nbsp;
+<li><a href="../../../dev/index.html">Develop</a></li> &nbsp;|&nbsp;
+<li><a href="../../../examples/index.html">Examples</a></li> &nbsp;|&nbsp;
+<li><a href="../../../faq.html">FAQ</a></li> &nbsp;|&nbsp;
+
+          <li class="nav-item nav-item-1"><a href="../../index.html" accesskey="U">Module code</a> |</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+
+
+
+
+  <h1>Source code for statsmodels.stats.correlation_tools</h1><div class="highlight"><pre>
+<span></span><span class="c1"># -*- coding: utf-8 -*-</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="sd">Created on Fri Aug 17 13:10:52 2012</span>
+
+<span class="sd">Author: Josef Perktold</span>
+<span class="sd">License: BSD-3</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+<span class="kn">import</span> <span class="nn">scipy.sparse</span> <span class="k">as</span> <span class="nn">sparse</span>
+<span class="kn">from</span> <span class="nn">scipy.sparse.linalg</span> <span class="k">import</span> <span class="n">svds</span>
+<span class="kn">from</span> <span class="nn">scipy.optimize</span> <span class="k">import</span> <span class="n">fminbound</span>
+<span class="kn">import</span> <span class="nn">warnings</span>
+
+<span class="kn">from</span> <span class="nn">statsmodels.tools.tools</span> <span class="k">import</span> <span class="n">Bunch</span>
+<span class="kn">from</span> <span class="nn">statsmodels.tools.sm_exceptions</span> <span class="k">import</span> <span class="p">(</span>
+    <span class="n">IterationLimitWarning</span><span class="p">,</span> <span class="n">iteration_limit_doc</span><span class="p">)</span>
+
+
+<span class="k">def</span> <span class="nf">clip_evals</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">value</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>  <span class="c1"># threshold=0, value=0):</span>
+    <span class="n">evals</span><span class="p">,</span> <span class="n">evecs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">eigh</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+    <span class="n">clipped</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">evals</span> <span class="o">&lt;</span> <span class="n">value</span><span class="p">)</span>
+    <span class="n">x_new</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">evecs</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span><span class="n">evals</span><span class="p">,</span> <span class="n">value</span><span class="p">),</span> <span class="n">evecs</span><span class="o">.</span><span class="n">T</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">x_new</span><span class="p">,</span> <span class="n">clipped</span>
+
+
+<div class="viewcode-block" id="corr_nearest"><a class="viewcode-back" href="../../../generated/statsmodels.stats.correlation_tools.corr_nearest.html#statsmodels.stats.correlation_tools.corr_nearest">[docs]</a><span class="k">def</span> <span class="nf">corr_nearest</span><span class="p">(</span><span class="n">corr</span><span class="p">,</span> <span class="n">threshold</span><span class="o">=</span><span class="mf">1e-15</span><span class="p">,</span> <span class="n">n_fact</span><span class="o">=</span><span class="mi">100</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">    Find the nearest correlation matrix that is positive semi-definite.</span>
+
+<span class="sd">    The function iteratively adjust the correlation matrix by clipping the</span>
+<span class="sd">    eigenvalues of a difference matrix. The diagonal elements are set to one.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    corr : ndarray, (k, k)</span>
+<span class="sd">        initial correlation matrix</span>
+<span class="sd">    threshold : float</span>
+<span class="sd">        clipping threshold for smallest eigenvalue, see Notes</span>
+<span class="sd">    n_fact : int or float</span>
+<span class="sd">        factor to determine the maximum number of iterations. The maximum</span>
+<span class="sd">        number of iterations is the integer part of the number of columns in</span>
+<span class="sd">        the correlation matrix times n_fact.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    corr_new : ndarray, (optional)</span>
+<span class="sd">        corrected correlation matrix</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    The smallest eigenvalue of the corrected correlation matrix is</span>
+<span class="sd">    approximately equal to the ``threshold``.</span>
+<span class="sd">    If the threshold=0, then the smallest eigenvalue of the correlation matrix</span>
+<span class="sd">    might be negative, but zero within a numerical error, for example in the</span>
+<span class="sd">    range of -1e-16.</span>
+
+<span class="sd">    Assumes input correlation matrix is symmetric.</span>
+
+<span class="sd">    Stops after the first step if correlation matrix is already positive</span>
+<span class="sd">    semi-definite or positive definite, so that smallest eigenvalue is above</span>
+<span class="sd">    threshold. In this case, the returned array is not the original, but</span>
+<span class="sd">    is equal to it within numerical precision.</span>
+
+<span class="sd">    See Also</span>
+<span class="sd">    --------</span>
+<span class="sd">    corr_clipped</span>
+<span class="sd">    cov_nearest</span>
+
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="n">k_vars</span> <span class="o">=</span> <span class="n">corr</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">k_vars</span> <span class="o">!=</span> <span class="n">corr</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;matrix is not square&quot;</span><span class="p">)</span>
+
+    <span class="n">diff</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">corr</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
+    <span class="n">x_new</span> <span class="o">=</span> <span class="n">corr</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+    <span class="n">diag_idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">k_vars</span><span class="p">)</span>
+
+    <span class="k">for</span> <span class="n">ii</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">corr</span><span class="p">)</span> <span class="o">*</span> <span class="n">n_fact</span><span class="p">)):</span>
+        <span class="n">x_adj</span> <span class="o">=</span> <span class="n">x_new</span> <span class="o">-</span> <span class="n">diff</span>
+        <span class="n">x_psd</span><span class="p">,</span> <span class="n">clipped</span> <span class="o">=</span> <span class="n">clip_evals</span><span class="p">(</span><span class="n">x_adj</span><span class="p">,</span> <span class="n">value</span><span class="o">=</span><span class="n">threshold</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">clipped</span><span class="p">:</span>
+            <span class="n">x_new</span> <span class="o">=</span> <span class="n">x_psd</span>
+            <span class="k">break</span>
+        <span class="n">diff</span> <span class="o">=</span> <span class="n">x_psd</span> <span class="o">-</span> <span class="n">x_adj</span>
+        <span class="n">x_new</span> <span class="o">=</span> <span class="n">x_psd</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        <span class="n">x_new</span><span class="p">[</span><span class="n">diag_idx</span><span class="p">,</span> <span class="n">diag_idx</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="n">iteration_limit_doc</span><span class="p">,</span> <span class="n">IterationLimitWarning</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">x_new</span></div>
+
+
+<div class="viewcode-block" id="corr_clipped"><a class="viewcode-back" href="../../../generated/statsmodels.stats.correlation_tools.corr_clipped.html#statsmodels.stats.correlation_tools.corr_clipped">[docs]</a><span class="k">def</span> <span class="nf">corr_clipped</span><span class="p">(</span><span class="n">corr</span><span class="p">,</span> <span class="n">threshold</span><span class="o">=</span><span class="mf">1e-15</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">    Find a near correlation matrix that is positive semi-definite</span>
+
+<span class="sd">    This function clips the eigenvalues, replacing eigenvalues smaller than</span>
+<span class="sd">    the threshold by the threshold. The new matrix is normalized, so that the</span>
+<span class="sd">    diagonal elements are one.</span>
+<span class="sd">    Compared to corr_nearest, the distance between the original correlation</span>
+<span class="sd">    matrix and the positive definite correlation matrix is larger, however,</span>
+<span class="sd">    it is much faster since it only computes eigenvalues once.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    corr : ndarray, (k, k)</span>
+<span class="sd">        initial correlation matrix</span>
+<span class="sd">    threshold : float</span>
+<span class="sd">        clipping threshold for smallest eigenvalue, see Notes</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    corr_new : ndarray, (optional)</span>
+<span class="sd">        corrected correlation matrix</span>
+
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    The smallest eigenvalue of the corrected correlation matrix is</span>
+<span class="sd">    approximately equal to the ``threshold``. In examples, the</span>
+<span class="sd">    smallest eigenvalue can be by a factor of 10 smaller than the threshold,</span>
+<span class="sd">    e.g. threshold 1e-8 can result in smallest eigenvalue in the range</span>
+<span class="sd">    between 1e-9 and 1e-8.</span>
+<span class="sd">    If the threshold=0, then the smallest eigenvalue of the correlation matrix</span>
+<span class="sd">    might be negative, but zero within a numerical error, for example in the</span>
+<span class="sd">    range of -1e-16.</span>
+
+<span class="sd">    Assumes input correlation matrix is symmetric. The diagonal elements of</span>
+<span class="sd">    returned correlation matrix is set to ones.</span>
+
+<span class="sd">    If the correlation matrix is already positive semi-definite given the</span>
+<span class="sd">    threshold, then the original correlation matrix is returned.</span>
+
+<span class="sd">    ``cov_clipped`` is 40 or more times faster than ``cov_nearest`` in simple</span>
+<span class="sd">    example, but has a slightly larger approximation error.</span>
+
+<span class="sd">    See Also</span>
+<span class="sd">    --------</span>
+<span class="sd">    corr_nearest</span>
+<span class="sd">    cov_nearest</span>
+
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="n">x_new</span><span class="p">,</span> <span class="n">clipped</span> <span class="o">=</span> <span class="n">clip_evals</span><span class="p">(</span><span class="n">corr</span><span class="p">,</span> <span class="n">value</span><span class="o">=</span><span class="n">threshold</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">clipped</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">corr</span>
+
+    <span class="c1"># cov2corr</span>
+    <span class="n">x_std</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">diag</span><span class="p">(</span><span class="n">x_new</span><span class="p">))</span>
+    <span class="n">x_new</span> <span class="o">=</span> <span class="n">x_new</span> <span class="o">/</span> <span class="n">x_std</span> <span class="o">/</span> <span class="n">x_std</span><span class="p">[:,</span> <span class="kc">None</span><span class="p">]</span>
+    <span class="k">return</span> <span class="n">x_new</span></div>
+
+
+<div class="viewcode-block" id="cov_nearest"><a class="viewcode-back" href="../../../generated/statsmodels.stats.correlation_tools.cov_nearest.html#statsmodels.stats.correlation_tools.cov_nearest">[docs]</a><span class="k">def</span> <span class="nf">cov_nearest</span><span class="p">(</span><span class="n">cov</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s1">&#39;clipped&#39;</span><span class="p">,</span> <span class="n">threshold</span><span class="o">=</span><span class="mf">1e-15</span><span class="p">,</span> <span class="n">n_fact</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span>
+                <span class="n">return_all</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Find the nearest covariance matrix that is postive (semi-) definite</span>
+
+<span class="sd">    This leaves the diagonal, i.e. the variance, unchanged</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    cov : ndarray, (k,k)</span>
+<span class="sd">        initial covariance matrix</span>
+<span class="sd">    method : string</span>
+<span class="sd">        if &quot;clipped&quot;, then the faster but less accurate ``corr_clipped`` is</span>
+<span class="sd">        used.if &quot;nearest&quot;, then ``corr_nearest`` is used</span>
+<span class="sd">    threshold : float</span>
+<span class="sd">        clipping threshold for smallest eigen value, see Notes</span>
+<span class="sd">    n_fact : int or float</span>
+<span class="sd">        factor to determine the maximum number of iterations in</span>
+<span class="sd">        ``corr_nearest``. See its doc string</span>
+<span class="sd">    return_all : bool</span>
+<span class="sd">        if False (default), then only the covariance matrix is returned.</span>
+<span class="sd">        If True, then correlation matrix and standard deviation are</span>
+<span class="sd">        additionally returned.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    cov_ : ndarray</span>
+<span class="sd">        corrected covariance matrix</span>
+<span class="sd">    corr_ : ndarray, (optional)</span>
+<span class="sd">        corrected correlation matrix</span>
+<span class="sd">    std_ : ndarray, (optional)</span>
+<span class="sd">        standard deviation</span>
+
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    This converts the covariance matrix to a correlation matrix. Then, finds</span>
+<span class="sd">    the nearest correlation matrix that is positive semidefinite and converts</span>
+<span class="sd">    it back to a covariance matrix using the initial standard deviation.</span>
+
+<span class="sd">    The smallest eigenvalue of the intermediate correlation matrix is</span>
+<span class="sd">    approximately equal to the ``threshold``.</span>
+<span class="sd">    If the threshold=0, then the smallest eigenvalue of the correlation matrix</span>
+<span class="sd">    might be negative, but zero within a numerical error, for example in the</span>
+<span class="sd">    range of -1e-16.</span>
+
+<span class="sd">    Assumes input covariance matrix is symmetric.</span>
+
+<span class="sd">    See Also</span>
+<span class="sd">    --------</span>
+<span class="sd">    corr_nearest</span>
+<span class="sd">    corr_clipped</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="kn">from</span> <span class="nn">statsmodels.stats.moment_helpers</span> <span class="k">import</span> <span class="n">cov2corr</span><span class="p">,</span> <span class="n">corr2cov</span>
+    <span class="n">cov_</span><span class="p">,</span> <span class="n">std_</span> <span class="o">=</span> <span class="n">cov2corr</span><span class="p">(</span><span class="n">cov</span><span class="p">,</span> <span class="n">return_std</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">method</span> <span class="o">==</span> <span class="s1">&#39;clipped&#39;</span><span class="p">:</span>
+        <span class="n">corr_</span> <span class="o">=</span> <span class="n">corr_clipped</span><span class="p">(</span><span class="n">cov_</span><span class="p">,</span> <span class="n">threshold</span><span class="o">=</span><span class="n">threshold</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>  <span class="c1"># method == &#39;nearest&#39;</span>
+        <span class="n">corr_</span> <span class="o">=</span> <span class="n">corr_nearest</span><span class="p">(</span><span class="n">cov_</span><span class="p">,</span> <span class="n">threshold</span><span class="o">=</span><span class="n">threshold</span><span class="p">,</span> <span class="n">n_fact</span><span class="o">=</span><span class="n">n_fact</span><span class="p">)</span>
+
+    <span class="n">cov_</span> <span class="o">=</span> <span class="n">corr2cov</span><span class="p">(</span><span class="n">corr_</span><span class="p">,</span> <span class="n">std_</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">return_all</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">cov_</span><span class="p">,</span> <span class="n">corr_</span><span class="p">,</span> <span class="n">std_</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">cov_</span></div>
+
+
+<span class="k">def</span> <span class="nf">_nmono_linesearch</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="n">grad</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">d</span><span class="p">,</span> <span class="n">obj_hist</span><span class="p">,</span> <span class="n">M</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span> <span class="n">sig1</span><span class="o">=</span><span class="mf">0.1</span><span class="p">,</span>
+                      <span class="n">sig2</span><span class="o">=</span><span class="mf">0.9</span><span class="p">,</span> <span class="n">gam</span><span class="o">=</span><span class="mf">1e-4</span><span class="p">,</span> <span class="n">maxiter</span><span class="o">=</span><span class="mi">100</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Implements the non-monotone line search of Grippo et al. (1986),</span>
+<span class="sd">    as described in Birgin, Martinez and Raydan (2013).</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    obj : real-valued function</span>
+<span class="sd">        The objective function, to be minimized</span>
+<span class="sd">    grad : vector-valued function</span>
+<span class="sd">        The gradient of the objective function</span>
+<span class="sd">    x : array_like</span>
+<span class="sd">        The starting point for the line search</span>
+<span class="sd">    d : array_like</span>
+<span class="sd">        The search direction</span>
+<span class="sd">    obj_hist : array_like</span>
+<span class="sd">        Objective function history (must contain at least one value)</span>
+<span class="sd">    M : positive integer</span>
+<span class="sd">        Number of previous function points to consider (see references</span>
+<span class="sd">        for details).</span>
+<span class="sd">    sig1 : real</span>
+<span class="sd">        Tuning parameter, see references for details.</span>
+<span class="sd">    sig2 : real</span>
+<span class="sd">        Tuning parameter, see references for details.</span>
+<span class="sd">    gam : real</span>
+<span class="sd">        Tuning parameter, see references for details.</span>
+<span class="sd">    maxiter : positive integer</span>
+<span class="sd">        The maximum number of iterations; returns Nones if convergence</span>
+<span class="sd">        does not occur by this point</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    alpha : real</span>
+<span class="sd">        The step value</span>
+<span class="sd">    x : Array_like</span>
+<span class="sd">        The function argument at the final step</span>
+<span class="sd">    obval : Real</span>
+<span class="sd">        The function value at the final step</span>
+<span class="sd">    g : Array_like</span>
+<span class="sd">        The gradient at the final step</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    The basic idea is to take a big step in the direction of the</span>
+<span class="sd">    gradient, even if the function value is not decreased (but there</span>
+<span class="sd">    is a maximum allowed increase in terms of the recent history of</span>
+<span class="sd">    the iterates).</span>
+
+<span class="sd">    References</span>
+<span class="sd">    ----------</span>
+<span class="sd">    Grippo L, Lampariello F, Lucidi S (1986). A Nonmonotone Line</span>
+<span class="sd">    Search Technique for Newton&#39;s Method. SIAM Journal on Numerical</span>
+<span class="sd">    Analysis, 23, 707-716.</span>
+
+<span class="sd">    E. Birgin, J.M. Martinez, and M. Raydan. Spectral projected</span>
+<span class="sd">    gradient methods: Review and perspectives. Journal of Statistical</span>
+<span class="sd">    Software (preprint).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">alpha</span> <span class="o">=</span> <span class="mf">1.</span>
+    <span class="n">last_obval</span> <span class="o">=</span> <span class="n">obj</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+    <span class="n">obj_max</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">obj_hist</span><span class="p">[</span><span class="o">-</span><span class="n">M</span><span class="p">:])</span>
+
+    <span class="k">for</span> <span class="nb">iter</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">maxiter</span><span class="p">):</span>
+
+        <span class="n">obval</span> <span class="o">=</span> <span class="n">obj</span><span class="p">(</span><span class="n">x</span> <span class="o">+</span> <span class="n">alpha</span><span class="o">*</span><span class="n">d</span><span class="p">)</span>
+        <span class="n">g</span> <span class="o">=</span> <span class="n">grad</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+        <span class="n">gtd</span> <span class="o">=</span> <span class="p">(</span><span class="n">g</span> <span class="o">*</span> <span class="n">d</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
+
+        <span class="k">if</span> <span class="n">obval</span> <span class="o">&lt;=</span> <span class="n">obj_max</span> <span class="o">+</span> <span class="n">gam</span><span class="o">*</span><span class="n">alpha</span><span class="o">*</span><span class="n">gtd</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">alpha</span><span class="p">,</span> <span class="n">x</span> <span class="o">+</span> <span class="n">alpha</span><span class="o">*</span><span class="n">d</span><span class="p">,</span> <span class="n">obval</span><span class="p">,</span> <span class="n">g</span>
+
+        <span class="n">a1</span> <span class="o">=</span> <span class="o">-</span><span class="mf">0.5</span><span class="o">*</span><span class="n">alpha</span><span class="o">**</span><span class="mi">2</span><span class="o">*</span><span class="n">gtd</span> <span class="o">/</span> <span class="p">(</span><span class="n">obval</span> <span class="o">-</span> <span class="n">last_obval</span> <span class="o">-</span> <span class="n">alpha</span><span class="o">*</span><span class="n">gtd</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="p">(</span><span class="n">sig1</span> <span class="o">&lt;=</span> <span class="n">a1</span><span class="p">)</span> <span class="ow">and</span> <span class="p">(</span><span class="n">a1</span> <span class="o">&lt;=</span> <span class="n">sig2</span><span class="o">*</span><span class="n">alpha</span><span class="p">):</span>
+            <span class="n">alpha</span> <span class="o">=</span> <span class="n">a1</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">alpha</span> <span class="o">/=</span> <span class="mf">2.</span>
+
+        <span class="n">last_obval</span> <span class="o">=</span> <span class="n">obval</span>
+
+    <span class="k">return</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span>
+
+
+<span class="k">def</span> <span class="nf">_spg_optim</span><span class="p">(</span><span class="n">func</span><span class="p">,</span> <span class="n">grad</span><span class="p">,</span> <span class="n">start</span><span class="p">,</span> <span class="n">project</span><span class="p">,</span> <span class="n">maxiter</span><span class="o">=</span><span class="mf">1e4</span><span class="p">,</span> <span class="n">M</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span>
+               <span class="n">ctol</span><span class="o">=</span><span class="mf">1e-3</span><span class="p">,</span> <span class="n">maxiter_nmls</span><span class="o">=</span><span class="mi">200</span><span class="p">,</span> <span class="n">lam_min</span><span class="o">=</span><span class="mf">1e-30</span><span class="p">,</span>
+               <span class="n">lam_max</span><span class="o">=</span><span class="mf">1e30</span><span class="p">,</span> <span class="n">sig1</span><span class="o">=</span><span class="mf">0.1</span><span class="p">,</span> <span class="n">sig2</span><span class="o">=</span><span class="mf">0.9</span><span class="p">,</span> <span class="n">gam</span><span class="o">=</span><span class="mf">1e-4</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Implements the spectral projected gradient method for minimizing a</span>
+<span class="sd">    differentiable function on a convex domain.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    func : real valued function</span>
+<span class="sd">        The objective function to be minimized.</span>
+<span class="sd">    grad : real array-valued function</span>
+<span class="sd">        The gradient of the objective function</span>
+<span class="sd">    start : array_like</span>
+<span class="sd">        The starting point</span>
+<span class="sd">    project : function</span>
+<span class="sd">        In-place projection of the argument to the domain</span>
+<span class="sd">        of func.</span>
+<span class="sd">    ... See notes regarding additional arguments</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    rslt : Bunch</span>
+<span class="sd">        rslt.params is the final iterate, other fields describe</span>
+<span class="sd">        convergence status.</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    This can be an effective heuristic algorithm for problems where no</span>
+<span class="sd">    gauranteed algorithm for computing a global minimizer is known.</span>
+
+<span class="sd">    There are a number of tuning parameters, but these generally</span>
+<span class="sd">    should not be changed except for `maxiter` (positive integer) and</span>
+<span class="sd">    `ctol` (small positive real).  See the Birgin et al reference for</span>
+<span class="sd">    more information about the tuning parameters.</span>
+
+<span class="sd">    Reference</span>
+<span class="sd">    ---------</span>
+<span class="sd">    E. Birgin, J.M. Martinez, and M. Raydan. Spectral projected</span>
+<span class="sd">    gradient methods: Review and perspectives. Journal of Statistical</span>
+<span class="sd">    Software (preprint).  Available at:</span>
+<span class="sd">    http://www.ime.usp.br/~egbirgin/publications/bmr5.pdf</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">lam</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="mi">10</span><span class="o">*</span><span class="n">lam_min</span><span class="p">,</span> <span class="n">lam_max</span><span class="p">)</span>
+
+    <span class="n">params</span> <span class="o">=</span> <span class="n">start</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+    <span class="n">gval</span> <span class="o">=</span> <span class="n">grad</span><span class="p">(</span><span class="n">params</span><span class="p">)</span>
+
+    <span class="n">obj_hist</span> <span class="o">=</span> <span class="p">[</span><span class="n">func</span><span class="p">(</span><span class="n">params</span><span class="p">),</span> <span class="p">]</span>
+
+    <span class="k">for</span> <span class="n">itr</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">maxiter</span><span class="p">)):</span>
+
+        <span class="c1"># Check convergence</span>
+        <span class="n">df</span> <span class="o">=</span> <span class="n">params</span> <span class="o">-</span> <span class="n">gval</span>
+        <span class="n">project</span><span class="p">(</span><span class="n">df</span><span class="p">)</span>
+        <span class="n">df</span> <span class="o">-=</span> <span class="n">params</span>
+        <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">df</span><span class="p">))</span> <span class="o">&lt;</span> <span class="n">ctol</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">Bunch</span><span class="p">(</span><span class="o">**</span><span class="p">{</span><span class="s2">&quot;Converged&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span> <span class="s2">&quot;params&quot;</span><span class="p">:</span> <span class="n">params</span><span class="p">,</span>
+                            <span class="s2">&quot;objective_values&quot;</span><span class="p">:</span> <span class="n">obj_hist</span><span class="p">,</span>
+                            <span class="s2">&quot;Message&quot;</span><span class="p">:</span> <span class="s2">&quot;Converged successfully&quot;</span><span class="p">})</span>
+
+        <span class="c1"># The line search direction</span>
+        <span class="n">d</span> <span class="o">=</span> <span class="n">params</span> <span class="o">-</span> <span class="n">lam</span><span class="o">*</span><span class="n">gval</span>
+        <span class="n">project</span><span class="p">(</span><span class="n">d</span><span class="p">)</span>
+        <span class="n">d</span> <span class="o">-=</span> <span class="n">params</span>
+
+        <span class="c1"># Carry out the nonmonotone line search</span>
+        <span class="n">alpha</span><span class="p">,</span> <span class="n">params1</span><span class="p">,</span> <span class="n">fval</span><span class="p">,</span> <span class="n">gval1</span> <span class="o">=</span> <span class="n">_nmono_linesearch</span><span class="p">(</span>
+            <span class="n">func</span><span class="p">,</span>
+            <span class="n">grad</span><span class="p">,</span>
+            <span class="n">params</span><span class="p">,</span>
+            <span class="n">d</span><span class="p">,</span>
+            <span class="n">obj_hist</span><span class="p">,</span>
+            <span class="n">M</span><span class="o">=</span><span class="n">M</span><span class="p">,</span>
+            <span class="n">sig1</span><span class="o">=</span><span class="n">sig1</span><span class="p">,</span>
+            <span class="n">sig2</span><span class="o">=</span><span class="n">sig2</span><span class="p">,</span>
+            <span class="n">gam</span><span class="o">=</span><span class="n">gam</span><span class="p">,</span>
+            <span class="n">maxiter</span><span class="o">=</span><span class="n">maxiter_nmls</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">alpha</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">Bunch</span><span class="p">(</span><span class="o">**</span><span class="p">{</span><span class="s2">&quot;Converged&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span> <span class="s2">&quot;params&quot;</span><span class="p">:</span> <span class="n">params</span><span class="p">,</span>
+                            <span class="s2">&quot;objective_values&quot;</span><span class="p">:</span> <span class="n">obj_hist</span><span class="p">,</span>
+                            <span class="s2">&quot;Message&quot;</span><span class="p">:</span> <span class="s2">&quot;Failed in nmono_linesearch&quot;</span><span class="p">})</span>
+
+        <span class="n">obj_hist</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">fval</span><span class="p">)</span>
+        <span class="n">s</span> <span class="o">=</span> <span class="n">params1</span> <span class="o">-</span> <span class="n">params</span>
+        <span class="n">y</span> <span class="o">=</span> <span class="n">gval1</span> <span class="o">-</span> <span class="n">gval</span>
+
+        <span class="n">sy</span> <span class="o">=</span> <span class="p">(</span><span class="n">s</span><span class="o">*</span><span class="n">y</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">sy</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">lam</span> <span class="o">=</span> <span class="n">lam_max</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">ss</span> <span class="o">=</span> <span class="p">(</span><span class="n">s</span><span class="o">*</span><span class="n">s</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
+            <span class="n">lam</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">lam_min</span><span class="p">,</span> <span class="nb">min</span><span class="p">(</span><span class="n">ss</span><span class="o">/</span><span class="n">sy</span><span class="p">,</span> <span class="n">lam_max</span><span class="p">))</span>
+
+        <span class="n">params</span> <span class="o">=</span> <span class="n">params1</span>
+        <span class="n">gval</span> <span class="o">=</span> <span class="n">gval1</span>
+
+    <span class="k">return</span> <span class="n">Bunch</span><span class="p">(</span><span class="o">**</span><span class="p">{</span><span class="s2">&quot;Converged&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span> <span class="s2">&quot;params&quot;</span><span class="p">:</span> <span class="n">params</span><span class="p">,</span>
+                    <span class="s2">&quot;objective_values&quot;</span><span class="p">:</span> <span class="n">obj_hist</span><span class="p">,</span>
+                    <span class="s2">&quot;Message&quot;</span><span class="p">:</span> <span class="s2">&quot;spg_optim did not converge&quot;</span><span class="p">})</span>
+
+
+<span class="k">def</span> <span class="nf">_project_correlation_factors</span><span class="p">(</span><span class="n">X</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Project a matrix into the domain of matrices whose row-wise sums</span>
+<span class="sd">    of squares are less than or equal to 1.</span>
+
+<span class="sd">    The input matrix is modified in-place.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">nm</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">((</span><span class="n">X</span><span class="o">*</span><span class="n">X</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="mi">1</span><span class="p">))</span>
+    <span class="n">ii</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">flatnonzero</span><span class="p">(</span><span class="n">nm</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">ii</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="n">X</span><span class="p">[</span><span class="n">ii</span><span class="p">,</span> <span class="p">:]</span> <span class="o">/=</span> <span class="n">nm</span><span class="p">[</span><span class="n">ii</span><span class="p">][:,</span> <span class="kc">None</span><span class="p">]</span>
+
+
+<div class="viewcode-block" id="FactoredPSDMatrix"><a class="viewcode-back" href="../../../generated/statsmodels.stats.correlation_tools.FactoredPSDMatrix.html#statsmodels.stats.correlation_tools.FactoredPSDMatrix">[docs]</a><span class="k">class</span> <span class="nc">FactoredPSDMatrix</span><span class="p">:</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Representation of a positive semidefinite matrix in factored form.</span>
+
+<span class="sd">    The representation is constructed based on a vector `diag` and</span>
+<span class="sd">    rectangular matrix `root`, such that the PSD matrix represented by</span>
+<span class="sd">    the class instance is Diag + root * root&#39;, where Diag is the</span>
+<span class="sd">    square diagonal matrix with `diag` on its main diagonal.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    diag : 1d array-like</span>
+<span class="sd">        See above</span>
+<span class="sd">    root : 2d array-like</span>
+<span class="sd">        See above</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    The matrix is represented internally in the form Diag^{1/2}(I +</span>
+<span class="sd">    factor * scales * factor&#39;)Diag^{1/2}, where `Diag` and `scales`</span>
+<span class="sd">    are diagonal matrices, and `factor` is an orthogonal matrix.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">diag</span><span class="p">,</span> <span class="n">root</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">diag</span> <span class="o">=</span> <span class="n">diag</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">root</span> <span class="o">=</span> <span class="n">root</span>
+        <span class="n">root</span> <span class="o">=</span> <span class="n">root</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">diag</span><span class="p">)[:,</span> <span class="kc">None</span><span class="p">]</span>
+        <span class="n">u</span><span class="p">,</span> <span class="n">s</span><span class="p">,</span> <span class="n">vt</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">svd</span><span class="p">(</span><span class="n">root</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">factor</span> <span class="o">=</span> <span class="n">u</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">scales</span> <span class="o">=</span> <span class="n">s</span><span class="o">**</span><span class="mi">2</span>
+
+<div class="viewcode-block" id="FactoredPSDMatrix.to_matrix"><a class="viewcode-back" href="../../../generated/statsmodels.stats.correlation_tools.FactoredPSDMatrix.to_matrix.html#statsmodels.stats.correlation_tools.FactoredPSDMatrix.to_matrix">[docs]</a>    <span class="k">def</span> <span class="nf">to_matrix</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Returns the PSD matrix represented by this instance as a full</span>
+<span class="sd">        (square) matrix.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">diag</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">diag</span><span class="p">)</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">root</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">root</span><span class="o">.</span><span class="n">T</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="FactoredPSDMatrix.decorrelate"><a class="viewcode-back" href="../../../generated/statsmodels.stats.correlation_tools.FactoredPSDMatrix.decorrelate.html#statsmodels.stats.correlation_tools.FactoredPSDMatrix.decorrelate">[docs]</a>    <span class="k">def</span> <span class="nf">decorrelate</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">rhs</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Decorrelate the columns of `rhs`.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        rhs : array-like</span>
+<span class="sd">            A 2 dimensional array with the same number of rows as the</span>
+<span class="sd">            PSD matrix represented by the class instance.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        C^{-1/2} * rhs, where C is the covariance matrix represented</span>
+<span class="sd">        by this class instance.</span>
+
+<span class="sd">        Notes</span>
+<span class="sd">        -----</span>
+<span class="sd">        The returned matrix has the identity matrix as its row-wise</span>
+<span class="sd">        population covariance matrix.</span>
+
+<span class="sd">        This function exploits the factor structure for efficiency.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="c1"># I + factor * qval * factor&#39; is the inverse square root of</span>
+        <span class="c1"># the covariance matrix in the homogeneous case where diag =</span>
+        <span class="c1"># 1.</span>
+        <span class="n">qval</span> <span class="o">=</span> <span class="o">-</span><span class="mi">1</span> <span class="o">+</span> <span class="mi">1</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="mi">1</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">scales</span><span class="p">)</span>
+
+        <span class="c1"># Decorrelate in the general case.</span>
+        <span class="n">rhs</span> <span class="o">=</span> <span class="n">rhs</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">diag</span><span class="p">)[:,</span> <span class="kc">None</span><span class="p">]</span>
+        <span class="n">rhs1</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">factor</span><span class="o">.</span><span class="n">T</span><span class="p">,</span> <span class="n">rhs</span><span class="p">)</span>
+        <span class="n">rhs1</span> <span class="o">*=</span> <span class="n">qval</span><span class="p">[:,</span> <span class="kc">None</span><span class="p">]</span>
+        <span class="n">rhs1</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">factor</span><span class="p">,</span> <span class="n">rhs1</span><span class="p">)</span>
+        <span class="n">rhs</span> <span class="o">+=</span> <span class="n">rhs1</span>
+
+        <span class="k">return</span> <span class="n">rhs</span></div>
+
+<div class="viewcode-block" id="FactoredPSDMatrix.solve"><a class="viewcode-back" href="../../../generated/statsmodels.stats.correlation_tools.FactoredPSDMatrix.solve.html#statsmodels.stats.correlation_tools.FactoredPSDMatrix.solve">[docs]</a>    <span class="k">def</span> <span class="nf">solve</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">rhs</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Solve a linear system of equations with factor-structured</span>
+<span class="sd">        coefficients.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        rhs : array-like</span>
+<span class="sd">            A 2 dimensional array with the same number of rows as the</span>
+<span class="sd">            PSD matrix represented by the class instance.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        C^{-1} * rhs, where C is the covariance matrix represented</span>
+<span class="sd">        by this class instance.</span>
+
+<span class="sd">        Notes</span>
+<span class="sd">        -----</span>
+<span class="sd">        This function exploits the factor structure for efficiency.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="n">qval</span> <span class="o">=</span> <span class="o">-</span><span class="bp">self</span><span class="o">.</span><span class="n">scales</span> <span class="o">/</span> <span class="p">(</span><span class="mi">1</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">scales</span><span class="p">)</span>
+        <span class="n">dr</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">diag</span><span class="p">)</span>
+        <span class="n">rhs</span> <span class="o">=</span> <span class="n">rhs</span> <span class="o">/</span> <span class="n">dr</span><span class="p">[:,</span> <span class="kc">None</span><span class="p">]</span>
+        <span class="n">mat</span> <span class="o">=</span> <span class="n">qval</span><span class="p">[:,</span> <span class="kc">None</span><span class="p">]</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">factor</span><span class="o">.</span><span class="n">T</span><span class="p">,</span> <span class="n">rhs</span><span class="p">)</span>
+        <span class="n">rhs</span> <span class="o">=</span> <span class="n">rhs</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">factor</span><span class="p">,</span> <span class="n">mat</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">rhs</span> <span class="o">/</span> <span class="n">dr</span><span class="p">[:,</span> <span class="kc">None</span><span class="p">]</span></div>
+
+<div class="viewcode-block" id="FactoredPSDMatrix.logdet"><a class="viewcode-back" href="../../../generated/statsmodels.stats.correlation_tools.FactoredPSDMatrix.logdet.html#statsmodels.stats.correlation_tools.FactoredPSDMatrix.logdet">[docs]</a>    <span class="k">def</span> <span class="nf">logdet</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Returns the logarithm of the determinant of a</span>
+<span class="sd">        factor-structured matrix.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="n">logdet</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">diag</span><span class="p">))</span>
+        <span class="n">logdet</span> <span class="o">+=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">scales</span><span class="p">))</span>
+        <span class="n">logdet</span> <span class="o">+=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="mi">1</span> <span class="o">+</span> <span class="mi">1</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">scales</span><span class="p">))</span>
+
+        <span class="k">return</span> <span class="n">logdet</span></div></div>
+
+
+<div class="viewcode-block" id="corr_nearest_factor"><a class="viewcode-back" href="../../../generated/statsmodels.stats.correlation_tools.corr_nearest_factor.html#statsmodels.stats.correlation_tools.corr_nearest_factor">[docs]</a><span class="k">def</span> <span class="nf">corr_nearest_factor</span><span class="p">(</span><span class="n">corr</span><span class="p">,</span> <span class="n">rank</span><span class="p">,</span> <span class="n">ctol</span><span class="o">=</span><span class="mf">1e-6</span><span class="p">,</span> <span class="n">lam_min</span><span class="o">=</span><span class="mf">1e-30</span><span class="p">,</span>
+                        <span class="n">lam_max</span><span class="o">=</span><span class="mf">1e30</span><span class="p">,</span> <span class="n">maxiter</span><span class="o">=</span><span class="mi">1000</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Find the nearest correlation matrix with factor structure to a</span>
+<span class="sd">    given square matrix.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    corr : square array</span>
+<span class="sd">        The target matrix (to which the nearest correlation matrix is</span>
+<span class="sd">        sought).  Must be square, but need not be positive</span>
+<span class="sd">        semidefinite.</span>
+<span class="sd">    rank : positive integer</span>
+<span class="sd">        The rank of the factor structure of the solution, i.e., the</span>
+<span class="sd">        number of linearly independent columns of X.</span>
+<span class="sd">    ctol : positive real</span>
+<span class="sd">        Convergence criterion.</span>
+<span class="sd">    lam_min : float</span>
+<span class="sd">        Tuning parameter for spectral projected gradient optimization</span>
+<span class="sd">        (smallest allowed step in the search direction).</span>
+<span class="sd">    lam_max : float</span>
+<span class="sd">        Tuning parameter for spectral projected gradient optimization</span>
+<span class="sd">        (largest allowed step in the search direction).</span>
+<span class="sd">    maxiter : integer</span>
+<span class="sd">        Maximum number of iterations in spectral projected gradient</span>
+<span class="sd">        optimization.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    rslt : Bunch</span>
+<span class="sd">        rslt.corr is a FactoredPSDMatrix defining the estimated</span>
+<span class="sd">        correlation structure.  Other fields of `rslt` contain</span>
+<span class="sd">        returned values from spg_optim.</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    A correlation matrix has factor structure if it can be written in</span>
+<span class="sd">    the form I + XX&#39; - diag(XX&#39;), where X is n x k with linearly</span>
+<span class="sd">    independent columns, and with each row having sum of squares at</span>
+<span class="sd">    most equal to 1.  The approximation is made in terms of the</span>
+<span class="sd">    Frobenius norm.</span>
+
+<span class="sd">    This routine is useful when one has an approximate correlation</span>
+<span class="sd">    matrix that is not positive semidefinite, and there is need to</span>
+<span class="sd">    estimate the inverse, square root, or inverse square root of the</span>
+<span class="sd">    population correlation matrix.  The factor structure allows these</span>
+<span class="sd">    tasks to be done without constructing any n x n matrices.</span>
+
+<span class="sd">    This is a non-convex problem with no known gauranteed globally</span>
+<span class="sd">    convergent algorithm for computing the solution.  Borsdof, Higham</span>
+<span class="sd">    and Raydan (2010) compared several methods for this problem and</span>
+<span class="sd">    found the spectral projected gradient (SPG) method (used here) to</span>
+<span class="sd">    perform best.</span>
+
+<span class="sd">    The input matrix `corr` can be a dense numpy array or any scipy</span>
+<span class="sd">    sparse matrix.  The latter is useful if the input matrix is</span>
+<span class="sd">    obtained by thresholding a very large sample correlation matrix.</span>
+<span class="sd">    If `corr` is sparse, the calculations are optimized to save</span>
+<span class="sd">    memory, so no working matrix with more than 10^6 elements is</span>
+<span class="sd">    constructed.</span>
+
+<span class="sd">    References</span>
+<span class="sd">    ----------</span>
+<span class="sd">    .. [*] R Borsdof, N Higham, M Raydan (2010).  Computing a nearest</span>
+<span class="sd">       correlation matrix with factor structure. SIAM J Matrix Anal Appl,</span>
+<span class="sd">       31:5, 2603-2622.</span>
+<span class="sd">       http://eprints.ma.man.ac.uk/1523/01/covered/MIMS_ep2009_87.pdf</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    Hard thresholding a correlation matrix may result in a matrix that</span>
+<span class="sd">    is not positive semidefinite.  We can approximate a hard</span>
+<span class="sd">    thresholded correlation matrix with a PSD matrix as follows, where</span>
+<span class="sd">    `corr` is the input correlation matrix.</span>
+
+<span class="sd">    &gt;&gt;&gt; import numpy as np</span>
+<span class="sd">    &gt;&gt;&gt; from statsmodels.stats.correlation_tools import corr_nearest_factor</span>
+<span class="sd">    &gt;&gt;&gt; np.random.seed(1234)</span>
+<span class="sd">    &gt;&gt;&gt; b = 1.5 - np.random.rand(10, 1)</span>
+<span class="sd">    &gt;&gt;&gt; x = np.random.randn(100,1).dot(b.T) + np.random.randn(100,10)</span>
+<span class="sd">    &gt;&gt;&gt; corr = np.corrcoef(x.T)</span>
+<span class="sd">    &gt;&gt;&gt; corr = corr * (np.abs(corr) &gt;= 0.3)</span>
+<span class="sd">    &gt;&gt;&gt; rslt = corr_nearest_factor(corr, 3)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">p</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">corr</span><span class="o">.</span><span class="n">shape</span>
+
+    <span class="c1"># Starting values (following the PCA method in BHR).</span>
+    <span class="n">u</span><span class="p">,</span> <span class="n">s</span><span class="p">,</span> <span class="n">vt</span> <span class="o">=</span> <span class="n">svds</span><span class="p">(</span><span class="n">corr</span><span class="p">,</span> <span class="n">rank</span><span class="p">)</span>
+    <span class="n">X</span> <span class="o">=</span> <span class="n">u</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">s</span><span class="p">)</span>
+    <span class="n">nm</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">((</span><span class="n">X</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="mi">1</span><span class="p">))</span>
+    <span class="n">ii</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">flatnonzero</span><span class="p">(</span><span class="n">nm</span> <span class="o">&gt;</span> <span class="mf">1e-5</span><span class="p">)</span>
+    <span class="n">X</span><span class="p">[</span><span class="n">ii</span><span class="p">,</span> <span class="p">:]</span> <span class="o">/=</span> <span class="n">nm</span><span class="p">[</span><span class="n">ii</span><span class="p">][:,</span> <span class="kc">None</span><span class="p">]</span>
+
+    <span class="c1"># Zero the diagonal</span>
+    <span class="n">corr1</span> <span class="o">=</span> <span class="n">corr</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+    <span class="k">if</span> <span class="nb">type</span><span class="p">(</span><span class="n">corr1</span><span class="p">)</span> <span class="o">==</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+        <span class="n">np</span><span class="o">.</span><span class="n">fill_diagonal</span><span class="p">(</span><span class="n">corr1</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">sparse</span><span class="o">.</span><span class="n">issparse</span><span class="p">(</span><span class="n">corr1</span><span class="p">):</span>
+        <span class="n">corr1</span><span class="o">.</span><span class="n">setdiag</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">corr1</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]))</span>
+        <span class="n">corr1</span><span class="o">.</span><span class="n">eliminate_zeros</span><span class="p">()</span>
+        <span class="n">corr1</span><span class="o">.</span><span class="n">sort_indices</span><span class="p">()</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Matrix type not supported&quot;</span><span class="p">)</span>
+
+    <span class="c1"># The gradient, from lemma 4.1 of BHR.</span>
+    <span class="k">def</span> <span class="nf">grad</span><span class="p">(</span><span class="n">X</span><span class="p">):</span>
+        <span class="n">gr</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">X</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">X</span><span class="o">.</span><span class="n">T</span><span class="p">,</span> <span class="n">X</span><span class="p">))</span>
+        <span class="k">if</span> <span class="nb">type</span><span class="p">(</span><span class="n">corr1</span><span class="p">)</span> <span class="o">==</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+            <span class="n">gr</span> <span class="o">-=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">corr1</span><span class="p">,</span> <span class="n">X</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">gr</span> <span class="o">-=</span> <span class="n">corr1</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">X</span><span class="p">)</span>
+        <span class="n">gr</span> <span class="o">-=</span> <span class="p">(</span><span class="n">X</span><span class="o">*</span><span class="n">X</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="mi">1</span><span class="p">)[:,</span> <span class="kc">None</span><span class="p">]</span> <span class="o">*</span> <span class="n">X</span>
+        <span class="k">return</span> <span class="mi">4</span><span class="o">*</span><span class="n">gr</span>
+
+    <span class="c1"># The objective function (sum of squared deviations between fitted</span>
+    <span class="c1"># and observed arrays).</span>
+    <span class="k">def</span> <span class="nf">func</span><span class="p">(</span><span class="n">X</span><span class="p">):</span>
+        <span class="k">if</span> <span class="nb">type</span><span class="p">(</span><span class="n">corr1</span><span class="p">)</span> <span class="o">==</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+            <span class="n">M</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">X</span><span class="p">,</span> <span class="n">X</span><span class="o">.</span><span class="n">T</span><span class="p">)</span>
+            <span class="n">np</span><span class="o">.</span><span class="n">fill_diagonal</span><span class="p">(</span><span class="n">M</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+            <span class="n">M</span> <span class="o">-=</span> <span class="n">corr1</span>
+            <span class="n">fval</span> <span class="o">=</span> <span class="p">(</span><span class="n">M</span><span class="o">*</span><span class="n">M</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
+            <span class="k">return</span> <span class="n">fval</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">fval</span> <span class="o">=</span> <span class="mf">0.</span>
+            <span class="c1"># Control the size of intermediates</span>
+            <span class="n">max_ws</span> <span class="o">=</span> <span class="mf">1e6</span>
+            <span class="n">bs</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">max_ws</span> <span class="o">/</span> <span class="n">X</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+            <span class="n">ir</span> <span class="o">=</span> <span class="mi">0</span>
+            <span class="k">while</span> <span class="n">ir</span> <span class="o">&lt;</span> <span class="n">X</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]:</span>
+                <span class="n">ir2</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">ir</span><span class="o">+</span><span class="n">bs</span><span class="p">,</span> <span class="n">X</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+                <span class="n">u</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">X</span><span class="p">[</span><span class="n">ir</span><span class="p">:</span><span class="n">ir2</span><span class="p">,</span> <span class="p">:],</span> <span class="n">X</span><span class="o">.</span><span class="n">T</span><span class="p">)</span>
+                <span class="n">ii</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">u</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+                <span class="n">u</span><span class="p">[</span><span class="n">ii</span><span class="p">,</span> <span class="n">ir</span><span class="o">+</span><span class="n">ii</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
+                <span class="n">u</span> <span class="o">-=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">corr1</span><span class="p">[</span><span class="n">ir</span><span class="p">:</span><span class="n">ir2</span><span class="p">,</span> <span class="p">:]</span><span class="o">.</span><span class="n">todense</span><span class="p">())</span>
+                <span class="n">fval</span> <span class="o">+=</span> <span class="p">(</span><span class="n">u</span><span class="o">*</span><span class="n">u</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
+                <span class="n">ir</span> <span class="o">+=</span> <span class="n">bs</span>
+            <span class="k">return</span> <span class="n">fval</span>
+
+    <span class="n">rslt</span> <span class="o">=</span> <span class="n">_spg_optim</span><span class="p">(</span><span class="n">func</span><span class="p">,</span> <span class="n">grad</span><span class="p">,</span> <span class="n">X</span><span class="p">,</span> <span class="n">_project_correlation_factors</span><span class="p">,</span> <span class="n">ctol</span><span class="o">=</span><span class="n">ctol</span><span class="p">,</span>
+                      <span class="n">lam_min</span><span class="o">=</span><span class="n">lam_min</span><span class="p">,</span> <span class="n">lam_max</span><span class="o">=</span><span class="n">lam_max</span><span class="p">,</span> <span class="n">maxiter</span><span class="o">=</span><span class="n">maxiter</span><span class="p">)</span>
+    <span class="n">root</span> <span class="o">=</span> <span class="n">rslt</span><span class="o">.</span><span class="n">params</span>
+    <span class="n">diag</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">-</span> <span class="p">(</span><span class="n">root</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+    <span class="n">soln</span> <span class="o">=</span> <span class="n">FactoredPSDMatrix</span><span class="p">(</span><span class="n">diag</span><span class="p">,</span> <span class="n">root</span><span class="p">)</span>
+    <span class="n">rslt</span><span class="o">.</span><span class="n">corr</span> <span class="o">=</span> <span class="n">soln</span>
+    <span class="k">del</span> <span class="n">rslt</span><span class="o">.</span><span class="n">params</span>
+    <span class="k">return</span> <span class="n">rslt</span></div>
+
+
+<div class="viewcode-block" id="cov_nearest_factor_homog"><a class="viewcode-back" href="../../../generated/statsmodels.stats.correlation_tools.cov_nearest_factor_homog.html#statsmodels.stats.correlation_tools.cov_nearest_factor_homog">[docs]</a><span class="k">def</span> <span class="nf">cov_nearest_factor_homog</span><span class="p">(</span><span class="n">cov</span><span class="p">,</span> <span class="n">rank</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Approximate an arbitrary square matrix with a factor-structured</span>
+<span class="sd">    matrix of the form k*I + XX&#39;.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    cov : array-like</span>
+<span class="sd">        The input array, must be square but need not be positive</span>
+<span class="sd">        semidefinite</span>
+<span class="sd">    rank : positive integer</span>
+<span class="sd">        The rank of the fitted factor structure</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    A FactoredPSDMatrix instance containing the fitted matrix</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    This routine is useful if one has an estimated covariance matrix</span>
+<span class="sd">    that is not SPD, and the ultimate goal is to estimate the inverse,</span>
+<span class="sd">    square root, or inverse square root of the true covariance</span>
+<span class="sd">    matrix. The factor structure allows these tasks to be performed</span>
+<span class="sd">    without constructing any n x n matrices.</span>
+
+<span class="sd">    The calculations use the fact that if k is known, then X can be</span>
+<span class="sd">    determined from the eigen-decomposition of cov - k*I, which can</span>
+<span class="sd">    in turn be easily obtained form the eigen-decomposition of `cov`.</span>
+<span class="sd">    Thus the problem can be reduced to a 1-dimensional search for k</span>
+<span class="sd">    that does not require repeated eigen-decompositions.</span>
+
+<span class="sd">    If the input matrix is sparse, then cov - k*I is also sparse, so</span>
+<span class="sd">    the eigen-decomposition can be done effciciently using sparse</span>
+<span class="sd">    routines.</span>
+
+<span class="sd">    The one-dimensional search for the optimal value of k is not</span>
+<span class="sd">    convex, so a local minimum could be obtained.</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    Hard thresholding a covariance matrix may result in a matrix that</span>
+<span class="sd">    is not positive semidefinite.  We can approximate a hard</span>
+<span class="sd">    thresholded covariance matrix with a PSD matrix as follows:</span>
+
+<span class="sd">    &gt;&gt;&gt; import numpy as np</span>
+<span class="sd">    &gt;&gt;&gt; np.random.seed(1234)</span>
+<span class="sd">    &gt;&gt;&gt; b = 1.5 - np.random.rand(10, 1)</span>
+<span class="sd">    &gt;&gt;&gt; x = np.random.randn(100,1).dot(b.T) + np.random.randn(100,10)</span>
+<span class="sd">    &gt;&gt;&gt; cov = np.cov(x)</span>
+<span class="sd">    &gt;&gt;&gt; cov = cov * (np.abs(cov) &gt;= 0.3)</span>
+<span class="sd">    &gt;&gt;&gt; rslt = cov_nearest_factor_homog(cov, 3)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">m</span><span class="p">,</span> <span class="n">n</span> <span class="o">=</span> <span class="n">cov</span><span class="o">.</span><span class="n">shape</span>
+
+    <span class="n">Q</span><span class="p">,</span> <span class="n">Lambda</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">svds</span><span class="p">(</span><span class="n">cov</span><span class="p">,</span> <span class="n">rank</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">sparse</span><span class="o">.</span><span class="n">issparse</span><span class="p">(</span><span class="n">cov</span><span class="p">):</span>
+        <span class="n">QSQ</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">Q</span><span class="o">.</span><span class="n">T</span><span class="p">,</span> <span class="n">cov</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">Q</span><span class="p">))</span>
+        <span class="n">ts</span> <span class="o">=</span> <span class="n">cov</span><span class="o">.</span><span class="n">diagonal</span><span class="p">()</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
+        <span class="n">tss</span> <span class="o">=</span> <span class="n">cov</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">cov</span><span class="p">)</span><span class="o">.</span><span class="n">diagonal</span><span class="p">()</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">QSQ</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">Q</span><span class="o">.</span><span class="n">T</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">cov</span><span class="p">,</span> <span class="n">Q</span><span class="p">))</span>
+        <span class="n">ts</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">trace</span><span class="p">(</span><span class="n">cov</span><span class="p">)</span>
+        <span class="n">tss</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">trace</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">cov</span><span class="p">,</span> <span class="n">cov</span><span class="p">))</span>
+
+    <span class="k">def</span> <span class="nf">fun</span><span class="p">(</span><span class="n">k</span><span class="p">):</span>
+        <span class="n">Lambda_t</span> <span class="o">=</span> <span class="n">Lambda</span> <span class="o">-</span> <span class="n">k</span>
+        <span class="n">v</span> <span class="o">=</span> <span class="n">tss</span> <span class="o">+</span> <span class="n">m</span><span class="o">*</span><span class="p">(</span><span class="n">k</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">Lambda_t</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span> <span class="o">-</span> <span class="mi">2</span><span class="o">*</span><span class="n">k</span><span class="o">*</span><span class="n">ts</span>
+        <span class="n">v</span> <span class="o">+=</span> <span class="mi">2</span><span class="o">*</span><span class="n">k</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">Lambda_t</span><span class="p">)</span> <span class="o">-</span> <span class="mi">2</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">diag</span><span class="p">(</span><span class="n">QSQ</span><span class="p">)</span> <span class="o">*</span> <span class="n">Lambda_t</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">v</span>
+
+    <span class="c1"># Get the optimal decomposition</span>
+    <span class="n">k_opt</span> <span class="o">=</span> <span class="n">fminbound</span><span class="p">(</span><span class="n">fun</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mf">1e5</span><span class="p">)</span>
+    <span class="n">Lambda_opt</span> <span class="o">=</span> <span class="n">Lambda</span> <span class="o">-</span> <span class="n">k_opt</span>
+    <span class="n">fac_opt</span> <span class="o">=</span> <span class="n">Q</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">Lambda_opt</span><span class="p">)</span>
+
+    <span class="n">diag</span> <span class="o">=</span> <span class="n">k_opt</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">m</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>  <span class="c1"># - (fac_opt**2).sum(1)</span>
+    <span class="k">return</span> <span class="n">FactoredPSDMatrix</span><span class="p">(</span><span class="n">diag</span><span class="p">,</span> <span class="n">fac_opt</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="corr_thresholded"><a class="viewcode-back" href="../../../generated/statsmodels.stats.correlation_tools.corr_thresholded.html#statsmodels.stats.correlation_tools.corr_thresholded">[docs]</a><span class="k">def</span> <span class="nf">corr_thresholded</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">minabs</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_elt</span><span class="o">=</span><span class="mf">1e7</span><span class="p">):</span>
+    <span class="sa">r</span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Construct a sparse matrix containing the thresholded row-wise</span>
+<span class="sd">    correlation matrix from a data array.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    data : array_like</span>
+<span class="sd">        The data from which the row-wise thresholded correlation</span>
+<span class="sd">        matrix is to be computed.</span>
+<span class="sd">    minabs : non-negative real</span>
+<span class="sd">        The threshold value; correlation coefficients smaller in</span>
+<span class="sd">        magnitude than minabs are set to zero.  If None, defaults</span>
+<span class="sd">        to 1 / sqrt(n), see Notes for more information.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    cormat : sparse.coo_matrix</span>
+<span class="sd">        The thresholded correlation matrix, in COO format.</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    This is an alternative to C = np.corrcoef(data); C \*= (np.abs(C)</span>
+<span class="sd">    &gt;= absmin), suitable for very tall data matrices.</span>
+
+<span class="sd">    If the data are jointly Gaussian, the marginal sampling</span>
+<span class="sd">    distributions of the elements of the sample correlation matrix are</span>
+<span class="sd">    approximately Gaussian with standard deviation 1 / sqrt(n).  The</span>
+<span class="sd">    default value of ``minabs`` is thus equal to 1 standard error, which</span>
+<span class="sd">    will set to zero approximately 68% of the estimated correlation</span>
+<span class="sd">    coefficients for which the population value is zero.</span>
+
+<span class="sd">    No intermediate matrix with more than ``max_elt`` values will be</span>
+<span class="sd">    constructed.  However memory use could still be high if a large</span>
+<span class="sd">    number of correlation values exceed `minabs` in magnitude.</span>
+
+<span class="sd">    The thresholded matrix is returned in COO format, which can easily</span>
+<span class="sd">    be converted to other sparse formats.</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    Here X is a tall data matrix (e.g. with 100,000 rows and 50</span>
+<span class="sd">    columns).  The row-wise correlation matrix of X is calculated</span>
+<span class="sd">    and stored in sparse form, with all entries smaller than 0.3</span>
+<span class="sd">    treated as 0.</span>
+
+<span class="sd">    &gt;&gt;&gt; import numpy as np</span>
+<span class="sd">    &gt;&gt;&gt; np.random.seed(1234)</span>
+<span class="sd">    &gt;&gt;&gt; b = 1.5 - np.random.rand(10, 1)</span>
+<span class="sd">    &gt;&gt;&gt; x = np.random.randn(100,1).dot(b.T) + np.random.randn(100,10)</span>
+<span class="sd">    &gt;&gt;&gt; cmat = corr_thresholded(x, 0.3)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">nrow</span><span class="p">,</span> <span class="n">ncol</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">shape</span>
+
+    <span class="k">if</span> <span class="n">minabs</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">minabs</span> <span class="o">=</span> <span class="mf">1.</span> <span class="o">/</span> <span class="nb">float</span><span class="p">(</span><span class="n">ncol</span><span class="p">)</span>
+
+    <span class="c1"># Row-standardize the data</span>
+    <span class="n">data</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+    <span class="n">data</span> <span class="o">-=</span> <span class="n">data</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="mi">1</span><span class="p">)[:,</span> <span class="kc">None</span><span class="p">]</span>
+    <span class="n">sd</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">std</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">ddof</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+    <span class="n">ii</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">flatnonzero</span><span class="p">(</span><span class="n">sd</span> <span class="o">&gt;</span> <span class="mf">1e-5</span><span class="p">)</span>
+    <span class="n">data</span><span class="p">[</span><span class="n">ii</span><span class="p">,</span> <span class="p">:]</span> <span class="o">/=</span> <span class="n">sd</span><span class="p">[</span><span class="n">ii</span><span class="p">][:,</span> <span class="kc">None</span><span class="p">]</span>
+    <span class="n">ii</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">flatnonzero</span><span class="p">(</span><span class="n">sd</span> <span class="o">&lt;=</span> <span class="mf">1e-5</span><span class="p">)</span>
+    <span class="n">data</span><span class="p">[</span><span class="n">ii</span><span class="p">,</span> <span class="p">:]</span> <span class="o">=</span> <span class="mi">0</span>
+
+    <span class="c1"># Number of rows to process in one pass</span>
+    <span class="n">bs</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">floor</span><span class="p">(</span><span class="n">max_elt</span> <span class="o">/</span> <span class="n">nrow</span><span class="p">))</span>
+
+    <span class="n">ipos_all</span><span class="p">,</span> <span class="n">jpos_all</span><span class="p">,</span> <span class="n">cor_values</span> <span class="o">=</span> <span class="p">[],</span> <span class="p">[],</span> <span class="p">[]</span>
+
+    <span class="n">ir</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="k">while</span> <span class="n">ir</span> <span class="o">&lt;</span> <span class="n">nrow</span><span class="p">:</span>
+        <span class="n">ir2</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">data</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">ir</span> <span class="o">+</span> <span class="n">bs</span><span class="p">)</span>
+        <span class="n">cm</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">data</span><span class="p">[</span><span class="n">ir</span><span class="p">:</span><span class="n">ir2</span><span class="p">,</span> <span class="p">:],</span> <span class="n">data</span><span class="o">.</span><span class="n">T</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="n">ncol</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="n">cma</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">cm</span><span class="p">)</span>
+        <span class="n">ipos</span><span class="p">,</span> <span class="n">jpos</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nonzero</span><span class="p">(</span><span class="n">cma</span> <span class="o">&gt;=</span> <span class="n">minabs</span><span class="p">)</span>
+        <span class="n">ipos_all</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">ipos</span> <span class="o">+</span> <span class="n">ir</span><span class="p">)</span>
+        <span class="n">jpos_all</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">jpos</span><span class="p">)</span>
+        <span class="n">cor_values</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">cm</span><span class="p">[</span><span class="n">ipos</span><span class="p">,</span> <span class="n">jpos</span><span class="p">])</span>
+        <span class="n">ir</span> <span class="o">+=</span> <span class="n">bs</span>
+
+    <span class="n">ipos</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(</span><span class="n">ipos_all</span><span class="p">)</span>
+    <span class="n">jpos</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(</span><span class="n">jpos_all</span><span class="p">)</span>
+    <span class="n">cor_values</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(</span><span class="n">cor_values</span><span class="p">)</span>
+
+    <span class="n">cmat</span> <span class="o">=</span> <span class="n">sparse</span><span class="o">.</span><span class="n">coo_matrix</span><span class="p">((</span><span class="n">cor_values</span><span class="p">,</span> <span class="p">(</span><span class="n">ipos</span><span class="p">,</span> <span class="n">jpos</span><span class="p">)),</span> <span class="p">(</span><span class="n">nrow</span><span class="p">,</span> <span class="n">nrow</span><span class="p">))</span>
+
+    <span class="k">return</span> <span class="n">cmat</span></div>
+
+
+<span class="k">class</span> <span class="nc">MultivariateKernel</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Base class for multivariate kernels.</span>
+
+<span class="sd">    An instance of MultivariateKernel implements a `call` method having</span>
+<span class="sd">    signature `call(x, loc)`, returning the kernel weights comparing `x`</span>
+<span class="sd">    (a 1d ndarray) to each row of `loc` (a 2d ndarray).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">call</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">loc</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span>
+
+    <span class="k">def</span> <span class="nf">set_bandwidth</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">bw</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Set the bandwidth to the given vector.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        bw : array-like</span>
+<span class="sd">            A vector of non-negative bandwidth values.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">bw</span> <span class="o">=</span> <span class="n">bw</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_setup</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">_setup</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+
+        <span class="c1"># Precompute the squared bandwidth values.</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">bwk</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">prod</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">bw</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">bw2</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">bw</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">bw</span>
+
+    <span class="k">def</span> <span class="nf">set_default_bw</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">loc</span><span class="p">,</span> <span class="n">bwm</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Set default bandwiths based on domain values.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        loc : array-like</span>
+<span class="sd">            Values from the domain to which the kernel will</span>
+<span class="sd">            be applied.</span>
+<span class="sd">        bwm : scalar, optional</span>
+<span class="sd">            A non-negative scalar that is used to multiply</span>
+<span class="sd">            the default bandwidth.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="n">sd</span> <span class="o">=</span> <span class="n">loc</span><span class="o">.</span><span class="n">std</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+        <span class="n">q25</span><span class="p">,</span> <span class="n">q75</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">percentile</span><span class="p">(</span><span class="n">loc</span><span class="p">,</span> <span class="p">[</span><span class="mi">25</span><span class="p">,</span> <span class="mi">75</span><span class="p">],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+        <span class="n">iqr</span> <span class="o">=</span> <span class="p">(</span><span class="n">q75</span> <span class="o">-</span> <span class="n">q25</span><span class="p">)</span> <span class="o">/</span> <span class="mf">1.349</span>
+        <span class="n">bw</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">iqr</span> <span class="o">&lt;</span> <span class="n">sd</span><span class="p">,</span> <span class="n">iqr</span><span class="p">,</span> <span class="n">sd</span><span class="p">)</span>
+        <span class="n">bw</span> <span class="o">*=</span> <span class="mf">0.9</span> <span class="o">/</span> <span class="n">loc</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">**</span> <span class="mf">0.2</span>
+
+        <span class="k">if</span> <span class="n">bwm</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">bw</span> <span class="o">*=</span> <span class="n">bwm</span>
+
+        <span class="c1"># The final bandwidths</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">bw</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">bw</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_setup</span><span class="p">()</span>
+
+
+<span class="k">class</span> <span class="nc">GaussianMultivariateKernel</span><span class="p">(</span><span class="n">MultivariateKernel</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    The Gaussian (squared exponential) multivariate kernel.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">call</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">loc</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="o">-</span><span class="p">(</span><span class="n">x</span> <span class="o">-</span> <span class="n">loc</span><span class="p">)</span><span class="o">**</span><span class="mi">2</span> <span class="o">/</span> <span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">bw2</span><span class="p">))</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">bwk</span>
+
+
+<div class="viewcode-block" id="kernel_covariance"><a class="viewcode-back" href="../../../generated/statsmodels.stats.correlation_tools.kernel_covariance.html#statsmodels.stats.correlation_tools.kernel_covariance">[docs]</a><span class="k">def</span> <span class="nf">kernel_covariance</span><span class="p">(</span><span class="n">exog</span><span class="p">,</span> <span class="n">loc</span><span class="p">,</span> <span class="n">groups</span><span class="p">,</span> <span class="n">kernel</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">bw</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Use kernel averaging to estimate a multivariate covariance function.</span>
+
+<span class="sd">    The goal is to estimate a covariance function C(x, y) =</span>
+<span class="sd">    cov(Z(x), Z(y)) where x, y are vectors in R^p (e.g. representing</span>
+<span class="sd">    locations in time or space), and Z(.) represents a multivariate</span>
+<span class="sd">    process on R^p.</span>
+
+<span class="sd">    The data used for estimation can be observed at arbitrary values of the</span>
+<span class="sd">    position vector, and there can be multiple independent observations</span>
+<span class="sd">    from the process.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    exog : array-like</span>
+<span class="sd">        The rows of exog are realizations of the process obtained at</span>
+<span class="sd">        specified points.</span>
+<span class="sd">    loc : array-like</span>
+<span class="sd">        The rows of loc are the locations (e.g. in space or time) at</span>
+<span class="sd">        which the rows of exog are observed.</span>
+<span class="sd">    groups : array-like</span>
+<span class="sd">        The values of groups are labels for distinct independent copies</span>
+<span class="sd">        of the process.</span>
+<span class="sd">    kernel : MultivariateKernel instance, optional</span>
+<span class="sd">        An instance of MultivariateKernel, defaults to</span>
+<span class="sd">        GaussianMultivariateKernel.</span>
+<span class="sd">    bw : array-like or scalar</span>
+<span class="sd">        A bandwidth vector, or bandwith multiplier.  If a 1d array, it</span>
+<span class="sd">        contains kernel bandwidths for each component of the process, and</span>
+<span class="sd">        must have length equal to the number of columns of exog.  If a scalar,</span>
+<span class="sd">        bw is a bandwidth multiplier used to adjust the default bandwidth; if</span>
+<span class="sd">        None, a default bandwidth is used.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    A real-valued function C(x, y) that returns an estimate of the covariance</span>
+<span class="sd">    between values of the process located at x and y.</span>
+
+<span class="sd">    References</span>
+<span class="sd">    ----------</span>
+<span class="sd">    .. [1] Genton M, W Kleiber (2015).  Cross covariance functions for</span>
+<span class="sd">        multivariate geostatics.  Statistical Science 30(2).</span>
+<span class="sd">        https://arxiv.org/pdf/1507.08017.pdf</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">exog</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">exog</span><span class="p">)</span>
+    <span class="n">loc</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">loc</span><span class="p">)</span>
+    <span class="n">groups</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">groups</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">loc</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="n">loc</span> <span class="o">=</span> <span class="n">loc</span><span class="p">[:,</span> <span class="kc">None</span><span class="p">]</span>
+
+    <span class="n">v</span> <span class="o">=</span> <span class="p">[</span><span class="n">exog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">loc</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="nb">len</span><span class="p">(</span><span class="n">groups</span><span class="p">)]</span>
+    <span class="k">if</span> <span class="nb">min</span><span class="p">(</span><span class="n">v</span><span class="p">)</span> <span class="o">!=</span> <span class="nb">max</span><span class="p">(</span><span class="n">v</span><span class="p">):</span>
+        <span class="n">msg</span> <span class="o">=</span> <span class="s2">&quot;exog, loc, and groups must have the same number of rows&quot;</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+
+    <span class="c1"># Map from group labels to the row indices in each group.</span>
+    <span class="n">ix</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">g</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">groups</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">g</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">ix</span><span class="p">:</span>
+            <span class="n">ix</span><span class="p">[</span><span class="n">g</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">ix</span><span class="p">[</span><span class="n">g</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">i</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">g</span> <span class="ow">in</span> <span class="n">ix</span><span class="o">.</span><span class="n">keys</span><span class="p">():</span>
+        <span class="n">ix</span><span class="p">[</span><span class="n">g</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="n">ix</span><span class="p">[</span><span class="n">g</span><span class="p">])</span>
+
+    <span class="k">if</span> <span class="n">kernel</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">kernel</span> <span class="o">=</span> <span class="n">GaussianMultivariateKernel</span><span class="p">()</span>
+
+    <span class="k">if</span> <span class="n">bw</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">kernel</span><span class="o">.</span><span class="n">set_default_bw</span><span class="p">(</span><span class="n">loc</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">np</span><span class="o">.</span><span class="n">isscalar</span><span class="p">(</span><span class="n">bw</span><span class="p">):</span>
+        <span class="n">kernel</span><span class="o">.</span><span class="n">set_default_bw</span><span class="p">(</span><span class="n">loc</span><span class="p">,</span> <span class="n">bwm</span><span class="o">=</span><span class="n">bw</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">kernel</span><span class="o">.</span><span class="n">set_bandwidth</span><span class="p">(</span><span class="n">bw</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">cov</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">):</span>
+
+        <span class="n">kx</span> <span class="o">=</span> <span class="n">kernel</span><span class="o">.</span><span class="n">call</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">loc</span><span class="p">)</span>
+        <span class="n">ky</span> <span class="o">=</span> <span class="n">kernel</span><span class="o">.</span><span class="n">call</span><span class="p">(</span><span class="n">y</span><span class="p">,</span> <span class="n">loc</span><span class="p">)</span>
+
+        <span class="n">cm</span><span class="p">,</span> <span class="n">cw</span> <span class="o">=</span> <span class="mf">0.</span><span class="p">,</span> <span class="mf">0.</span>
+
+        <span class="k">for</span> <span class="n">g</span><span class="p">,</span> <span class="n">ii</span> <span class="ow">in</span> <span class="n">ix</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+
+            <span class="n">m</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">ii</span><span class="p">)</span>
+            <span class="n">j1</span><span class="p">,</span> <span class="n">j2</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">indices</span><span class="p">((</span><span class="n">m</span><span class="p">,</span> <span class="n">m</span><span class="p">))</span>
+            <span class="n">j1</span> <span class="o">=</span> <span class="n">ii</span><span class="p">[</span><span class="n">j1</span><span class="o">.</span><span class="n">flat</span><span class="p">]</span>
+            <span class="n">j2</span> <span class="o">=</span> <span class="n">ii</span><span class="p">[</span><span class="n">j2</span><span class="o">.</span><span class="n">flat</span><span class="p">]</span>
+            <span class="n">w</span> <span class="o">=</span> <span class="n">kx</span><span class="p">[</span><span class="n">j1</span><span class="p">]</span> <span class="o">*</span> <span class="n">ky</span><span class="p">[</span><span class="n">j2</span><span class="p">]</span>
+
+            <span class="c1"># TODO: some other form of broadcasting may be faster than</span>
+            <span class="c1"># einsum here</span>
+            <span class="n">cm</span> <span class="o">+=</span> <span class="n">np</span><span class="o">.</span><span class="n">einsum</span><span class="p">(</span><span class="s2">&quot;ij,ik,i-&gt;jk&quot;</span><span class="p">,</span> <span class="n">exog</span><span class="p">[</span><span class="n">j1</span><span class="p">,</span> <span class="p">:],</span> <span class="n">exog</span><span class="p">[</span><span class="n">j2</span><span class="p">,</span> <span class="p">:],</span> <span class="n">w</span><span class="p">)</span>
+            <span class="n">cw</span> <span class="o">+=</span> <span class="n">w</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
+
+        <span class="k">if</span> <span class="n">cw</span> <span class="o">&lt;</span> <span class="mf">1e-10</span><span class="p">:</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="p">(</span><span class="s2">&quot;Effective sample size is 0.  The bandwidth may be too &quot;</span> <span class="o">+</span>
+                   <span class="s2">&quot;small, or you are outside the range of your data.&quot;</span><span class="p">)</span>
+            <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">ones_like</span><span class="p">(</span><span class="n">cm</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">cm</span> <span class="o">/</span> <span class="n">cw</span>
+
+    <span class="k">return</span> <span class="n">cov</span></div>
+</pre></div>
+
+
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../../../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" />
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer" role="contentinfo">
+        &#169; Copyright 2009-2018, Josef Perktold, Skipper Seabold, Jonathan Taylor, statsmodels-developers.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 2.2.1.
+    </div>
+  </body>
+</html>

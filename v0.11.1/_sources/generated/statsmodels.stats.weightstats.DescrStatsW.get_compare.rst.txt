@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.stats.weightstats.DescrStatsW.get\_compare
+======================================================
+
+.. currentmodule:: statsmodels.stats.weightstats
+
+.. automethod:: DescrStatsW.get_compare

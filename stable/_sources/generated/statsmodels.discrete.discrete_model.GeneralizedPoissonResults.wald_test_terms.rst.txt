@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.discrete.discrete\_model.GeneralizedPoissonResults.wald\_test\_terms
+================================================================================
+
+.. currentmodule:: statsmodels.discrete.discrete_model
+
+.. automethod:: GeneralizedPoissonResults.wald_test_terms

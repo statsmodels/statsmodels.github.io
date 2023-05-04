@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.miscmodels.count.PoissonOffsetGMLE.score
+====================================================
+
+.. currentmodule:: statsmodels.miscmodels.count
+
+.. automethod:: PoissonOffsetGMLE.score

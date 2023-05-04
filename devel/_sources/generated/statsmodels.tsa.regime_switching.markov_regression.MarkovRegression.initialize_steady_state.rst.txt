@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.tsa.regime\_switching.markov\_regression.MarkovRegression.initialize\_steady\_state
+===============================================================================================
+
+.. currentmodule:: statsmodels.tsa.regime_switching.markov_regression
+
+.. automethod:: MarkovRegression.initialize_steady_state

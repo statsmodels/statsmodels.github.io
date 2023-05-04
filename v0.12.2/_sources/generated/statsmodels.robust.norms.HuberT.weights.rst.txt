@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.robust.norms.HuberT.weights
+=======================================
+
+.. currentmodule:: statsmodels.robust.norms
+
+.. automethod:: HuberT.weights

@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.miscmodels.count.PoissonZiGMLE.reduceparams
+=======================================================
+
+.. currentmodule:: statsmodels.miscmodels.count
+
+.. automethod:: PoissonZiGMLE.reduceparams

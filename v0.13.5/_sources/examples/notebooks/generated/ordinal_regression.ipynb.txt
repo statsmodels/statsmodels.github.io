@@ -1,0 +1,2077 @@
+{
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# Ordinal Regression"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 1,
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2022-11-02T17:11:13.608537Z",
+     "iopub.status.busy": "2022-11-02T17:11:13.608053Z",
+     "iopub.status.idle": "2022-11-02T17:11:14.192365Z",
+     "shell.execute_reply": "2022-11-02T17:11:14.191653Z"
+    }
+   },
+   "outputs": [],
+   "source": [
+    "import numpy as np\n",
+    "import pandas as pd\n",
+    "import scipy.stats as stats\n",
+    "\n",
+    "from statsmodels.miscmodels.ordinal_model import OrderedModel"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Loading a stata data file from the UCLA website.This notebook is inspired by https://stats.idre.ucla.edu/r/dae/ordinal-logistic-regression/ which is a R notebook from UCLA."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 2,
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2022-11-02T17:11:14.197632Z",
+     "iopub.status.busy": "2022-11-02T17:11:14.196357Z",
+     "iopub.status.idle": "2022-11-02T17:11:14.700047Z",
+     "shell.execute_reply": "2022-11-02T17:11:14.699385Z"
+    }
+   },
+   "outputs": [],
+   "source": [
+    "url = \"https://stats.idre.ucla.edu/stat/data/ologit.dta\"\n",
+    "data_student = pd.read_stata(url)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 3,
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2022-11-02T17:11:14.705371Z",
+     "iopub.status.busy": "2022-11-02T17:11:14.704151Z",
+     "iopub.status.idle": "2022-11-02T17:11:14.722325Z",
+     "shell.execute_reply": "2022-11-02T17:11:14.721756Z"
+    }
+   },
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<div>\n",
+       "<style scoped>\n",
+       "    .dataframe tbody tr th:only-of-type {\n",
+       "        vertical-align: middle;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe tbody tr th {\n",
+       "        vertical-align: top;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe thead th {\n",
+       "        text-align: right;\n",
+       "    }\n",
+       "</style>\n",
+       "<table border=\"1\" class=\"dataframe\">\n",
+       "  <thead>\n",
+       "    <tr style=\"text-align: right;\">\n",
+       "      <th></th>\n",
+       "      <th>apply</th>\n",
+       "      <th>pared</th>\n",
+       "      <th>public</th>\n",
+       "      <th>gpa</th>\n",
+       "    </tr>\n",
+       "  </thead>\n",
+       "  <tbody>\n",
+       "    <tr>\n",
+       "      <th>0</th>\n",
+       "      <td>very likely</td>\n",
+       "      <td>0</td>\n",
+       "      <td>0</td>\n",
+       "      <td>3.26</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>1</th>\n",
+       "      <td>somewhat likely</td>\n",
+       "      <td>1</td>\n",
+       "      <td>0</td>\n",
+       "      <td>3.21</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>2</th>\n",
+       "      <td>unlikely</td>\n",
+       "      <td>1</td>\n",
+       "      <td>1</td>\n",
+       "      <td>3.94</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>3</th>\n",
+       "      <td>somewhat likely</td>\n",
+       "      <td>0</td>\n",
+       "      <td>0</td>\n",
+       "      <td>2.81</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>4</th>\n",
+       "      <td>somewhat likely</td>\n",
+       "      <td>0</td>\n",
+       "      <td>0</td>\n",
+       "      <td>2.53</td>\n",
+       "    </tr>\n",
+       "  </tbody>\n",
+       "</table>\n",
+       "</div>"
+      ],
+      "text/plain": [
+       "             apply  pared  public   gpa\n",
+       "0      very likely      0       0  3.26\n",
+       "1  somewhat likely      1       0  3.21\n",
+       "2         unlikely      1       1  3.94\n",
+       "3  somewhat likely      0       0  2.81\n",
+       "4  somewhat likely      0       0  2.53"
+      ]
+     },
+     "execution_count": 3,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "data_student.head(5)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 4,
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2022-11-02T17:11:14.726752Z",
+     "iopub.status.busy": "2022-11-02T17:11:14.725599Z",
+     "iopub.status.idle": "2022-11-02T17:11:14.732942Z",
+     "shell.execute_reply": "2022-11-02T17:11:14.732391Z"
+    }
+   },
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "apply     category\n",
+       "pared         int8\n",
+       "public        int8\n",
+       "gpa        float32\n",
+       "dtype: object"
+      ]
+     },
+     "execution_count": 4,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "data_student.dtypes"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 5,
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2022-11-02T17:11:14.737210Z",
+     "iopub.status.busy": "2022-11-02T17:11:14.736124Z",
+     "iopub.status.idle": "2022-11-02T17:11:14.742600Z",
+     "shell.execute_reply": "2022-11-02T17:11:14.742076Z"
+    }
+   },
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "CategoricalDtype(categories=['unlikely', 'somewhat likely', 'very likely'], ordered=True)"
+      ]
+     },
+     "execution_count": 5,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "data_student['apply'].dtype"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "This dataset is about the probability for undergraduate students to apply to graduate school given three exogenous variables:\n",
+    "- their grade point average(`gpa`), a float between 0 and 4.\n",
+    "- `pared`, a binary that indicates if at least one parent went to graduate school.\n",
+    "- and `public`, a binary that indicates if the current undergraduate institution of the student is public or private.\n",
+    "\n",
+    "`apply`, the target variable is categorical with ordered categories: `unlikely` < `somewhat likely` < `very likely`. It is a `pd.Serie` of categorical type, this is preferred over NumPy arrays."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "The model is based on a numerical latent variable $y_{latent}$ that we cannot observe but that we can compute thanks to exogenous variables.\n",
+    "Moreover we can use this $y_{latent}$ to define $y$ that we can observe.\n",
+    "\n",
+    "For more details see the the Documentation of OrderedModel,  [the UCLA webpage](https://stats.idre.ucla.edu/r/dae/ordinal-logistic-regression/) or this [book](https://onlinelibrary.wiley.com/doi/book/10.1002/9780470594001).\n"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Probit ordinal regression:"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 6,
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2022-11-02T17:11:14.747749Z",
+     "iopub.status.busy": "2022-11-02T17:11:14.746657Z",
+     "iopub.status.idle": "2022-11-02T17:11:14.909857Z",
+     "shell.execute_reply": "2022-11-02T17:11:14.909264Z"
+    }
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Optimization terminated successfully.\n",
+      "         Current function value: 0.896869\n",
+      "         Iterations: 17\n",
+      "         Function evaluations: 21\n",
+      "         Gradient evaluations: 21\n"
+     ]
+    },
+    {
+     "data": {
+      "text/html": [
+       "<table class=\"simpletable\">\n",
+       "<caption>OrderedModel Results</caption>\n",
+       "<tr>\n",
+       "  <th>Dep. Variable:</th>           <td>apply</td>       <th>  Log-Likelihood:    </th> <td> -358.75</td>\n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>Model:</th>               <td>OrderedModel</td>    <th>  AIC:               </th> <td>   727.5</td>\n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>Method:</th>           <td>Maximum Likelihood</td> <th>  BIC:               </th> <td>   747.5</td>\n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>Date:</th>              <td>Wed, 02 Nov 2022</td>  <th>                     </th>     <td> </td>   \n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>Time:</th>                  <td>17:11:14</td>      <th>                     </th>     <td> </td>   \n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>No. Observations:</th>       <td>   400</td>       <th>                     </th>     <td> </td>   \n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>Df Residuals:</th>           <td>   395</td>       <th>                     </th>     <td> </td>   \n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>Df Model:</th>               <td>     5</td>       <th>                     </th>     <td> </td>   \n",
+       "</tr>\n",
+       "</table>\n",
+       "<table class=\"simpletable\">\n",
+       "<tr>\n",
+       "               <td></td>                  <th>coef</th>     <th>std err</th>      <th>z</th>      <th>P>|z|</th>  <th>[0.025</th>    <th>0.975]</th>  \n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>pared</th>                       <td>    0.5981</td> <td>    0.158</td> <td>    3.789</td> <td> 0.000</td> <td>    0.289</td> <td>    0.908</td>\n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>public</th>                      <td>    0.0102</td> <td>    0.173</td> <td>    0.059</td> <td> 0.953</td> <td>   -0.329</td> <td>    0.349</td>\n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>gpa</th>                         <td>    0.3582</td> <td>    0.157</td> <td>    2.285</td> <td> 0.022</td> <td>    0.051</td> <td>    0.665</td>\n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>unlikely/somewhat likely</th>    <td>    1.2968</td> <td>    0.468</td> <td>    2.774</td> <td> 0.006</td> <td>    0.381</td> <td>    2.213</td>\n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>somewhat likely/very likely</th> <td>    0.1873</td> <td>    0.074</td> <td>    2.530</td> <td> 0.011</td> <td>    0.042</td> <td>    0.332</td>\n",
+       "</tr>\n",
+       "</table>"
+      ],
+      "text/plain": [
+       "<class 'statsmodels.iolib.summary.Summary'>\n",
+       "\"\"\"\n",
+       "                             OrderedModel Results                             \n",
+       "==============================================================================\n",
+       "Dep. Variable:                  apply   Log-Likelihood:                -358.75\n",
+       "Model:                   OrderedModel   AIC:                             727.5\n",
+       "Method:            Maximum Likelihood   BIC:                             747.5\n",
+       "Date:                Wed, 02 Nov 2022                                         \n",
+       "Time:                        17:11:14                                         \n",
+       "No. Observations:                 400                                         \n",
+       "Df Residuals:                     395                                         \n",
+       "Df Model:                           5                                         \n",
+       "===============================================================================================\n",
+       "                                  coef    std err          z      P>|z|      [0.025      0.975]\n",
+       "-----------------------------------------------------------------------------------------------\n",
+       "pared                           0.5981      0.158      3.789      0.000       0.289       0.908\n",
+       "public                          0.0102      0.173      0.059      0.953      -0.329       0.349\n",
+       "gpa                             0.3582      0.157      2.285      0.022       0.051       0.665\n",
+       "unlikely/somewhat likely        1.2968      0.468      2.774      0.006       0.381       2.213\n",
+       "somewhat likely/very likely     0.1873      0.074      2.530      0.011       0.042       0.332\n",
+       "===============================================================================================\n",
+       "\"\"\""
+      ]
+     },
+     "execution_count": 6,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "mod_prob = OrderedModel(data_student['apply'],\n",
+    "                        data_student[['pared', 'public', 'gpa']],\n",
+    "                        distr='probit')\n",
+    "\n",
+    "res_prob = mod_prob.fit(method='bfgs')\n",
+    "res_prob.summary()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "In our model, we have 3 exogenous variables(the $\\beta$s if we keep the documentation's notations) so we have 3 coefficients that need to be estimated.\n",
+    "\n",
+    "Those 3 estimations and their standard errors can be retrieved in the summary table.\n",
+    "\n",
+    "Since there are 3 categories in the target variable(`unlikely`, `somewhat likely`, `very likely`), we have two thresholds to estimate. \n",
+    "As explained in the doc of the method `OrderedModel.transform_threshold_params`, the first estimated threshold is the actual value and all the other thresholds are in terms of cumulative exponentiated increments. Actual thresholds values can be computed as follows:"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 7,
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2022-11-02T17:11:14.914725Z",
+     "iopub.status.busy": "2022-11-02T17:11:14.913582Z",
+     "iopub.status.idle": "2022-11-02T17:11:14.921436Z",
+     "shell.execute_reply": "2022-11-02T17:11:14.920862Z"
+    }
+   },
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "array([      -inf, 1.29684541, 2.50285886,        inf])"
+      ]
+     },
+     "execution_count": 7,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "num_of_thresholds = 2\n",
+    "mod_prob.transform_threshold_params(res_prob.params[-num_of_thresholds:])"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Logit ordinal regression:"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 8,
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2022-11-02T17:11:14.926007Z",
+     "iopub.status.busy": "2022-11-02T17:11:14.924894Z",
+     "iopub.status.idle": "2022-11-02T17:11:15.072480Z",
+     "shell.execute_reply": "2022-11-02T17:11:15.071843Z"
+    }
+   },
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<table class=\"simpletable\">\n",
+       "<caption>OrderedModel Results</caption>\n",
+       "<tr>\n",
+       "  <th>Dep. Variable:</th>           <td>apply</td>       <th>  Log-Likelihood:    </th> <td> -358.51</td>\n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>Model:</th>               <td>OrderedModel</td>    <th>  AIC:               </th> <td>   727.0</td>\n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>Method:</th>           <td>Maximum Likelihood</td> <th>  BIC:               </th> <td>   747.0</td>\n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>Date:</th>              <td>Wed, 02 Nov 2022</td>  <th>                     </th>     <td> </td>   \n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>Time:</th>                  <td>17:11:15</td>      <th>                     </th>     <td> </td>   \n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>No. Observations:</th>       <td>   400</td>       <th>                     </th>     <td> </td>   \n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>Df Residuals:</th>           <td>   395</td>       <th>                     </th>     <td> </td>   \n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>Df Model:</th>               <td>     5</td>       <th>                     </th>     <td> </td>   \n",
+       "</tr>\n",
+       "</table>\n",
+       "<table class=\"simpletable\">\n",
+       "<tr>\n",
+       "               <td></td>                  <th>coef</th>     <th>std err</th>      <th>z</th>      <th>P>|z|</th>  <th>[0.025</th>    <th>0.975]</th>  \n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>pared</th>                       <td>    1.0476</td> <td>    0.266</td> <td>    3.942</td> <td> 0.000</td> <td>    0.527</td> <td>    1.569</td>\n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>public</th>                      <td>   -0.0586</td> <td>    0.298</td> <td>   -0.197</td> <td> 0.844</td> <td>   -0.642</td> <td>    0.525</td>\n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>gpa</th>                         <td>    0.6158</td> <td>    0.261</td> <td>    2.363</td> <td> 0.018</td> <td>    0.105</td> <td>    1.127</td>\n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>unlikely/somewhat likely</th>    <td>    2.2035</td> <td>    0.780</td> <td>    2.827</td> <td> 0.005</td> <td>    0.676</td> <td>    3.731</td>\n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>somewhat likely/very likely</th> <td>    0.7398</td> <td>    0.080</td> <td>    9.236</td> <td> 0.000</td> <td>    0.583</td> <td>    0.897</td>\n",
+       "</tr>\n",
+       "</table>"
+      ],
+      "text/plain": [
+       "<class 'statsmodels.iolib.summary.Summary'>\n",
+       "\"\"\"\n",
+       "                             OrderedModel Results                             \n",
+       "==============================================================================\n",
+       "Dep. Variable:                  apply   Log-Likelihood:                -358.51\n",
+       "Model:                   OrderedModel   AIC:                             727.0\n",
+       "Method:            Maximum Likelihood   BIC:                             747.0\n",
+       "Date:                Wed, 02 Nov 2022                                         \n",
+       "Time:                        17:11:15                                         \n",
+       "No. Observations:                 400                                         \n",
+       "Df Residuals:                     395                                         \n",
+       "Df Model:                           5                                         \n",
+       "===============================================================================================\n",
+       "                                  coef    std err          z      P>|z|      [0.025      0.975]\n",
+       "-----------------------------------------------------------------------------------------------\n",
+       "pared                           1.0476      0.266      3.942      0.000       0.527       1.569\n",
+       "public                         -0.0586      0.298     -0.197      0.844      -0.642       0.525\n",
+       "gpa                             0.6158      0.261      2.363      0.018       0.105       1.127\n",
+       "unlikely/somewhat likely        2.2035      0.780      2.827      0.005       0.676       3.731\n",
+       "somewhat likely/very likely     0.7398      0.080      9.236      0.000       0.583       0.897\n",
+       "===============================================================================================\n",
+       "\"\"\""
+      ]
+     },
+     "execution_count": 8,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "mod_log = OrderedModel(data_student['apply'],\n",
+    "                        data_student[['pared', 'public', 'gpa']],\n",
+    "                        distr='logit')\n",
+    "\n",
+    "res_log = mod_log.fit(method='bfgs', disp=False)\n",
+    "res_log.summary()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 9,
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2022-11-02T17:11:15.078475Z",
+     "iopub.status.busy": "2022-11-02T17:11:15.076821Z",
+     "iopub.status.idle": "2022-11-02T17:11:15.095472Z",
+     "shell.execute_reply": "2022-11-02T17:11:15.094912Z"
+    }
+   },
+   "outputs": [
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "/opt/hostedtoolcache/Python/3.10.8/x64/lib/python3.10/site-packages/statsmodels/miscmodels/ordinal_model.py:419: FutureWarning: Support for multi-dimensional indexing (e.g. `obj[:, None]`) is deprecated and will be removed in a future version.  Convert to a numpy array before indexing instead.\n",
+      "  xb = xb[:, None]\n"
+     ]
+    },
+    {
+     "data": {
+      "text/plain": [
+       "array([[0.54884071, 0.35932276, 0.09183653],\n",
+       "       [0.30558191, 0.47594216, 0.21847593],\n",
+       "       [0.22938356, 0.47819057, 0.29242587],\n",
+       "       ...,\n",
+       "       [0.69380357, 0.25470075, 0.05149568],\n",
+       "       [0.54884071, 0.35932276, 0.09183653],\n",
+       "       [0.50896794, 0.38494062, 0.10609145]])"
+      ]
+     },
+     "execution_count": 9,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "predicted = res_log.model.predict(res_log.params, exog=data_student[['pared', 'public', 'gpa']])\n",
+    "predicted"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 10,
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2022-11-02T17:11:15.100940Z",
+     "iopub.status.busy": "2022-11-02T17:11:15.099347Z",
+     "iopub.status.idle": "2022-11-02T17:11:15.106536Z",
+     "shell.execute_reply": "2022-11-02T17:11:15.105987Z"
+    }
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Fraction of correct choice predictions\n",
+      "0.5775\n"
+     ]
+    }
+   ],
+   "source": [
+    "pred_choice = predicted.argmax(1)\n",
+    "print('Fraction of correct choice predictions')\n",
+    "print((np.asarray(data_student['apply'].values.codes) == pred_choice).mean())"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Ordinal regression with a custom cumulative cLogLog distribution:"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "In addition to `logit` and `probit` regression, any continuous distribution from `SciPy.stats` package can be used for the `distr` argument. Alternatively, one can define its own distribution simply creating a subclass from `rv_continuous` and implementing a few methods."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 11,
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2022-11-02T17:11:15.111217Z",
+     "iopub.status.busy": "2022-11-02T17:11:15.110119Z",
+     "iopub.status.idle": "2022-11-02T17:11:15.214665Z",
+     "shell.execute_reply": "2022-11-02T17:11:15.214066Z"
+    }
+   },
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<table class=\"simpletable\">\n",
+       "<caption>OrderedModel Results</caption>\n",
+       "<tr>\n",
+       "  <th>Dep. Variable:</th>           <td>apply</td>       <th>  Log-Likelihood:    </th> <td> -360.84</td>\n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>Model:</th>               <td>OrderedModel</td>    <th>  AIC:               </th> <td>   731.7</td>\n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>Method:</th>           <td>Maximum Likelihood</td> <th>  BIC:               </th> <td>   751.6</td>\n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>Date:</th>              <td>Wed, 02 Nov 2022</td>  <th>                     </th>     <td> </td>   \n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>Time:</th>                  <td>17:11:15</td>      <th>                     </th>     <td> </td>   \n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>No. Observations:</th>       <td>   400</td>       <th>                     </th>     <td> </td>   \n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>Df Residuals:</th>           <td>   395</td>       <th>                     </th>     <td> </td>   \n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>Df Model:</th>               <td>     5</td>       <th>                     </th>     <td> </td>   \n",
+       "</tr>\n",
+       "</table>\n",
+       "<table class=\"simpletable\">\n",
+       "<tr>\n",
+       "               <td></td>                  <th>coef</th>     <th>std err</th>      <th>z</th>      <th>P>|z|</th>  <th>[0.025</th>    <th>0.975]</th>  \n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>pared</th>                       <td>    0.4690</td> <td>    0.117</td> <td>    4.021</td> <td> 0.000</td> <td>    0.240</td> <td>    0.698</td>\n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>public</th>                      <td>   -0.1308</td> <td>    0.149</td> <td>   -0.879</td> <td> 0.379</td> <td>   -0.422</td> <td>    0.161</td>\n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>gpa</th>                         <td>    0.2198</td> <td>    0.134</td> <td>    1.638</td> <td> 0.101</td> <td>   -0.043</td> <td>    0.483</td>\n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>unlikely/somewhat likely</th>    <td>    1.5370</td> <td>    0.405</td> <td>    3.792</td> <td> 0.000</td> <td>    0.742</td> <td>    2.332</td>\n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>somewhat likely/very likely</th> <td>    0.4082</td> <td>    0.093</td> <td>    4.403</td> <td> 0.000</td> <td>    0.226</td> <td>    0.590</td>\n",
+       "</tr>\n",
+       "</table>"
+      ],
+      "text/plain": [
+       "<class 'statsmodels.iolib.summary.Summary'>\n",
+       "\"\"\"\n",
+       "                             OrderedModel Results                             \n",
+       "==============================================================================\n",
+       "Dep. Variable:                  apply   Log-Likelihood:                -360.84\n",
+       "Model:                   OrderedModel   AIC:                             731.7\n",
+       "Method:            Maximum Likelihood   BIC:                             751.6\n",
+       "Date:                Wed, 02 Nov 2022                                         \n",
+       "Time:                        17:11:15                                         \n",
+       "No. Observations:                 400                                         \n",
+       "Df Residuals:                     395                                         \n",
+       "Df Model:                           5                                         \n",
+       "===============================================================================================\n",
+       "                                  coef    std err          z      P>|z|      [0.025      0.975]\n",
+       "-----------------------------------------------------------------------------------------------\n",
+       "pared                           0.4690      0.117      4.021      0.000       0.240       0.698\n",
+       "public                         -0.1308      0.149     -0.879      0.379      -0.422       0.161\n",
+       "gpa                             0.2198      0.134      1.638      0.101      -0.043       0.483\n",
+       "unlikely/somewhat likely        1.5370      0.405      3.792      0.000       0.742       2.332\n",
+       "somewhat likely/very likely     0.4082      0.093      4.403      0.000       0.226       0.590\n",
+       "===============================================================================================\n",
+       "\"\"\""
+      ]
+     },
+     "execution_count": 11,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "# using a SciPy distribution\n",
+    "res_exp = OrderedModel(data_student['apply'],\n",
+    "                           data_student[['pared', 'public', 'gpa']],\n",
+    "                           distr=stats.expon).fit(method='bfgs', disp=False)\n",
+    "res_exp.summary()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 12,
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2022-11-02T17:11:15.219298Z",
+     "iopub.status.busy": "2022-11-02T17:11:15.218192Z",
+     "iopub.status.idle": "2022-11-02T17:11:15.326060Z",
+     "shell.execute_reply": "2022-11-02T17:11:15.325411Z"
+    }
+   },
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<table class=\"simpletable\">\n",
+       "<caption>OrderedModel Results</caption>\n",
+       "<tr>\n",
+       "  <th>Dep. Variable:</th>           <td>apply</td>       <th>  Log-Likelihood:    </th> <td> -359.75</td>\n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>Model:</th>               <td>OrderedModel</td>    <th>  AIC:               </th> <td>   729.5</td>\n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>Method:</th>           <td>Maximum Likelihood</td> <th>  BIC:               </th> <td>   749.5</td>\n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>Date:</th>              <td>Wed, 02 Nov 2022</td>  <th>                     </th>     <td> </td>   \n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>Time:</th>                  <td>17:11:15</td>      <th>                     </th>     <td> </td>   \n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>No. Observations:</th>       <td>   400</td>       <th>                     </th>     <td> </td>   \n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>Df Residuals:</th>           <td>   395</td>       <th>                     </th>     <td> </td>   \n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>Df Model:</th>               <td>     5</td>       <th>                     </th>     <td> </td>   \n",
+       "</tr>\n",
+       "</table>\n",
+       "<table class=\"simpletable\">\n",
+       "<tr>\n",
+       "               <td></td>                  <th>coef</th>     <th>std err</th>      <th>z</th>      <th>P>|z|</th>  <th>[0.025</th>    <th>0.975]</th>  \n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>pared</th>                       <td>    0.5167</td> <td>    0.161</td> <td>    3.202</td> <td> 0.001</td> <td>    0.200</td> <td>    0.833</td>\n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>public</th>                      <td>    0.1081</td> <td>    0.168</td> <td>    0.643</td> <td> 0.520</td> <td>   -0.221</td> <td>    0.438</td>\n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>gpa</th>                         <td>    0.3344</td> <td>    0.154</td> <td>    2.168</td> <td> 0.030</td> <td>    0.032</td> <td>    0.637</td>\n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>unlikely/somewhat likely</th>    <td>    0.8705</td> <td>    0.455</td> <td>    1.912</td> <td> 0.056</td> <td>   -0.022</td> <td>    1.763</td>\n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>somewhat likely/very likely</th> <td>    0.0989</td> <td>    0.071</td> <td>    1.384</td> <td> 0.167</td> <td>   -0.041</td> <td>    0.239</td>\n",
+       "</tr>\n",
+       "</table>"
+      ],
+      "text/plain": [
+       "<class 'statsmodels.iolib.summary.Summary'>\n",
+       "\"\"\"\n",
+       "                             OrderedModel Results                             \n",
+       "==============================================================================\n",
+       "Dep. Variable:                  apply   Log-Likelihood:                -359.75\n",
+       "Model:                   OrderedModel   AIC:                             729.5\n",
+       "Method:            Maximum Likelihood   BIC:                             749.5\n",
+       "Date:                Wed, 02 Nov 2022                                         \n",
+       "Time:                        17:11:15                                         \n",
+       "No. Observations:                 400                                         \n",
+       "Df Residuals:                     395                                         \n",
+       "Df Model:                           5                                         \n",
+       "===============================================================================================\n",
+       "                                  coef    std err          z      P>|z|      [0.025      0.975]\n",
+       "-----------------------------------------------------------------------------------------------\n",
+       "pared                           0.5167      0.161      3.202      0.001       0.200       0.833\n",
+       "public                          0.1081      0.168      0.643      0.520      -0.221       0.438\n",
+       "gpa                             0.3344      0.154      2.168      0.030       0.032       0.637\n",
+       "unlikely/somewhat likely        0.8705      0.455      1.912      0.056      -0.022       1.763\n",
+       "somewhat likely/very likely     0.0989      0.071      1.384      0.167      -0.041       0.239\n",
+       "===============================================================================================\n",
+       "\"\"\""
+      ]
+     },
+     "execution_count": 12,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "# minimal definition of a custom scipy distribution.\n",
+    "class CLogLog(stats.rv_continuous):\n",
+    "    def _ppf(self, q):\n",
+    "        return np.log(-np.log(1 - q))\n",
+    "\n",
+    "    def _cdf(self, x):\n",
+    "        return 1 - np.exp(-np.exp(x))\n",
+    "\n",
+    "\n",
+    "cloglog = CLogLog()\n",
+    "\n",
+    "# definition of the model and fitting\n",
+    "res_cloglog = OrderedModel(data_student['apply'],\n",
+    "                           data_student[['pared', 'public', 'gpa']],\n",
+    "                           distr=cloglog).fit(method='bfgs', disp=False)\n",
+    "res_cloglog.summary()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Using formulas - treatment of endog\n",
+    "\n",
+    "Pandas' ordered categorical and numeric values are supported as dependent variable in formulas. Other types will raise a ValueError."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 13,
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2022-11-02T17:11:15.331096Z",
+     "iopub.status.busy": "2022-11-02T17:11:15.329963Z",
+     "iopub.status.idle": "2022-11-02T17:11:15.444753Z",
+     "shell.execute_reply": "2022-11-02T17:11:15.444109Z"
+    }
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Optimization terminated successfully.\n",
+      "         Current function value: 0.896281\n",
+      "         Iterations: 22\n",
+      "         Function evaluations: 24\n",
+      "         Gradient evaluations: 24\n"
+     ]
+    },
+    {
+     "data": {
+      "text/html": [
+       "<table class=\"simpletable\">\n",
+       "<caption>OrderedModel Results</caption>\n",
+       "<tr>\n",
+       "  <th>Dep. Variable:</th>           <td>apply</td>       <th>  Log-Likelihood:    </th> <td> -358.51</td>\n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>Model:</th>               <td>OrderedModel</td>    <th>  AIC:               </th> <td>   727.0</td>\n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>Method:</th>           <td>Maximum Likelihood</td> <th>  BIC:               </th> <td>   747.0</td>\n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>Date:</th>              <td>Wed, 02 Nov 2022</td>  <th>                     </th>     <td> </td>   \n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>Time:</th>                  <td>17:11:15</td>      <th>                     </th>     <td> </td>   \n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>No. Observations:</th>       <td>   400</td>       <th>                     </th>     <td> </td>   \n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>Df Residuals:</th>           <td>   395</td>       <th>                     </th>     <td> </td>   \n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>Df Model:</th>               <td>     5</td>       <th>                     </th>     <td> </td>   \n",
+       "</tr>\n",
+       "</table>\n",
+       "<table class=\"simpletable\">\n",
+       "<tr>\n",
+       "               <td></td>                  <th>coef</th>     <th>std err</th>      <th>z</th>      <th>P>|z|</th>  <th>[0.025</th>    <th>0.975]</th>  \n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>pared</th>                       <td>    1.0476</td> <td>    0.266</td> <td>    3.942</td> <td> 0.000</td> <td>    0.527</td> <td>    1.569</td>\n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>public</th>                      <td>   -0.0586</td> <td>    0.298</td> <td>   -0.197</td> <td> 0.844</td> <td>   -0.642</td> <td>    0.525</td>\n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>gpa</th>                         <td>    0.6158</td> <td>    0.261</td> <td>    2.363</td> <td> 0.018</td> <td>    0.105</td> <td>    1.127</td>\n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>unlikely/somewhat likely</th>    <td>    2.2035</td> <td>    0.780</td> <td>    2.827</td> <td> 0.005</td> <td>    0.676</td> <td>    3.731</td>\n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>somewhat likely/very likely</th> <td>    0.7398</td> <td>    0.080</td> <td>    9.236</td> <td> 0.000</td> <td>    0.583</td> <td>    0.897</td>\n",
+       "</tr>\n",
+       "</table>"
+      ],
+      "text/plain": [
+       "<class 'statsmodels.iolib.summary.Summary'>\n",
+       "\"\"\"\n",
+       "                             OrderedModel Results                             \n",
+       "==============================================================================\n",
+       "Dep. Variable:                  apply   Log-Likelihood:                -358.51\n",
+       "Model:                   OrderedModel   AIC:                             727.0\n",
+       "Method:            Maximum Likelihood   BIC:                             747.0\n",
+       "Date:                Wed, 02 Nov 2022                                         \n",
+       "Time:                        17:11:15                                         \n",
+       "No. Observations:                 400                                         \n",
+       "Df Residuals:                     395                                         \n",
+       "Df Model:                           5                                         \n",
+       "===============================================================================================\n",
+       "                                  coef    std err          z      P>|z|      [0.025      0.975]\n",
+       "-----------------------------------------------------------------------------------------------\n",
+       "pared                           1.0476      0.266      3.942      0.000       0.527       1.569\n",
+       "public                         -0.0586      0.298     -0.197      0.844      -0.642       0.525\n",
+       "gpa                             0.6158      0.261      2.363      0.018       0.105       1.127\n",
+       "unlikely/somewhat likely        2.2035      0.780      2.827      0.005       0.676       3.731\n",
+       "somewhat likely/very likely     0.7398      0.080      9.236      0.000       0.583       0.897\n",
+       "===============================================================================================\n",
+       "\"\"\""
+      ]
+     },
+     "execution_count": 13,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "modf_logit = OrderedModel.from_formula(\"apply ~ 0 + pared + public + gpa\", data_student,\n",
+    "                                      distr='logit')\n",
+    "resf_logit = modf_logit.fit(method='bfgs')\n",
+    "resf_logit.summary()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Using numerical codes for the dependent variable is supported but loses the names of the category levels. The levels and names correspond to the unique values of the dependent variable sorted in alphanumeric order as in the case without using formulas."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 14,
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2022-11-02T17:11:15.449777Z",
+     "iopub.status.busy": "2022-11-02T17:11:15.448619Z",
+     "iopub.status.idle": "2022-11-02T17:11:15.457712Z",
+     "shell.execute_reply": "2022-11-02T17:11:15.457121Z"
+    }
+   },
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "0    9\n",
+       "1    7\n",
+       "2    5\n",
+       "3    7\n",
+       "4    7\n",
+       "Name: apply_codes, dtype: int8"
+      ]
+     },
+     "execution_count": 14,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "data_student[\"apply_codes\"] = data_student['apply'].cat.codes * 2 + 5\n",
+    "data_student[\"apply_codes\"].head()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 15,
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2022-11-02T17:11:15.462327Z",
+     "iopub.status.busy": "2022-11-02T17:11:15.461187Z",
+     "iopub.status.idle": "2022-11-02T17:11:15.683790Z",
+     "shell.execute_reply": "2022-11-02T17:11:15.683176Z"
+    }
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Optimization terminated successfully.\n",
+      "         Current function value: 0.896281\n",
+      "         Iterations: 421\n",
+      "         Function evaluations: 663\n"
+     ]
+    },
+    {
+     "data": {
+      "text/html": [
+       "<table class=\"simpletable\">\n",
+       "<caption>OrderedModel Results</caption>\n",
+       "<tr>\n",
+       "  <th>Dep. Variable:</th>        <td>apply_codes</td>    <th>  Log-Likelihood:    </th> <td> -358.51</td>\n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>Model:</th>               <td>OrderedModel</td>    <th>  AIC:               </th> <td>   727.0</td>\n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>Method:</th>           <td>Maximum Likelihood</td> <th>  BIC:               </th> <td>   747.0</td>\n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>Date:</th>              <td>Wed, 02 Nov 2022</td>  <th>                     </th>     <td> </td>   \n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>Time:</th>                  <td>17:11:15</td>      <th>                     </th>     <td> </td>   \n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>No. Observations:</th>       <td>   400</td>       <th>                     </th>     <td> </td>   \n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>Df Residuals:</th>           <td>   395</td>       <th>                     </th>     <td> </td>   \n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>Df Model:</th>               <td>     5</td>       <th>                     </th>     <td> </td>   \n",
+       "</tr>\n",
+       "</table>\n",
+       "<table class=\"simpletable\">\n",
+       "<tr>\n",
+       "     <td></td>        <th>coef</th>     <th>std err</th>      <th>z</th>      <th>P>|z|</th>  <th>[0.025</th>    <th>0.975]</th>  \n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>pared</th>   <td>    1.0477</td> <td>    0.266</td> <td>    3.942</td> <td> 0.000</td> <td>    0.527</td> <td>    1.569</td>\n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>public</th>  <td>   -0.0587</td> <td>    0.298</td> <td>   -0.197</td> <td> 0.844</td> <td>   -0.642</td> <td>    0.525</td>\n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>gpa</th>     <td>    0.6157</td> <td>    0.261</td> <td>    2.362</td> <td> 0.018</td> <td>    0.105</td> <td>    1.127</td>\n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>5.0/7.0</th> <td>    2.2033</td> <td>    0.780</td> <td>    2.826</td> <td> 0.005</td> <td>    0.675</td> <td>    3.731</td>\n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>7.0/9.0</th> <td>    0.7398</td> <td>    0.080</td> <td>    9.236</td> <td> 0.000</td> <td>    0.583</td> <td>    0.897</td>\n",
+       "</tr>\n",
+       "</table>"
+      ],
+      "text/plain": [
+       "<class 'statsmodels.iolib.summary.Summary'>\n",
+       "\"\"\"\n",
+       "                             OrderedModel Results                             \n",
+       "==============================================================================\n",
+       "Dep. Variable:            apply_codes   Log-Likelihood:                -358.51\n",
+       "Model:                   OrderedModel   AIC:                             727.0\n",
+       "Method:            Maximum Likelihood   BIC:                             747.0\n",
+       "Date:                Wed, 02 Nov 2022                                         \n",
+       "Time:                        17:11:15                                         \n",
+       "No. Observations:                 400                                         \n",
+       "Df Residuals:                     395                                         \n",
+       "Df Model:                           5                                         \n",
+       "==============================================================================\n",
+       "                 coef    std err          z      P>|z|      [0.025      0.975]\n",
+       "------------------------------------------------------------------------------\n",
+       "pared          1.0477      0.266      3.942      0.000       0.527       1.569\n",
+       "public        -0.0587      0.298     -0.197      0.844      -0.642       0.525\n",
+       "gpa            0.6157      0.261      2.362      0.018       0.105       1.127\n",
+       "5.0/7.0        2.2033      0.780      2.826      0.005       0.675       3.731\n",
+       "7.0/9.0        0.7398      0.080      9.236      0.000       0.583       0.897\n",
+       "==============================================================================\n",
+       "\"\"\""
+      ]
+     },
+     "execution_count": 15,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "OrderedModel.from_formula(\"apply_codes ~ 0 + pared + public + gpa\", data_student,\n",
+    "                          distr='logit').fit().summary()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 16,
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2022-11-02T17:11:15.688552Z",
+     "iopub.status.busy": "2022-11-02T17:11:15.687422Z",
+     "iopub.status.idle": "2022-11-02T17:11:15.701826Z",
+     "shell.execute_reply": "2022-11-02T17:11:15.701241Z"
+    }
+   },
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<div>\n",
+       "<style scoped>\n",
+       "    .dataframe tbody tr th:only-of-type {\n",
+       "        vertical-align: middle;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe tbody tr th {\n",
+       "        vertical-align: top;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe thead th {\n",
+       "        text-align: right;\n",
+       "    }\n",
+       "</style>\n",
+       "<table border=\"1\" class=\"dataframe\">\n",
+       "  <thead>\n",
+       "    <tr style=\"text-align: right;\">\n",
+       "      <th></th>\n",
+       "      <th>0</th>\n",
+       "      <th>1</th>\n",
+       "      <th>2</th>\n",
+       "    </tr>\n",
+       "  </thead>\n",
+       "  <tbody>\n",
+       "    <tr>\n",
+       "      <th>0</th>\n",
+       "      <td>0.548841</td>\n",
+       "      <td>0.359323</td>\n",
+       "      <td>0.091837</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>1</th>\n",
+       "      <td>0.305582</td>\n",
+       "      <td>0.475942</td>\n",
+       "      <td>0.218476</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>2</th>\n",
+       "      <td>0.229384</td>\n",
+       "      <td>0.478191</td>\n",
+       "      <td>0.292426</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>3</th>\n",
+       "      <td>0.616118</td>\n",
+       "      <td>0.312690</td>\n",
+       "      <td>0.071191</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>4</th>\n",
+       "      <td>0.656003</td>\n",
+       "      <td>0.283398</td>\n",
+       "      <td>0.060599</td>\n",
+       "    </tr>\n",
+       "  </tbody>\n",
+       "</table>\n",
+       "</div>"
+      ],
+      "text/plain": [
+       "          0         1         2\n",
+       "0  0.548841  0.359323  0.091837\n",
+       "1  0.305582  0.475942  0.218476\n",
+       "2  0.229384  0.478191  0.292426\n",
+       "3  0.616118  0.312690  0.071191\n",
+       "4  0.656003  0.283398  0.060599"
+      ]
+     },
+     "execution_count": 16,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "resf_logit.predict(data_student.iloc[:5])"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Using string values directly as dependent variable raises a ValueError."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 17,
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2022-11-02T17:11:15.706647Z",
+     "iopub.status.busy": "2022-11-02T17:11:15.705430Z",
+     "iopub.status.idle": "2022-11-02T17:11:15.713971Z",
+     "shell.execute_reply": "2022-11-02T17:11:15.713370Z"
+    }
+   },
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "0        very likely\n",
+       "1    somewhat likely\n",
+       "2           unlikely\n",
+       "3    somewhat likely\n",
+       "4    somewhat likely\n",
+       "Name: apply_str, dtype: object"
+      ]
+     },
+     "execution_count": 17,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "data_student[\"apply_str\"] = np.asarray(data_student[\"apply\"])\n",
+    "data_student[\"apply_str\"].head()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 18,
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2022-11-02T17:11:15.718603Z",
+     "iopub.status.busy": "2022-11-02T17:11:15.717463Z",
+     "iopub.status.idle": "2022-11-02T17:11:15.723758Z",
+     "shell.execute_reply": "2022-11-02T17:11:15.723195Z"
+    }
+   },
+   "outputs": [],
+   "source": [
+    "data_student.apply_str = pd.Categorical(data_student.apply_str, ordered=True)\n",
+    "data_student.public = data_student.public.astype(float)\n",
+    "data_student.pared = data_student.pared.astype(float)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 19,
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2022-11-02T17:11:15.728312Z",
+     "iopub.status.busy": "2022-11-02T17:11:15.727205Z",
+     "iopub.status.idle": "2022-11-02T17:11:15.740766Z",
+     "shell.execute_reply": "2022-11-02T17:11:15.740198Z"
+    },
+    "tags": [
+     "raises-exception"
+    ]
+   },
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "<statsmodels.miscmodels.ordinal_model.OrderedModel at 0x7faa615c3f40>"
+      ]
+     },
+     "execution_count": 19,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "OrderedModel.from_formula(\"apply_str ~ 0 + pared + public + gpa\", data_student,\n",
+    "                          distr='logit')"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Using formulas - no constant in model\n",
+    "\n",
+    "The parameterization of OrderedModel requires that there is **no** constant in the model, neither explicit nor implicit. The constant is equivalent to shifting all thresholds and is therefore not separately identified.\n",
+    "\n",
+    "Patsy's formula specification does not allow a design matrix without explicit or implicit constant if there are categorical variables (or maybe splines) among explanatory variables. As workaround, statsmodels removes an explicit intercept. \n",
+    "\n",
+    "Consequently, there are two valid cases to get a design matrix without intercept.\n",
+    "\n",
+    "- specify a model without explicit and implicit intercept which is possible if there are only numerical variables in the model.\n",
+    "- specify a model with an explicit intercept which statsmodels will remove.\n",
+    "\n",
+    "Models with an implicit intercept will be overparameterized, the parameter estimates will not be fully identified, `cov_params` will not be invertible and standard errors might contain nans.\n",
+    "\n",
+    "In the following we look at an example with an additional categorical variable.\n"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 20,
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2022-11-02T17:11:15.745394Z",
+     "iopub.status.busy": "2022-11-02T17:11:15.744293Z",
+     "iopub.status.idle": "2022-11-02T17:11:15.749375Z",
+     "shell.execute_reply": "2022-11-02T17:11:15.748823Z"
+    }
+   },
+   "outputs": [],
+   "source": [
+    "nobs = len(data_student)\n",
+    "data_student[\"dummy\"] = (np.arange(nobs) < (nobs / 2)).astype(float)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "**explicit intercept**, that will be removed:\n",
+    "\n",
+    "Note \"1 +\" is here redundant because it is patsy's default."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 21,
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2022-11-02T17:11:15.753836Z",
+     "iopub.status.busy": "2022-11-02T17:11:15.752742Z",
+     "iopub.status.idle": "2022-11-02T17:11:15.907632Z",
+     "shell.execute_reply": "2022-11-02T17:11:15.906956Z"
+    }
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Optimization terminated successfully.\n",
+      "         Current function value: 0.896247\n",
+      "         Iterations: 26\n",
+      "         Function evaluations: 28\n",
+      "         Gradient evaluations: 28\n",
+      "                             OrderedModel Results                             \n",
+      "==============================================================================\n",
+      "Dep. Variable:                  apply   Log-Likelihood:                -358.50\n",
+      "Model:                   OrderedModel   AIC:                             729.0\n",
+      "Method:            Maximum Likelihood   BIC:                             752.9\n",
+      "Date:                Wed, 02 Nov 2022                                         \n",
+      "Time:                        17:11:15                                         \n",
+      "No. Observations:                 400                                         \n",
+      "Df Residuals:                     394                                         \n",
+      "Df Model:                           6                                         \n",
+      "===============================================================================================\n",
+      "                                  coef    std err          z      P>|z|      [0.025      0.975]\n",
+      "-----------------------------------------------------------------------------------------------\n",
+      "C(dummy)[T.1.0]                 0.0326      0.198      0.164      0.869      -0.356       0.421\n",
+      "pared                           1.0489      0.266      3.945      0.000       0.528       1.570\n",
+      "public                         -0.0589      0.298     -0.198      0.843      -0.643       0.525\n",
+      "gpa                             0.6153      0.261      2.360      0.018       0.104       1.126\n",
+      "unlikely/somewhat likely        2.2183      0.785      2.826      0.005       0.680       3.757\n",
+      "somewhat likely/very likely     0.7398      0.080      9.237      0.000       0.583       0.897\n",
+      "===============================================================================================\n"
+     ]
+    }
+   ],
+   "source": [
+    "modfd_logit = OrderedModel.from_formula(\"apply ~ 1 + pared + public + gpa + C(dummy)\", data_student,\n",
+    "                                      distr='logit')\n",
+    "resfd_logit = modfd_logit.fit(method='bfgs')\n",
+    "print(resfd_logit.summary())"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 22,
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2022-11-02T17:11:15.914067Z",
+     "iopub.status.busy": "2022-11-02T17:11:15.912241Z",
+     "iopub.status.idle": "2022-11-02T17:11:15.922025Z",
+     "shell.execute_reply": "2022-11-02T17:11:15.921416Z"
+    }
+   },
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "4"
+      ]
+     },
+     "execution_count": 22,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "modfd_logit.k_vars"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 23,
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2022-11-02T17:11:15.927634Z",
+     "iopub.status.busy": "2022-11-02T17:11:15.926002Z",
+     "iopub.status.idle": "2022-11-02T17:11:15.934967Z",
+     "shell.execute_reply": "2022-11-02T17:11:15.934407Z"
+    }
+   },
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "0"
+      ]
+     },
+     "execution_count": 23,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "modfd_logit.k_constant"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "**implicit intercept** creates overparameterized model\n",
+    "\n",
+    "Specifying \"0 +\" in the formula drops the explicit intercept. However, the categorical encoding is now changed to include an implicit intercept. In this example, the created dummy variables `C(dummy)[0.0]` and `C(dummy)[1.0]` sum to one."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {
+    "tags": [
+     "raises-exception"
+    ]
+   },
+   "source": [
+    "```python\n",
+    "OrderedModel.from_formula(\"apply ~ 0 + pared + public + gpa + C(dummy)\", data_student, distr='logit')\n",
+    "```"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "\n",
+    "To see what would happen in the overparameterized case, we can avoid the constant check in the model by explicitly specifying whether a constant is present or not. We use hasconst=False, even though the model has an implicit constant.\n",
+    "\n",
+    "The parameters of the two dummy variable columns and the first threshold are not separately identified. Estimates for those parameters and availability of standard errors are arbitrary and depends on numerical details that differ across environments.\n",
+    "\n",
+    "Some summary measures like log-likelihood value are not affected by this, within convergence tolerance and numerical precision. Prediction should also be possible. However, inference is not available, or is not valid."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 24,
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2022-11-02T17:11:15.940674Z",
+     "iopub.status.busy": "2022-11-02T17:11:15.939101Z",
+     "iopub.status.idle": "2022-11-02T17:11:16.099420Z",
+     "shell.execute_reply": "2022-11-02T17:11:16.098780Z"
+    }
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Optimization terminated successfully.\n",
+      "         Current function value: 0.896247\n",
+      "         Iterations: 24\n",
+      "         Function evaluations: 26\n",
+      "         Gradient evaluations: 26\n"
+     ]
+    },
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "                             OrderedModel Results                             \n",
+      "==============================================================================\n",
+      "Dep. Variable:                  apply   Log-Likelihood:                -358.50\n",
+      "Model:                   OrderedModel   AIC:                             731.0\n",
+      "Method:            Maximum Likelihood   BIC:                             758.9\n",
+      "Date:                Wed, 02 Nov 2022                                         \n",
+      "Time:                        17:11:16                                         \n",
+      "No. Observations:                 400                                         \n",
+      "Df Residuals:                     393                                         \n",
+      "Df Model:                           7                                         \n",
+      "===============================================================================================\n",
+      "                                  coef    std err          z      P>|z|      [0.025      0.975]\n",
+      "-----------------------------------------------------------------------------------------------\n",
+      "C(dummy)[0.0]                  -0.6834    254.944     -0.003      0.998    -500.365     498.998\n",
+      "C(dummy)[1.0]                  -0.6508    254.944     -0.003      0.998    -500.333     499.031\n",
+      "pared                           1.0489      0.266      3.944      0.000       0.528       1.570\n",
+      "public                         -0.0588      0.298     -0.197      0.844      -0.643       0.525\n",
+      "gpa                             0.6153      0.261      2.360      0.018       0.104       1.126\n",
+      "unlikely/somewhat likely        1.5349    254.945      0.006      0.995    -498.148     501.218\n",
+      "somewhat likely/very likely     0.7398      0.080      9.237      0.000       0.583       0.897\n",
+      "===============================================================================================\n"
+     ]
+    }
+   ],
+   "source": [
+    "modfd2_logit = OrderedModel.from_formula(\"apply ~ 0 + pared + public + gpa + C(dummy)\", data_student,\n",
+    "                                         distr='logit', hasconst=False)\n",
+    "resfd2_logit = modfd2_logit.fit(method='bfgs')\n",
+    "print(resfd2_logit.summary())"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 25,
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2022-11-02T17:11:16.104305Z",
+     "iopub.status.busy": "2022-11-02T17:11:16.103166Z",
+     "iopub.status.idle": "2022-11-02T17:11:16.118441Z",
+     "shell.execute_reply": "2022-11-02T17:11:16.117845Z"
+    }
+   },
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<div>\n",
+       "<style scoped>\n",
+       "    .dataframe tbody tr th:only-of-type {\n",
+       "        vertical-align: middle;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe tbody tr th {\n",
+       "        vertical-align: top;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe thead th {\n",
+       "        text-align: right;\n",
+       "    }\n",
+       "</style>\n",
+       "<table border=\"1\" class=\"dataframe\">\n",
+       "  <thead>\n",
+       "    <tr style=\"text-align: right;\">\n",
+       "      <th></th>\n",
+       "      <th>0</th>\n",
+       "      <th>1</th>\n",
+       "      <th>2</th>\n",
+       "    </tr>\n",
+       "  </thead>\n",
+       "  <tbody>\n",
+       "    <tr>\n",
+       "      <th>0</th>\n",
+       "      <td>0.544858</td>\n",
+       "      <td>0.361972</td>\n",
+       "      <td>0.093170</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>1</th>\n",
+       "      <td>0.301918</td>\n",
+       "      <td>0.476667</td>\n",
+       "      <td>0.221416</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>2</th>\n",
+       "      <td>0.226434</td>\n",
+       "      <td>0.477700</td>\n",
+       "      <td>0.295867</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>3</th>\n",
+       "      <td>0.612254</td>\n",
+       "      <td>0.315481</td>\n",
+       "      <td>0.072264</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>4</th>\n",
+       "      <td>0.652280</td>\n",
+       "      <td>0.286188</td>\n",
+       "      <td>0.061532</td>\n",
+       "    </tr>\n",
+       "  </tbody>\n",
+       "</table>\n",
+       "</div>"
+      ],
+      "text/plain": [
+       "          0         1         2\n",
+       "0  0.544858  0.361972  0.093170\n",
+       "1  0.301918  0.476667  0.221416\n",
+       "2  0.226434  0.477700  0.295867\n",
+       "3  0.612254  0.315481  0.072264\n",
+       "4  0.652280  0.286188  0.061532"
+      ]
+     },
+     "execution_count": 25,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "resfd2_logit.predict(data_student.iloc[:5])"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 26,
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2022-11-02T17:11:16.122928Z",
+     "iopub.status.busy": "2022-11-02T17:11:16.121807Z",
+     "iopub.status.idle": "2022-11-02T17:11:16.130884Z",
+     "shell.execute_reply": "2022-11-02T17:11:16.130331Z"
+    }
+   },
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "array([[0.54884071, 0.35932276, 0.09183653],\n",
+       "       [0.30558191, 0.47594216, 0.21847593],\n",
+       "       [0.22938356, 0.47819057, 0.29242587],\n",
+       "       ...,\n",
+       "       [0.69380357, 0.25470075, 0.05149568],\n",
+       "       [0.54884071, 0.35932276, 0.09183653],\n",
+       "       [0.50896793, 0.38494062, 0.10609145]])"
+      ]
+     },
+     "execution_count": 26,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "resf_logit.predict()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": []
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Binary Model compared to Logit\n",
+    "\n",
+    "If there are only two levels of the dependent ordered categorical variable, then the model can also be estimated by a Logit model.\n",
+    "\n",
+    "The models are (theoretically) identical in this case except for the parameterization of the constant. Logit as most other models requires in general an intercept. This corresponds to the threshold parameter in the OrderedModel, however, with opposite sign.\n",
+    "\n",
+    "The implementation differs and not all of the same results statistic and post-estimation features are available. Estimated parameters and other results statistic differ mainly based on convergence tolerance of the optimization.\n"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 27,
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2022-11-02T17:11:16.136315Z",
+     "iopub.status.busy": "2022-11-02T17:11:16.134746Z",
+     "iopub.status.idle": "2022-11-02T17:11:16.165456Z",
+     "shell.execute_reply": "2022-11-02T17:11:16.164728Z"
+    }
+   },
+   "outputs": [],
+   "source": [
+    "from statsmodels.discrete.discrete_model import Logit\n",
+    "from statsmodels.tools.tools import add_constant"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "We drop the middle category from the data and keep the two extreme categories."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 28,
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2022-11-02T17:11:16.172387Z",
+     "iopub.status.busy": "2022-11-02T17:11:16.170623Z",
+     "iopub.status.idle": "2022-11-02T17:11:16.192492Z",
+     "shell.execute_reply": "2022-11-02T17:11:16.191914Z"
+    }
+   },
+   "outputs": [
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "/tmp/ipykernel_6943/1247146098.py:4: FutureWarning: The `inplace` parameter in pandas.Categorical.remove_categories is deprecated and will be removed in a future version. Removing unused categories will always return a new Categorical object.\n",
+      "  data2['apply'].cat.remove_categories(\"somewhat likely\", inplace=True)\n"
+     ]
+    },
+    {
+     "data": {
+      "text/html": [
+       "<div>\n",
+       "<style scoped>\n",
+       "    .dataframe tbody tr th:only-of-type {\n",
+       "        vertical-align: middle;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe tbody tr th {\n",
+       "        vertical-align: top;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe thead th {\n",
+       "        text-align: right;\n",
+       "    }\n",
+       "</style>\n",
+       "<table border=\"1\" class=\"dataframe\">\n",
+       "  <thead>\n",
+       "    <tr style=\"text-align: right;\">\n",
+       "      <th></th>\n",
+       "      <th>apply</th>\n",
+       "      <th>pared</th>\n",
+       "      <th>public</th>\n",
+       "      <th>gpa</th>\n",
+       "      <th>apply_codes</th>\n",
+       "      <th>apply_str</th>\n",
+       "      <th>dummy</th>\n",
+       "    </tr>\n",
+       "  </thead>\n",
+       "  <tbody>\n",
+       "    <tr>\n",
+       "      <th>0</th>\n",
+       "      <td>very likely</td>\n",
+       "      <td>0.0</td>\n",
+       "      <td>0.0</td>\n",
+       "      <td>3.26</td>\n",
+       "      <td>9</td>\n",
+       "      <td>very likely</td>\n",
+       "      <td>1.0</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>2</th>\n",
+       "      <td>unlikely</td>\n",
+       "      <td>1.0</td>\n",
+       "      <td>1.0</td>\n",
+       "      <td>3.94</td>\n",
+       "      <td>5</td>\n",
+       "      <td>unlikely</td>\n",
+       "      <td>1.0</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>5</th>\n",
+       "      <td>unlikely</td>\n",
+       "      <td>0.0</td>\n",
+       "      <td>1.0</td>\n",
+       "      <td>2.59</td>\n",
+       "      <td>5</td>\n",
+       "      <td>unlikely</td>\n",
+       "      <td>1.0</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>8</th>\n",
+       "      <td>unlikely</td>\n",
+       "      <td>0.0</td>\n",
+       "      <td>0.0</td>\n",
+       "      <td>3.00</td>\n",
+       "      <td>5</td>\n",
+       "      <td>unlikely</td>\n",
+       "      <td>1.0</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>10</th>\n",
+       "      <td>unlikely</td>\n",
+       "      <td>1.0</td>\n",
+       "      <td>1.0</td>\n",
+       "      <td>3.65</td>\n",
+       "      <td>5</td>\n",
+       "      <td>unlikely</td>\n",
+       "      <td>1.0</td>\n",
+       "    </tr>\n",
+       "  </tbody>\n",
+       "</table>\n",
+       "</div>"
+      ],
+      "text/plain": [
+       "          apply  pared  public   gpa  apply_codes    apply_str  dummy\n",
+       "0   very likely    0.0     0.0  3.26            9  very likely    1.0\n",
+       "2      unlikely    1.0     1.0  3.94            5     unlikely    1.0\n",
+       "5      unlikely    0.0     1.0  2.59            5     unlikely    1.0\n",
+       "8      unlikely    0.0     0.0  3.00            5     unlikely    1.0\n",
+       "10     unlikely    1.0     1.0  3.65            5     unlikely    1.0"
+      ]
+     },
+     "execution_count": 28,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "mask_drop = data_student['apply'] == \"somewhat likely\"\n",
+    "data2 = data_student.loc[~mask_drop, :]\n",
+    "# we need to remove the category also from the Categorical Index\n",
+    "data2['apply'].cat.remove_categories(\"somewhat likely\", inplace=True)\n",
+    "data2.head()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 29,
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2022-11-02T17:11:16.197024Z",
+     "iopub.status.busy": "2022-11-02T17:11:16.195918Z",
+     "iopub.status.idle": "2022-11-02T17:11:16.299411Z",
+     "shell.execute_reply": "2022-11-02T17:11:16.298755Z"
+    }
+   },
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<table class=\"simpletable\">\n",
+       "<caption>OrderedModel Results</caption>\n",
+       "<tr>\n",
+       "  <th>Dep. Variable:</th>           <td>apply</td>       <th>  Log-Likelihood:    </th> <td> -102.87</td>\n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>Model:</th>               <td>OrderedModel</td>    <th>  AIC:               </th> <td>   213.7</td>\n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>Method:</th>           <td>Maximum Likelihood</td> <th>  BIC:               </th> <td>   228.0</td>\n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>Date:</th>              <td>Wed, 02 Nov 2022</td>  <th>                     </th>     <td> </td>   \n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>Time:</th>                  <td>17:11:16</td>      <th>                     </th>     <td> </td>   \n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>No. Observations:</th>       <td>   260</td>       <th>                     </th>     <td> </td>   \n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>Df Residuals:</th>           <td>   256</td>       <th>                     </th>     <td> </td>   \n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>Df Model:</th>               <td>     4</td>       <th>                     </th>     <td> </td>   \n",
+       "</tr>\n",
+       "</table>\n",
+       "<table class=\"simpletable\">\n",
+       "<tr>\n",
+       "            <td></td>              <th>coef</th>     <th>std err</th>      <th>z</th>      <th>P>|z|</th>  <th>[0.025</th>    <th>0.975]</th>  \n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>pared</th>                <td>    1.2861</td> <td>    0.438</td> <td>    2.934</td> <td> 0.003</td> <td>    0.427</td> <td>    2.145</td>\n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>public</th>               <td>    0.4014</td> <td>    0.444</td> <td>    0.903</td> <td> 0.366</td> <td>   -0.470</td> <td>    1.272</td>\n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>gpa</th>                  <td>    0.7854</td> <td>    0.489</td> <td>    1.605</td> <td> 0.108</td> <td>   -0.174</td> <td>    1.744</td>\n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>unlikely/very likely</th> <td>    4.4147</td> <td>    1.485</td> <td>    2.974</td> <td> 0.003</td> <td>    1.505</td> <td>    7.324</td>\n",
+       "</tr>\n",
+       "</table>"
+      ],
+      "text/plain": [
+       "<class 'statsmodels.iolib.summary.Summary'>\n",
+       "\"\"\"\n",
+       "                             OrderedModel Results                             \n",
+       "==============================================================================\n",
+       "Dep. Variable:                  apply   Log-Likelihood:                -102.87\n",
+       "Model:                   OrderedModel   AIC:                             213.7\n",
+       "Method:            Maximum Likelihood   BIC:                             228.0\n",
+       "Date:                Wed, 02 Nov 2022                                         \n",
+       "Time:                        17:11:16                                         \n",
+       "No. Observations:                 260                                         \n",
+       "Df Residuals:                     256                                         \n",
+       "Df Model:                           4                                         \n",
+       "========================================================================================\n",
+       "                           coef    std err          z      P>|z|      [0.025      0.975]\n",
+       "----------------------------------------------------------------------------------------\n",
+       "pared                    1.2861      0.438      2.934      0.003       0.427       2.145\n",
+       "public                   0.4014      0.444      0.903      0.366      -0.470       1.272\n",
+       "gpa                      0.7854      0.489      1.605      0.108      -0.174       1.744\n",
+       "unlikely/very likely     4.4147      1.485      2.974      0.003       1.505       7.324\n",
+       "========================================================================================\n",
+       "\"\"\""
+      ]
+     },
+     "execution_count": 29,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "mod_log = OrderedModel(data2['apply'],\n",
+    "                        data2[['pared', 'public', 'gpa']],\n",
+    "                        distr='logit')\n",
+    "\n",
+    "res_log = mod_log.fit(method='bfgs', disp=False)\n",
+    "res_log.summary()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "The Logit model does not have a constant by default, we have to add it to our explanatory variables.\n",
+    "\n",
+    "The results are essentially identical between Logit and ordered model up to numerical precision mainly resulting from convergence tolerance in the estimation.\n",
+    "\n",
+    "The only difference is in the sign of the constant, Logit and OrdereModel have opposite signs of he constant. This is a consequence of the parameterization in terms of cut points in OrderedModel instead of including and constant column in the design matrix."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 30,
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2022-11-02T17:11:16.304496Z",
+     "iopub.status.busy": "2022-11-02T17:11:16.303351Z",
+     "iopub.status.idle": "2022-11-02T17:11:16.319513Z",
+     "shell.execute_reply": "2022-11-02T17:11:16.318926Z"
+    }
+   },
+   "outputs": [],
+   "source": [
+    "ex = add_constant(data2[['pared', 'public', 'gpa']], prepend=False)\n",
+    "mod_logit = Logit(data2['apply'].cat.codes, ex)\n",
+    "\n",
+    "res_logit = mod_logit.fit(method='bfgs', disp=False)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 31,
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2022-11-02T17:11:16.324182Z",
+     "iopub.status.busy": "2022-11-02T17:11:16.323001Z",
+     "iopub.status.idle": "2022-11-02T17:11:16.340942Z",
+     "shell.execute_reply": "2022-11-02T17:11:16.340351Z"
+    }
+   },
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<table class=\"simpletable\">\n",
+       "<caption>Logit Regression Results</caption>\n",
+       "<tr>\n",
+       "  <th>Dep. Variable:</th>           <td>y</td>        <th>  No. Observations:  </th>  <td>   260</td>  \n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>Model:</th>                 <td>Logit</td>      <th>  Df Residuals:      </th>  <td>   256</td>  \n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>Method:</th>                 <td>MLE</td>       <th>  Df Model:          </th>  <td>     3</td>  \n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>Date:</th>            <td>Wed, 02 Nov 2022</td> <th>  Pseudo R-squ.:     </th>  <td>0.07842</td> \n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>Time:</th>                <td>17:11:16</td>     <th>  Log-Likelihood:    </th> <td> -102.87</td> \n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>converged:</th>             <td>True</td>       <th>  LL-Null:           </th> <td> -111.62</td> \n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>Covariance Type:</th>     <td>nonrobust</td>    <th>  LLR p-value:       </th> <td>0.0005560</td>\n",
+       "</tr>\n",
+       "</table>\n",
+       "<table class=\"simpletable\">\n",
+       "<tr>\n",
+       "     <td></td>       <th>coef</th>     <th>std err</th>      <th>z</th>      <th>P>|z|</th>  <th>[0.025</th>    <th>0.975]</th>  \n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>pared</th>  <td>    1.2861</td> <td>    0.438</td> <td>    2.934</td> <td> 0.003</td> <td>    0.427</td> <td>    2.145</td>\n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>public</th> <td>    0.4014</td> <td>    0.444</td> <td>    0.903</td> <td> 0.366</td> <td>   -0.470</td> <td>    1.272</td>\n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>gpa</th>    <td>    0.7854</td> <td>    0.489</td> <td>    1.605</td> <td> 0.108</td> <td>   -0.174</td> <td>    1.744</td>\n",
+       "</tr>\n",
+       "<tr>\n",
+       "  <th>const</th>  <td>   -4.4148</td> <td>    1.485</td> <td>   -2.974</td> <td> 0.003</td> <td>   -7.324</td> <td>   -1.505</td>\n",
+       "</tr>\n",
+       "</table>"
+      ],
+      "text/plain": [
+       "<class 'statsmodels.iolib.summary.Summary'>\n",
+       "\"\"\"\n",
+       "                           Logit Regression Results                           \n",
+       "==============================================================================\n",
+       "Dep. Variable:                      y   No. Observations:                  260\n",
+       "Model:                          Logit   Df Residuals:                      256\n",
+       "Method:                           MLE   Df Model:                            3\n",
+       "Date:                Wed, 02 Nov 2022   Pseudo R-squ.:                 0.07842\n",
+       "Time:                        17:11:16   Log-Likelihood:                -102.87\n",
+       "converged:                       True   LL-Null:                       -111.62\n",
+       "Covariance Type:            nonrobust   LLR p-value:                 0.0005560\n",
+       "==============================================================================\n",
+       "                 coef    std err          z      P>|z|      [0.025      0.975]\n",
+       "------------------------------------------------------------------------------\n",
+       "pared          1.2861      0.438      2.934      0.003       0.427       2.145\n",
+       "public         0.4014      0.444      0.903      0.366      -0.470       1.272\n",
+       "gpa            0.7854      0.489      1.605      0.108      -0.174       1.744\n",
+       "const         -4.4148      1.485     -2.974      0.003      -7.324      -1.505\n",
+       "==============================================================================\n",
+       "\"\"\""
+      ]
+     },
+     "execution_count": 31,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "res_logit.summary()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Robust standard errors are also available in OrderedModel in the same way as in discrete.Logit.\n",
+    "As example we specify HAC covariance type even though we have cross-sectional data and autocorrelation is not appropriate."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 32,
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2022-11-02T17:11:16.345780Z",
+     "iopub.status.busy": "2022-11-02T17:11:16.344651Z",
+     "iopub.status.idle": "2022-11-02T17:11:16.494814Z",
+     "shell.execute_reply": "2022-11-02T17:11:16.493993Z"
+    }
+   },
+   "outputs": [],
+   "source": [
+    "res_logit_hac = mod_logit.fit(method='bfgs', disp=False, cov_type=\"hac\", cov_kwds={\"maxlags\": 2})\n",
+    "res_log_hac = mod_log.fit(method='bfgs', disp=False, cov_type=\"hac\", cov_kwds={\"maxlags\": 2})"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 33,
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2022-11-02T17:11:16.500346Z",
+     "iopub.status.busy": "2022-11-02T17:11:16.499144Z",
+     "iopub.status.idle": "2022-11-02T17:11:16.507918Z",
+     "shell.execute_reply": "2022-11-02T17:11:16.507372Z"
+    }
+   },
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "pared                   6.526362e-08\n",
+       "public                 -3.820145e-07\n",
+       "gpa                     8.616114e-08\n",
+       "unlikely/very likely    3.570613e-07\n",
+       "dtype: float64"
+      ]
+     },
+     "execution_count": 33,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "res_logit_hac.bse.values - res_log_hac.bse"
+   ]
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "Python 3",
+   "language": "python",
+   "name": "python3"
+  },
+  "language_info": {
+   "codemirror_mode": {
+    "name": "ipython",
+    "version": 3
+   },
+   "file_extension": ".py",
+   "mimetype": "text/x-python",
+   "name": "python",
+   "nbconvert_exporter": "python",
+   "pygments_lexer": "ipython3",
+   "version": "3.10.8"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 4
+}

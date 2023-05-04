@@ -1,0 +1,1281 @@
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>statsmodels.graphics.regressionplots &#8212; statsmodels 0.8.0 documentation</title>
+    
+    <link rel="stylesheet" href="../../../_static/nature.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../../',
+        VERSION:     '0.8.0',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true,
+        SOURCELINK_SUFFIX: '.txt'
+      };
+    </script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <link rel="shortcut icon" href="../../../_static/statsmodels_hybi_favico.ico"/>
+    <link rel="author" title="About these documents" href="../../../about.html" />
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+<link rel="stylesheet" href="../../../_static/examples.css" type="text/css" />
+<link rel="stylesheet" href="../../../_static/facebox.css" type="text/css" />
+<script type="text/javascript" src="../../../_static/scripts.js">
+</script>
+<script type="text/javascript" src="../../../_static/facebox.js">
+</script>
+
+  </head>
+  <body role="document">
+<div class="headerwrap">
+    <div class = "header">
+        
+        <a href = "../../../index.html">
+<img src="../../../_static/statsmodels_hybi_banner.png" alt="Logo"
+    style="padding-left: 15px"/></a>
+        
+    </div>
+</div>
+
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+<li><a href ="../../../install.html">Install</a></li> &nbsp;|&nbsp;
+<li><a href="https://groups.google.com/group/pystatsmodels?hl=en">Support</a></li> &nbsp;|&nbsp;
+<li><a href="https://github.com/statsmodels/statsmodels/issues">Bugs</a></li> &nbsp;|&nbsp;
+<li><a href="../../../dev/index.html">Develop</a></li> &nbsp;|&nbsp;
+<li><a href="../../../examples/index.html">Examples</a></li> &nbsp;|&nbsp;
+<li><a href="../../../faq.html">FAQ</a></li> &nbsp;|&nbsp;
+
+          <li class="nav-item nav-item-1"><a href="../../index.html" accesskey="U">Module code</a> |</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+
+
+
+
+  <h1>Source code for statsmodels.graphics.regressionplots</h1><div class="highlight"><pre>
+<span></span><span class="sd">&#39;&#39;&#39;Partial Regression plot and residual plots to find misspecification</span>
+
+
+<span class="sd">Author: Josef Perktold</span>
+<span class="sd">License: BSD-3</span>
+<span class="sd">Created: 2011-01-23</span>
+
+<span class="sd">update</span>
+<span class="sd">2011-06-05 : start to convert example to usable functions</span>
+<span class="sd">2011-10-27 : docstrings</span>
+
+<span class="sd">&#39;&#39;&#39;</span>
+<span class="kn">from</span> <span class="nn">statsmodels.compat.python</span> <span class="k">import</span> <span class="n">lrange</span><span class="p">,</span> <span class="n">string_types</span><span class="p">,</span> <span class="n">lzip</span><span class="p">,</span> <span class="nb">range</span>
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+<span class="kn">import</span> <span class="nn">pandas</span> <span class="k">as</span> <span class="nn">pd</span>
+<span class="kn">from</span> <span class="nn">patsy</span> <span class="k">import</span> <span class="n">dmatrix</span>
+
+<span class="kn">from</span> <span class="nn">statsmodels.regression.linear_model</span> <span class="k">import</span> <span class="n">OLS</span><span class="p">,</span> <span class="n">GLS</span><span class="p">,</span> <span class="n">WLS</span>
+<span class="kn">from</span> <span class="nn">statsmodels.genmod.generalized_linear_model</span> <span class="k">import</span> <span class="n">GLM</span>
+<span class="kn">from</span> <span class="nn">statsmodels.genmod.generalized_estimating_equations</span> <span class="k">import</span> <span class="n">GEE</span>
+<span class="kn">from</span> <span class="nn">statsmodels.sandbox.regression.predstd</span> <span class="k">import</span> <span class="n">wls_prediction_std</span>
+<span class="kn">from</span> <span class="nn">statsmodels.graphics</span> <span class="k">import</span> <span class="n">utils</span>
+<span class="kn">from</span> <span class="nn">statsmodels.nonparametric.smoothers_lowess</span> <span class="k">import</span> <span class="n">lowess</span>
+<span class="kn">from</span> <span class="nn">statsmodels.tools.tools</span> <span class="k">import</span> <span class="n">maybe_unwrap_results</span>
+<span class="kn">from</span> <span class="nn">statsmodels.base</span> <span class="k">import</span> <span class="n">model</span>
+
+<span class="kn">from</span> <span class="nn">._regressionplots_doc</span> <span class="k">import</span> <span class="p">(</span>
+    <span class="n">_plot_added_variable_doc</span><span class="p">,</span>
+    <span class="n">_plot_partial_residuals_doc</span><span class="p">,</span>
+    <span class="n">_plot_ceres_residuals_doc</span><span class="p">)</span>
+
+<span class="n">__all__</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;plot_fit&#39;</span><span class="p">,</span> <span class="s1">&#39;plot_regress_exog&#39;</span><span class="p">,</span> <span class="s1">&#39;plot_partregress&#39;</span><span class="p">,</span> <span class="s1">&#39;plot_ccpr&#39;</span><span class="p">,</span>
+           <span class="s1">&#39;plot_regress_exog&#39;</span><span class="p">,</span> <span class="s1">&#39;plot_partregress_grid&#39;</span><span class="p">,</span> <span class="s1">&#39;plot_ccpr_grid&#39;</span><span class="p">,</span>
+           <span class="s1">&#39;add_lowess&#39;</span><span class="p">,</span> <span class="s1">&#39;abline_plot&#39;</span><span class="p">,</span> <span class="s1">&#39;influence_plot&#39;</span><span class="p">,</span>
+           <span class="s1">&#39;plot_leverage_resid2&#39;</span><span class="p">,</span> <span class="s1">&#39;added_variable_resids&#39;</span><span class="p">,</span>
+           <span class="s1">&#39;partial_resids&#39;</span><span class="p">,</span> <span class="s1">&#39;ceres_resids&#39;</span><span class="p">,</span> <span class="s1">&#39;plot_added_variable&#39;</span><span class="p">,</span>
+           <span class="s1">&#39;plot_partial_residuals&#39;</span><span class="p">,</span> <span class="s1">&#39;plot_ceres_residuals&#39;</span><span class="p">]</span>
+
+<span class="c1">#TODO: consider moving to influence module</span>
+<span class="k">def</span> <span class="nf">_high_leverage</span><span class="p">(</span><span class="n">results</span><span class="p">):</span>
+    <span class="c1">#TODO: replace 1 with k_constant</span>
+    <span class="k">return</span> <span class="mf">2.</span> <span class="o">*</span> <span class="p">(</span><span class="n">results</span><span class="o">.</span><span class="n">df_model</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span><span class="o">/</span><span class="n">results</span><span class="o">.</span><span class="n">nobs</span>
+
+
+<span class="k">def</span> <span class="nf">add_lowess</span><span class="p">(</span><span class="n">ax</span><span class="p">,</span> <span class="n">lines_idx</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">frac</span><span class="o">=.</span><span class="mi">2</span><span class="p">,</span> <span class="o">**</span><span class="n">lowess_kwargs</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Add Lowess line to a plot.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    ax : matplotlib Axes instance</span>
+<span class="sd">        The Axes to which to add the plot</span>
+<span class="sd">    lines_idx : int</span>
+<span class="sd">        This is the line on the existing plot to which you want to add</span>
+<span class="sd">        a smoothed lowess line.</span>
+<span class="sd">    frac : float</span>
+<span class="sd">        The fraction of the points to use when doing the lowess fit.</span>
+<span class="sd">    lowess_kwargs</span>
+<span class="sd">        Additional keyword arguments are passes to lowess.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    fig : matplotlib Figure instance</span>
+<span class="sd">        The figure that holds the instance.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">y0</span> <span class="o">=</span> <span class="n">ax</span><span class="o">.</span><span class="n">get_lines</span><span class="p">()[</span><span class="n">lines_idx</span><span class="p">]</span><span class="o">.</span><span class="n">_y</span>
+    <span class="n">x0</span> <span class="o">=</span> <span class="n">ax</span><span class="o">.</span><span class="n">get_lines</span><span class="p">()[</span><span class="n">lines_idx</span><span class="p">]</span><span class="o">.</span><span class="n">_x</span>
+    <span class="n">lres</span> <span class="o">=</span> <span class="n">lowess</span><span class="p">(</span><span class="n">y0</span><span class="p">,</span> <span class="n">x0</span><span class="p">,</span> <span class="n">frac</span><span class="o">=</span><span class="n">frac</span><span class="p">,</span> <span class="o">**</span><span class="n">lowess_kwargs</span><span class="p">)</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">lres</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">],</span> <span class="n">lres</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">],</span> <span class="s1">&#39;r&#39;</span><span class="p">,</span> <span class="n">lw</span><span class="o">=</span><span class="mf">1.5</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">ax</span><span class="o">.</span><span class="n">figure</span>
+
+
+<div class="viewcode-block" id="plot_fit"><a class="viewcode-back" href="../../../generated/statsmodels.graphics.regressionplots.plot_fit.html#statsmodels.graphics.regressionplots.plot_fit">[docs]</a><span class="k">def</span> <span class="nf">plot_fit</span><span class="p">(</span><span class="n">results</span><span class="p">,</span> <span class="n">exog_idx</span><span class="p">,</span> <span class="n">y_true</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">ax</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Plot fit against one regressor.</span>
+
+<span class="sd">    This creates one graph with the scatterplot of observed values compared to</span>
+<span class="sd">    fitted values.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    results : result instance</span>
+<span class="sd">        result instance with resid, model.endog and model.exog as attributes</span>
+<span class="sd">    x_var : int or str</span>
+<span class="sd">        Name or index of regressor in exog matrix.</span>
+<span class="sd">    y_true : array_like</span>
+<span class="sd">        (optional) If this is not None, then the array is added to the plot</span>
+<span class="sd">    ax : Matplotlib AxesSubplot instance, optional</span>
+<span class="sd">        If given, this subplot is used to plot in instead of a new figure being</span>
+<span class="sd">        created.</span>
+<span class="sd">    kwargs</span>
+<span class="sd">        The keyword arguments are passed to the plot command for the fitted</span>
+<span class="sd">        values points.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    fig : Matplotlib figure instance</span>
+<span class="sd">        If `ax` is None, the created figure.  Otherwise the figure to which</span>
+<span class="sd">        `ax` is connected.</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    Load the Statewide Crime data set and perform linear regression with</span>
+<span class="sd">    `poverty` and `hs_grad` as variables and `murder` as the response</span>
+
+<span class="sd">    &gt;&gt;&gt; import statsmodels.api as sm</span>
+<span class="sd">    &gt;&gt;&gt; import matplotlib.pyplot as plt</span>
+
+<span class="sd">    &gt;&gt;&gt; data = sm.datasets.statecrime.load_pandas().data</span>
+<span class="sd">    &gt;&gt;&gt; murder = data[&#39;murder&#39;]</span>
+<span class="sd">    &gt;&gt;&gt; X = data[[&#39;poverty&#39;, &#39;hs_grad&#39;]]</span>
+
+<span class="sd">    &gt;&gt;&gt; X[&quot;constant&quot;] = 1</span>
+<span class="sd">    &gt;&gt;&gt; y = murder</span>
+<span class="sd">    &gt;&gt;&gt; model = sm.OLS(y, X)</span>
+<span class="sd">    &gt;&gt;&gt; results = model.fit()</span>
+
+<span class="sd">    Create a plot just for the variable &#39;Poverty&#39;:</span>
+
+<span class="sd">    &gt;&gt;&gt; fig, ax = plt.subplots()</span>
+<span class="sd">    &gt;&gt;&gt; fig = sm.graphics.plot_fit(results, 0, ax=ax)</span>
+<span class="sd">    &gt;&gt;&gt; ax.set_ylabel(&quot;Murder Rate&quot;)</span>
+<span class="sd">    &gt;&gt;&gt; ax.set_xlabel(&quot;Poverty Level&quot;)</span>
+<span class="sd">    &gt;&gt;&gt; ax.set_title(&quot;Linear Regression&quot;)</span>
+
+<span class="sd">    &gt;&gt;&gt; plt.show()</span>
+
+<span class="sd">    .. plot:: plots/graphics_plot_fit_ex.py</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">fig</span><span class="p">,</span> <span class="n">ax</span> <span class="o">=</span> <span class="n">utils</span><span class="o">.</span><span class="n">create_mpl_ax</span><span class="p">(</span><span class="n">ax</span><span class="p">)</span>
+
+    <span class="n">exog_name</span><span class="p">,</span> <span class="n">exog_idx</span> <span class="o">=</span> <span class="n">utils</span><span class="o">.</span><span class="n">maybe_name_or_idx</span><span class="p">(</span><span class="n">exog_idx</span><span class="p">,</span> <span class="n">results</span><span class="o">.</span><span class="n">model</span><span class="p">)</span>
+    <span class="n">results</span> <span class="o">=</span> <span class="n">maybe_unwrap_results</span><span class="p">(</span><span class="n">results</span><span class="p">)</span>
+
+    <span class="c1">#maybe add option for wendog, wexog</span>
+    <span class="n">y</span> <span class="o">=</span> <span class="n">results</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">endog</span>
+    <span class="n">x1</span> <span class="o">=</span> <span class="n">results</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">exog</span><span class="p">[:,</span> <span class="n">exog_idx</span><span class="p">]</span>
+    <span class="n">x1_argsort</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">x1</span><span class="p">)</span>
+    <span class="n">y</span> <span class="o">=</span> <span class="n">y</span><span class="p">[</span><span class="n">x1_argsort</span><span class="p">]</span>
+    <span class="n">x1</span> <span class="o">=</span> <span class="n">x1</span><span class="p">[</span><span class="n">x1_argsort</span><span class="p">]</span>
+
+    <span class="n">ax</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">x1</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="s1">&#39;bo&#39;</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="n">results</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">endog_names</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">y_true</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">ax</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">x1</span><span class="p">,</span> <span class="n">y_true</span><span class="p">[</span><span class="n">x1_argsort</span><span class="p">],</span> <span class="s1">&#39;b-&#39;</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="s1">&#39;True values&#39;</span><span class="p">)</span>
+    <span class="n">title</span> <span class="o">=</span> <span class="s1">&#39;Fitted values versus </span><span class="si">%s</span><span class="s1">&#39;</span> <span class="o">%</span> <span class="n">exog_name</span>
+
+    <span class="n">prstd</span><span class="p">,</span> <span class="n">iv_l</span><span class="p">,</span> <span class="n">iv_u</span> <span class="o">=</span> <span class="n">wls_prediction_std</span><span class="p">(</span><span class="n">results</span><span class="p">)</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">x1</span><span class="p">,</span> <span class="n">results</span><span class="o">.</span><span class="n">fittedvalues</span><span class="p">[</span><span class="n">x1_argsort</span><span class="p">],</span> <span class="s1">&#39;D&#39;</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="s1">&#39;r&#39;</span><span class="p">,</span>
+            <span class="n">label</span><span class="o">=</span><span class="s1">&#39;fitted&#39;</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">vlines</span><span class="p">(</span><span class="n">x1</span><span class="p">,</span> <span class="n">iv_l</span><span class="p">[</span><span class="n">x1_argsort</span><span class="p">],</span> <span class="n">iv_u</span><span class="p">[</span><span class="n">x1_argsort</span><span class="p">],</span> <span class="n">linewidth</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="s1">&#39;k&#39;</span><span class="p">,</span>
+              <span class="n">alpha</span><span class="o">=.</span><span class="mi">7</span><span class="p">)</span>
+    <span class="c1">#ax.fill_between(x1, iv_l[x1_argsort], iv_u[x1_argsort], alpha=0.1,</span>
+    <span class="c1">#                    color=&#39;k&#39;)</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">set_title</span><span class="p">(</span><span class="n">title</span><span class="p">)</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">set_xlabel</span><span class="p">(</span><span class="n">exog_name</span><span class="p">)</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">set_ylabel</span><span class="p">(</span><span class="n">results</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">endog_names</span><span class="p">)</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">legend</span><span class="p">(</span><span class="n">loc</span><span class="o">=</span><span class="s1">&#39;best&#39;</span><span class="p">,</span> <span class="n">numpoints</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">fig</span></div>
+
+
+<div class="viewcode-block" id="plot_regress_exog"><a class="viewcode-back" href="../../../generated/statsmodels.graphics.regressionplots.plot_regress_exog.html#statsmodels.graphics.regressionplots.plot_regress_exog">[docs]</a><span class="k">def</span> <span class="nf">plot_regress_exog</span><span class="p">(</span><span class="n">results</span><span class="p">,</span> <span class="n">exog_idx</span><span class="p">,</span> <span class="n">fig</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Plot regression results against one regressor.</span>
+
+<span class="sd">    This plots four graphs in a 2 by 2 figure: &#39;endog versus exog&#39;,</span>
+<span class="sd">    &#39;residuals versus exog&#39;, &#39;fitted versus exog&#39; and</span>
+<span class="sd">    &#39;fitted plus residual versus exog&#39;</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    results : result instance</span>
+<span class="sd">        result instance with resid, model.endog and model.exog as attributes</span>
+<span class="sd">    exog_idx : int</span>
+<span class="sd">        index of regressor in exog matrix</span>
+<span class="sd">    fig : Matplotlib figure instance, optional</span>
+<span class="sd">        If given, this figure is simply returned.  Otherwise a new figure is</span>
+<span class="sd">        created.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    fig : matplotlib figure instance</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">fig</span> <span class="o">=</span> <span class="n">utils</span><span class="o">.</span><span class="n">create_mpl_fig</span><span class="p">(</span><span class="n">fig</span><span class="p">)</span>
+
+    <span class="n">exog_name</span><span class="p">,</span> <span class="n">exog_idx</span> <span class="o">=</span> <span class="n">utils</span><span class="o">.</span><span class="n">maybe_name_or_idx</span><span class="p">(</span><span class="n">exog_idx</span><span class="p">,</span> <span class="n">results</span><span class="o">.</span><span class="n">model</span><span class="p">)</span>
+    <span class="n">results</span> <span class="o">=</span> <span class="n">maybe_unwrap_results</span><span class="p">(</span><span class="n">results</span><span class="p">)</span>
+
+    <span class="c1">#maybe add option for wendog, wexog</span>
+    <span class="n">y_name</span> <span class="o">=</span> <span class="n">results</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">endog_names</span>
+    <span class="n">x1</span> <span class="o">=</span> <span class="n">results</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">exog</span><span class="p">[:,</span> <span class="n">exog_idx</span><span class="p">]</span>
+    <span class="n">prstd</span><span class="p">,</span> <span class="n">iv_l</span><span class="p">,</span> <span class="n">iv_u</span> <span class="o">=</span> <span class="n">wls_prediction_std</span><span class="p">(</span><span class="n">results</span><span class="p">)</span>
+
+    <span class="n">ax</span> <span class="o">=</span> <span class="n">fig</span><span class="o">.</span><span class="n">add_subplot</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">x1</span><span class="p">,</span> <span class="n">results</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">endog</span><span class="p">,</span> <span class="s1">&#39;o&#39;</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="s1">&#39;b&#39;</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="mf">0.9</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="n">y_name</span><span class="p">)</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">x1</span><span class="p">,</span> <span class="n">results</span><span class="o">.</span><span class="n">fittedvalues</span><span class="p">,</span> <span class="s1">&#39;D&#39;</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="s1">&#39;r&#39;</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="s1">&#39;fitted&#39;</span><span class="p">,</span>
+            <span class="n">alpha</span><span class="o">=.</span><span class="mi">5</span><span class="p">)</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">vlines</span><span class="p">(</span><span class="n">x1</span><span class="p">,</span> <span class="n">iv_l</span><span class="p">,</span> <span class="n">iv_u</span><span class="p">,</span> <span class="n">linewidth</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="s1">&#39;k&#39;</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=.</span><span class="mi">7</span><span class="p">)</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">set_title</span><span class="p">(</span><span class="s1">&#39;Y and Fitted vs. X&#39;</span><span class="p">,</span> <span class="n">fontsize</span><span class="o">=</span><span class="s1">&#39;large&#39;</span><span class="p">)</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">set_xlabel</span><span class="p">(</span><span class="n">exog_name</span><span class="p">)</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">set_ylabel</span><span class="p">(</span><span class="n">y_name</span><span class="p">)</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">legend</span><span class="p">(</span><span class="n">loc</span><span class="o">=</span><span class="s1">&#39;best&#39;</span><span class="p">)</span>
+
+    <span class="n">ax</span> <span class="o">=</span> <span class="n">fig</span><span class="o">.</span><span class="n">add_subplot</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">x1</span><span class="p">,</span> <span class="n">results</span><span class="o">.</span><span class="n">resid</span><span class="p">,</span> <span class="s1">&#39;o&#39;</span><span class="p">)</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">axhline</span><span class="p">(</span><span class="n">y</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="s1">&#39;black&#39;</span><span class="p">)</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">set_title</span><span class="p">(</span><span class="s1">&#39;Residuals versus </span><span class="si">%s</span><span class="s1">&#39;</span> <span class="o">%</span> <span class="n">exog_name</span><span class="p">,</span> <span class="n">fontsize</span><span class="o">=</span><span class="s1">&#39;large&#39;</span><span class="p">)</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">set_xlabel</span><span class="p">(</span><span class="n">exog_name</span><span class="p">)</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">set_ylabel</span><span class="p">(</span><span class="s2">&quot;resid&quot;</span><span class="p">)</span>
+
+    <span class="n">ax</span> <span class="o">=</span> <span class="n">fig</span><span class="o">.</span><span class="n">add_subplot</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span>
+    <span class="n">exog_noti</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">results</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">exog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="nb">bool</span><span class="p">)</span>
+    <span class="n">exog_noti</span><span class="p">[</span><span class="n">exog_idx</span><span class="p">]</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="n">exog_others</span> <span class="o">=</span> <span class="n">results</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">exog</span><span class="p">[:,</span> <span class="n">exog_noti</span><span class="p">]</span>
+    <span class="kn">from</span> <span class="nn">pandas</span> <span class="k">import</span> <span class="n">Series</span>
+    <span class="n">fig</span> <span class="o">=</span> <span class="n">plot_partregress</span><span class="p">(</span><span class="n">results</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">orig_endog</span><span class="p">,</span>
+                           <span class="n">Series</span><span class="p">(</span><span class="n">x1</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="n">exog_name</span><span class="p">,</span>
+                                  <span class="n">index</span><span class="o">=</span><span class="n">results</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">row_labels</span><span class="p">),</span>
+                           <span class="n">exog_others</span><span class="p">,</span> <span class="n">obs_labels</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">ax</span><span class="o">=</span><span class="n">ax</span><span class="p">)</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">set_title</span><span class="p">(</span><span class="s1">&#39;Partial regression plot&#39;</span><span class="p">,</span> <span class="n">fontsize</span><span class="o">=</span><span class="s1">&#39;large&#39;</span><span class="p">)</span>
+    <span class="c1">#ax.set_ylabel(&quot;Fitted values&quot;)</span>
+    <span class="c1">#ax.set_xlabel(exog_name)</span>
+
+    <span class="n">ax</span> <span class="o">=</span> <span class="n">fig</span><span class="o">.</span><span class="n">add_subplot</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">4</span><span class="p">)</span>
+    <span class="n">fig</span> <span class="o">=</span> <span class="n">plot_ccpr</span><span class="p">(</span><span class="n">results</span><span class="p">,</span> <span class="n">exog_idx</span><span class="p">,</span> <span class="n">ax</span><span class="o">=</span><span class="n">ax</span><span class="p">)</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">set_title</span><span class="p">(</span><span class="s1">&#39;CCPR Plot&#39;</span><span class="p">,</span> <span class="n">fontsize</span><span class="o">=</span><span class="s1">&#39;large&#39;</span><span class="p">)</span>
+    <span class="c1">#ax.set_xlabel(exog_name)</span>
+    <span class="c1">#ax.set_ylabel(&quot;Fitted values + resids&quot;)</span>
+
+    <span class="n">fig</span><span class="o">.</span><span class="n">suptitle</span><span class="p">(</span><span class="s1">&#39;Regression Plots for </span><span class="si">%s</span><span class="s1">&#39;</span> <span class="o">%</span> <span class="n">exog_name</span><span class="p">,</span> <span class="n">fontsize</span><span class="o">=</span><span class="s2">&quot;large&quot;</span><span class="p">)</span>
+
+    <span class="n">fig</span><span class="o">.</span><span class="n">tight_layout</span><span class="p">()</span>
+
+    <span class="n">fig</span><span class="o">.</span><span class="n">subplots_adjust</span><span class="p">(</span><span class="n">top</span><span class="o">=.</span><span class="mi">90</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">fig</span></div>
+
+
+<span class="k">def</span> <span class="nf">_partial_regression</span><span class="p">(</span><span class="n">endog</span><span class="p">,</span> <span class="n">exog_i</span><span class="p">,</span> <span class="n">exog_others</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Partial regression.</span>
+
+<span class="sd">    regress endog on exog_i conditional on exog_others</span>
+
+<span class="sd">    uses OLS</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    endog : array_like</span>
+<span class="sd">    exog : array_like</span>
+<span class="sd">    exog_others : array_like</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    res1c : OLS results instance</span>
+
+<span class="sd">    (res1a, res1b) : tuple of OLS results instances</span>
+<span class="sd">         results from regression of endog on exog_others and of exog_i on</span>
+<span class="sd">         exog_others</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1">#FIXME: This function doesn&#39;t appear to be used.</span>
+    <span class="n">res1a</span> <span class="o">=</span> <span class="n">OLS</span><span class="p">(</span><span class="n">endog</span><span class="p">,</span> <span class="n">exog_others</span><span class="p">)</span><span class="o">.</span><span class="n">fit</span><span class="p">()</span>
+    <span class="n">res1b</span> <span class="o">=</span> <span class="n">OLS</span><span class="p">(</span><span class="n">exog_i</span><span class="p">,</span> <span class="n">exog_others</span><span class="p">)</span><span class="o">.</span><span class="n">fit</span><span class="p">()</span>
+    <span class="n">res1c</span> <span class="o">=</span> <span class="n">OLS</span><span class="p">(</span><span class="n">res1a</span><span class="o">.</span><span class="n">resid</span><span class="p">,</span> <span class="n">res1b</span><span class="o">.</span><span class="n">resid</span><span class="p">)</span><span class="o">.</span><span class="n">fit</span><span class="p">()</span>
+
+    <span class="k">return</span> <span class="n">res1c</span><span class="p">,</span> <span class="p">(</span><span class="n">res1a</span><span class="p">,</span> <span class="n">res1b</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="plot_partregress"><a class="viewcode-back" href="../../../generated/statsmodels.graphics.regressionplots.plot_partregress.html#statsmodels.graphics.regressionplots.plot_partregress">[docs]</a><span class="k">def</span> <span class="nf">plot_partregress</span><span class="p">(</span><span class="n">endog</span><span class="p">,</span> <span class="n">exog_i</span><span class="p">,</span> <span class="n">exog_others</span><span class="p">,</span> <span class="n">data</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                     <span class="n">title_kwargs</span><span class="o">=</span><span class="p">{},</span> <span class="n">obs_labels</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">label_kwargs</span><span class="o">=</span><span class="p">{},</span>
+                     <span class="n">ax</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">ret_coords</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Plot partial regression for a single regressor.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    endog : ndarray or string</span>
+<span class="sd">       endogenous or response variable. If string is given, you can use a</span>
+<span class="sd">       arbitrary translations as with a formula.</span>
+<span class="sd">    exog_i : ndarray or string</span>
+<span class="sd">        exogenous, explanatory variable. If string is given, you can use a</span>
+<span class="sd">        arbitrary translations as with a formula.</span>
+<span class="sd">    exog_others : ndarray or list of strings</span>
+<span class="sd">        other exogenous, explanatory variables. If a list of strings is given,</span>
+<span class="sd">        each item is a term in formula. You can use a arbitrary translations</span>
+<span class="sd">        as with a formula. The effect of these variables will be removed by</span>
+<span class="sd">        OLS regression.</span>
+<span class="sd">    data : DataFrame, dict, or recarray</span>
+<span class="sd">        Some kind of data structure with names if the other variables are</span>
+<span class="sd">        given as strings.</span>
+<span class="sd">    title_kwargs : dict</span>
+<span class="sd">        Keyword arguments to pass on for the title. The key to control the</span>
+<span class="sd">        fonts is fontdict.</span>
+<span class="sd">    obs_labels : bool or array-like</span>
+<span class="sd">        Whether or not to annotate the plot points with their observation</span>
+<span class="sd">        labels. If obs_labels is a boolean, the point labels will try to do</span>
+<span class="sd">        the right thing. First it will try to use the index of data, then</span>
+<span class="sd">        fall back to the index of exog_i. Alternatively, you may give an</span>
+<span class="sd">        array-like object corresponding to the obseveration numbers.</span>
+<span class="sd">    labels_kwargs : dict</span>
+<span class="sd">        Keyword arguments that control annotate for the observation labels.</span>
+<span class="sd">    ax : Matplotlib AxesSubplot instance, optional</span>
+<span class="sd">        If given, this subplot is used to plot in instead of a new figure being</span>
+<span class="sd">        created.</span>
+<span class="sd">    ret_coords : bool</span>
+<span class="sd">        If True will return the coordinates of the points in the plot. You</span>
+<span class="sd">        can use this to add your own annotations.</span>
+<span class="sd">    kwargs</span>
+<span class="sd">        The keyword arguments passed to plot for the points.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    fig : Matplotlib figure instance</span>
+<span class="sd">        If `ax` is None, the created figure.  Otherwise the figure to which</span>
+<span class="sd">        `ax` is connected.</span>
+<span class="sd">    coords : list, optional</span>
+<span class="sd">        If ret_coords is True, return a tuple of arrays (x_coords, y_coords).</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    The slope of the fitted line is the that of `exog_i` in the full</span>
+<span class="sd">    multiple regression. The individual points can be used to assess the</span>
+<span class="sd">    influence of points on the estimated coefficient.</span>
+
+<span class="sd">    See Also</span>
+<span class="sd">    --------</span>
+<span class="sd">    plot_partregress_grid : Plot partial regression for a set of regressors.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1">#NOTE: there is no interaction between possible missing data and</span>
+    <span class="c1">#obs_labels yet, so this will need to be tweaked a bit for this case</span>
+    <span class="n">fig</span><span class="p">,</span> <span class="n">ax</span> <span class="o">=</span> <span class="n">utils</span><span class="o">.</span><span class="n">create_mpl_ax</span><span class="p">(</span><span class="n">ax</span><span class="p">)</span>
+
+    <span class="c1"># strings, use patsy to transform to data</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">endog</span><span class="p">,</span> <span class="n">string_types</span><span class="p">):</span>
+        <span class="n">endog</span> <span class="o">=</span> <span class="n">dmatrix</span><span class="p">(</span><span class="n">endog</span> <span class="o">+</span> <span class="s2">&quot;-1&quot;</span><span class="p">,</span> <span class="n">data</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">exog_others</span><span class="p">,</span> <span class="n">string_types</span><span class="p">):</span>
+        <span class="n">RHS</span> <span class="o">=</span> <span class="n">dmatrix</span><span class="p">(</span><span class="n">exog_others</span><span class="p">,</span> <span class="n">data</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">exog_others</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+        <span class="n">RHS</span> <span class="o">=</span> <span class="s2">&quot;+&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">exog_others</span><span class="p">)</span>
+        <span class="n">RHS</span> <span class="o">=</span> <span class="n">dmatrix</span><span class="p">(</span><span class="n">RHS</span><span class="p">,</span> <span class="n">data</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">RHS</span> <span class="o">=</span> <span class="n">exog_others</span>
+    <span class="n">RHS_isemtpy</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">RHS</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="ow">and</span> <span class="n">RHS</span><span class="o">.</span><span class="n">size</span><span class="o">==</span><span class="mi">0</span><span class="p">:</span>
+        <span class="n">RHS_isemtpy</span> <span class="o">=</span> <span class="kc">True</span>
+    <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">RHS</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">)</span> <span class="ow">and</span> <span class="n">RHS</span><span class="o">.</span><span class="n">empty</span><span class="p">:</span>
+        <span class="n">RHS_isemtpy</span> <span class="o">=</span> <span class="kc">True</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">exog_i</span><span class="p">,</span> <span class="n">string_types</span><span class="p">):</span>
+        <span class="n">exog_i</span> <span class="o">=</span> <span class="n">dmatrix</span><span class="p">(</span><span class="n">exog_i</span> <span class="o">+</span> <span class="s2">&quot;-1&quot;</span><span class="p">,</span> <span class="n">data</span><span class="p">)</span>
+
+    <span class="c1"># all arrays or pandas-like</span>
+
+    <span class="k">if</span> <span class="n">RHS_isemtpy</span><span class="p">:</span>
+        <span class="n">ax</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">endog</span><span class="p">,</span> <span class="n">exog_i</span><span class="p">,</span> <span class="s1">&#39;o&#39;</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="n">fitted_line</span> <span class="o">=</span> <span class="n">OLS</span><span class="p">(</span><span class="n">endog</span><span class="p">,</span> <span class="n">exog_i</span><span class="p">)</span><span class="o">.</span><span class="n">fit</span><span class="p">()</span>
+        <span class="n">x_axis_endog_name</span> <span class="o">=</span> <span class="s1">&#39;x&#39;</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">exog_i</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="k">else</span> <span class="n">exog_i</span><span class="o">.</span><span class="n">name</span>
+        <span class="n">y_axis_endog_name</span> <span class="o">=</span> <span class="s1">&#39;y&#39;</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">endog</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="k">else</span> <span class="n">endog</span><span class="o">.</span><span class="n">design_info</span><span class="o">.</span><span class="n">column_names</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">res_yaxis</span> <span class="o">=</span> <span class="n">OLS</span><span class="p">(</span><span class="n">endog</span><span class="p">,</span> <span class="n">RHS</span><span class="p">)</span><span class="o">.</span><span class="n">fit</span><span class="p">()</span>
+        <span class="n">res_xaxis</span> <span class="o">=</span> <span class="n">OLS</span><span class="p">(</span><span class="n">exog_i</span><span class="p">,</span> <span class="n">RHS</span><span class="p">)</span><span class="o">.</span><span class="n">fit</span><span class="p">()</span>
+        <span class="n">xaxis_resid</span> <span class="o">=</span> <span class="n">res_xaxis</span><span class="o">.</span><span class="n">resid</span>
+        <span class="n">yaxis_resid</span> <span class="o">=</span> <span class="n">res_yaxis</span><span class="o">.</span><span class="n">resid</span>
+        <span class="n">x_axis_endog_name</span> <span class="o">=</span> <span class="n">res_xaxis</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">endog_names</span>
+        <span class="n">y_axis_endog_name</span> <span class="o">=</span> <span class="n">res_yaxis</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">endog_names</span>
+        <span class="n">ax</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">xaxis_resid</span><span class="p">,</span> <span class="n">yaxis_resid</span><span class="p">,</span> <span class="s1">&#39;o&#39;</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="n">fitted_line</span> <span class="o">=</span> <span class="n">OLS</span><span class="p">(</span><span class="n">yaxis_resid</span><span class="p">,</span> <span class="n">xaxis_resid</span><span class="p">)</span><span class="o">.</span><span class="n">fit</span><span class="p">()</span>
+
+    <span class="n">fig</span> <span class="o">=</span> <span class="n">abline_plot</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">fitted_line</span><span class="o">.</span><span class="n">params</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">color</span><span class="o">=</span><span class="s1">&#39;k&#39;</span><span class="p">,</span> <span class="n">ax</span><span class="o">=</span><span class="n">ax</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">x_axis_endog_name</span> <span class="o">==</span> <span class="s1">&#39;y&#39;</span><span class="p">:</span>  <span class="c1"># for no names regression will just get a y</span>
+        <span class="n">x_axis_endog_name</span> <span class="o">=</span> <span class="s1">&#39;x&#39;</span>  <span class="c1"># this is misleading, so use x</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">set_xlabel</span><span class="p">(</span><span class="s2">&quot;e(</span><span class="si">%s</span><span class="s2"> | X)&quot;</span> <span class="o">%</span> <span class="n">x_axis_endog_name</span><span class="p">)</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">set_ylabel</span><span class="p">(</span><span class="s2">&quot;e(</span><span class="si">%s</span><span class="s2"> | X)&quot;</span> <span class="o">%</span> <span class="n">y_axis_endog_name</span><span class="p">)</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">set_title</span><span class="p">(</span><span class="s1">&#39;Partial Regression Plot&#39;</span><span class="p">,</span> <span class="o">**</span><span class="n">title_kwargs</span><span class="p">)</span>
+
+    <span class="c1">#NOTE: if we want to get super fancy, we could annotate if a point is</span>
+    <span class="c1">#clicked using this widget</span>
+    <span class="c1">#http://stackoverflow.com/questions/4652439/</span>
+    <span class="c1">#is-there-a-matplotlib-equivalent-of-matlabs-datacursormode/</span>
+    <span class="c1">#4674445#4674445</span>
+    <span class="k">if</span> <span class="n">obs_labels</span> <span class="ow">is</span> <span class="kc">True</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">data</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">obs_labels</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">index</span>
+        <span class="k">elif</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">exog_i</span><span class="p">,</span> <span class="s2">&quot;index&quot;</span><span class="p">):</span>
+            <span class="n">obs_labels</span> <span class="o">=</span> <span class="n">exog_i</span><span class="o">.</span><span class="n">index</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">obs_labels</span> <span class="o">=</span> <span class="n">res_xaxis</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">row_labels</span>
+        <span class="c1">#NOTE: row_labels can be None.</span>
+        <span class="c1">#Maybe we should fix this to never be the case.</span>
+        <span class="k">if</span> <span class="n">obs_labels</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">obs_labels</span> <span class="o">=</span> <span class="n">lrange</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">exog_i</span><span class="p">))</span>
+
+    <span class="k">if</span> <span class="n">obs_labels</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">False</span><span class="p">:</span>  <span class="c1"># could be array-like</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">obs_labels</span><span class="p">)</span> <span class="o">!=</span> <span class="nb">len</span><span class="p">(</span><span class="n">exog_i</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;obs_labels does not match length of exog_i&quot;</span><span class="p">)</span>
+        <span class="n">label_kwargs</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="nb">dict</span><span class="p">(</span><span class="n">ha</span><span class="o">=</span><span class="s2">&quot;center&quot;</span><span class="p">,</span> <span class="n">va</span><span class="o">=</span><span class="s2">&quot;bottom&quot;</span><span class="p">))</span>
+        <span class="n">ax</span> <span class="o">=</span> <span class="n">utils</span><span class="o">.</span><span class="n">annotate_axes</span><span class="p">(</span><span class="n">lrange</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">obs_labels</span><span class="p">)),</span> <span class="n">obs_labels</span><span class="p">,</span>
+                                 <span class="n">lzip</span><span class="p">(</span><span class="n">res_xaxis</span><span class="o">.</span><span class="n">resid</span><span class="p">,</span> <span class="n">res_yaxis</span><span class="o">.</span><span class="n">resid</span><span class="p">),</span>
+                                 <span class="p">[(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">5</span><span class="p">)]</span> <span class="o">*</span> <span class="nb">len</span><span class="p">(</span><span class="n">obs_labels</span><span class="p">),</span> <span class="s2">&quot;x-large&quot;</span><span class="p">,</span> <span class="n">ax</span><span class="o">=</span><span class="n">ax</span><span class="p">,</span>
+                                 <span class="o">**</span><span class="n">label_kwargs</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">ret_coords</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">fig</span><span class="p">,</span> <span class="p">(</span><span class="n">res_xaxis</span><span class="o">.</span><span class="n">resid</span><span class="p">,</span> <span class="n">res_yaxis</span><span class="o">.</span><span class="n">resid</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">fig</span></div>
+
+
+<span class="k">def</span> <span class="nf">plot_partregress_grid</span><span class="p">(</span><span class="n">results</span><span class="p">,</span> <span class="n">exog_idx</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">grid</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">fig</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Plot partial regression for a set of regressors.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    results : results instance</span>
+<span class="sd">        A regression model results instance</span>
+<span class="sd">    exog_idx : None, list of ints, list of strings</span>
+<span class="sd">        (column) indices of the exog used in the plot, default is all.</span>
+<span class="sd">    grid : None or tuple of int (nrows, ncols)</span>
+<span class="sd">        If grid is given, then it is used for the arrangement of the subplots.</span>
+<span class="sd">        If grid is None, then ncol is one, if there are only 2 subplots, and</span>
+<span class="sd">        the number of columns is two otherwise.</span>
+<span class="sd">    fig : Matplotlib figure instance, optional</span>
+<span class="sd">        If given, this figure is simply returned.  Otherwise a new figure is</span>
+<span class="sd">        created.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    fig : Matplotlib figure instance</span>
+<span class="sd">        If `fig` is None, the created figure.  Otherwise `fig` itself.</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    A subplot is created for each explanatory variable given by exog_idx.</span>
+<span class="sd">    The partial regression plot shows the relationship between the response</span>
+<span class="sd">    and the given explanatory variable after removing the effect of all other</span>
+<span class="sd">    explanatory variables in exog.</span>
+
+<span class="sd">    See Also</span>
+<span class="sd">    --------</span>
+<span class="sd">    plot_partregress : Plot partial regression for a single regressor.</span>
+<span class="sd">    plot_ccpr</span>
+
+<span class="sd">    References</span>
+<span class="sd">    ----------</span>
+<span class="sd">    See http://www.itl.nist.gov/div898/software/dataplot/refman1/auxillar/partregr.htm</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="kn">import</span> <span class="nn">pandas</span>
+    <span class="n">fig</span> <span class="o">=</span> <span class="n">utils</span><span class="o">.</span><span class="n">create_mpl_fig</span><span class="p">(</span><span class="n">fig</span><span class="p">)</span>
+
+    <span class="n">exog_name</span><span class="p">,</span> <span class="n">exog_idx</span> <span class="o">=</span> <span class="n">utils</span><span class="o">.</span><span class="n">maybe_name_or_idx</span><span class="p">(</span><span class="n">exog_idx</span><span class="p">,</span> <span class="n">results</span><span class="o">.</span><span class="n">model</span><span class="p">)</span>
+
+    <span class="c1">#maybe add option for using wendog, wexog instead</span>
+    <span class="n">y</span> <span class="o">=</span> <span class="n">pandas</span><span class="o">.</span><span class="n">Series</span><span class="p">(</span><span class="n">results</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">endog</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="n">results</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">endog_names</span><span class="p">)</span>
+    <span class="n">exog</span> <span class="o">=</span> <span class="n">results</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">exog</span>
+
+    <span class="n">k_vars</span> <span class="o">=</span> <span class="n">exog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+    <span class="c1">#this function doesn&#39;t make sense if k_vars=1</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">grid</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">nrows</span><span class="p">,</span> <span class="n">ncols</span> <span class="o">=</span> <span class="n">grid</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">exog_idx</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">2</span><span class="p">:</span>
+            <span class="n">nrows</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">ceil</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">exog_idx</span><span class="p">)</span><span class="o">/</span><span class="mf">2.</span><span class="p">))</span>
+            <span class="n">ncols</span> <span class="o">=</span> <span class="mi">2</span>
+            <span class="n">title_kwargs</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;fontdict&quot;</span> <span class="p">:</span> <span class="p">{</span><span class="s2">&quot;fontsize&quot;</span> <span class="p">:</span> <span class="s1">&#39;small&#39;</span><span class="p">}}</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">nrows</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">exog_idx</span><span class="p">)</span>
+            <span class="n">ncols</span> <span class="o">=</span> <span class="mi">1</span>
+            <span class="n">title_kwargs</span> <span class="o">=</span> <span class="p">{}</span>
+
+    <span class="c1"># for indexing purposes</span>
+    <span class="n">other_names</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">results</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">exog_names</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">idx</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">exog_idx</span><span class="p">):</span>
+        <span class="n">others</span> <span class="o">=</span> <span class="n">lrange</span><span class="p">(</span><span class="n">k_vars</span><span class="p">)</span>
+        <span class="n">others</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="n">idx</span><span class="p">)</span>
+        <span class="n">exog_others</span> <span class="o">=</span> <span class="n">pandas</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">exog</span><span class="p">[:,</span> <span class="n">others</span><span class="p">],</span>
+                                       <span class="n">columns</span><span class="o">=</span><span class="n">other_names</span><span class="p">[</span><span class="n">others</span><span class="p">])</span>
+        <span class="n">ax</span> <span class="o">=</span> <span class="n">fig</span><span class="o">.</span><span class="n">add_subplot</span><span class="p">(</span><span class="n">nrows</span><span class="p">,</span> <span class="n">ncols</span><span class="p">,</span> <span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="p">)</span>
+        <span class="n">plot_partregress</span><span class="p">(</span><span class="n">y</span><span class="p">,</span> <span class="n">pandas</span><span class="o">.</span><span class="n">Series</span><span class="p">(</span><span class="n">exog</span><span class="p">[:,</span> <span class="n">idx</span><span class="p">],</span>
+                                          <span class="n">name</span><span class="o">=</span><span class="n">other_names</span><span class="p">[</span><span class="n">idx</span><span class="p">]),</span>
+                         <span class="n">exog_others</span><span class="p">,</span> <span class="n">ax</span><span class="o">=</span><span class="n">ax</span><span class="p">,</span> <span class="n">title_kwargs</span><span class="o">=</span><span class="n">title_kwargs</span><span class="p">,</span>
+                         <span class="n">obs_labels</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+        <span class="n">ax</span><span class="o">.</span><span class="n">set_title</span><span class="p">(</span><span class="s2">&quot;&quot;</span><span class="p">)</span>
+
+    <span class="n">fig</span><span class="o">.</span><span class="n">suptitle</span><span class="p">(</span><span class="s2">&quot;Partial Regression Plot&quot;</span><span class="p">,</span> <span class="n">fontsize</span><span class="o">=</span><span class="s2">&quot;large&quot;</span><span class="p">)</span>
+
+    <span class="n">fig</span><span class="o">.</span><span class="n">tight_layout</span><span class="p">()</span>
+
+    <span class="n">fig</span><span class="o">.</span><span class="n">subplots_adjust</span><span class="p">(</span><span class="n">top</span><span class="o">=.</span><span class="mi">95</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">fig</span>
+
+
+<div class="viewcode-block" id="plot_ccpr"><a class="viewcode-back" href="../../../generated/statsmodels.graphics.regressionplots.plot_ccpr.html#statsmodels.graphics.regressionplots.plot_ccpr">[docs]</a><span class="k">def</span> <span class="nf">plot_ccpr</span><span class="p">(</span><span class="n">results</span><span class="p">,</span> <span class="n">exog_idx</span><span class="p">,</span> <span class="n">ax</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Plot CCPR against one regressor.</span>
+
+<span class="sd">    Generates a CCPR (component and component-plus-residual) plot.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    results : result instance</span>
+<span class="sd">        A regression results instance.</span>
+<span class="sd">    exog_idx : int or string</span>
+<span class="sd">        Exogenous, explanatory variable. If string is given, it should</span>
+<span class="sd">        be the variable name that you want to use, and you can use arbitrary</span>
+<span class="sd">        translations as with a formula.</span>
+<span class="sd">    ax : Matplotlib AxesSubplot instance, optional</span>
+<span class="sd">        If given, it is used to plot in instead of a new figure being</span>
+<span class="sd">        created.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    fig : Matplotlib figure instance</span>
+<span class="sd">        If `ax` is None, the created figure.  Otherwise the figure to which</span>
+<span class="sd">        `ax` is connected.</span>
+
+<span class="sd">    See Also</span>
+<span class="sd">    --------</span>
+<span class="sd">    plot_ccpr_grid : Creates CCPR plot for multiple regressors in a plot grid.</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    The CCPR plot provides a way to judge the effect of one regressor on the</span>
+<span class="sd">    response variable by taking into account the effects of the other</span>
+<span class="sd">    independent variables. The partial residuals plot is defined as</span>
+<span class="sd">    Residuals + B_i*X_i versus X_i. The component adds the B_i*X_i versus</span>
+<span class="sd">    X_i to show where the fitted line would lie. Care should be taken if X_i</span>
+<span class="sd">    is highly correlated with any of the other independent variables. If this</span>
+<span class="sd">    is the case, the variance evident in the plot will be an underestimate of</span>
+<span class="sd">    the true variance.</span>
+
+<span class="sd">    References</span>
+<span class="sd">    ----------</span>
+<span class="sd">    http://www.itl.nist.gov/div898/software/dataplot/refman1/auxillar/ccpr.htm</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">fig</span><span class="p">,</span> <span class="n">ax</span> <span class="o">=</span> <span class="n">utils</span><span class="o">.</span><span class="n">create_mpl_ax</span><span class="p">(</span><span class="n">ax</span><span class="p">)</span>
+
+    <span class="n">exog_name</span><span class="p">,</span> <span class="n">exog_idx</span> <span class="o">=</span> <span class="n">utils</span><span class="o">.</span><span class="n">maybe_name_or_idx</span><span class="p">(</span><span class="n">exog_idx</span><span class="p">,</span> <span class="n">results</span><span class="o">.</span><span class="n">model</span><span class="p">)</span>
+    <span class="n">results</span> <span class="o">=</span> <span class="n">maybe_unwrap_results</span><span class="p">(</span><span class="n">results</span><span class="p">)</span>
+
+    <span class="n">x1</span> <span class="o">=</span> <span class="n">results</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">exog</span><span class="p">[:,</span> <span class="n">exog_idx</span><span class="p">]</span>
+    <span class="c1">#namestr = &#39; for %s&#39; % self.name if self.name else &#39;&#39;</span>
+    <span class="n">x1beta</span> <span class="o">=</span> <span class="n">x1</span><span class="o">*</span><span class="n">results</span><span class="o">.</span><span class="n">params</span><span class="p">[</span><span class="n">exog_idx</span><span class="p">]</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">x1</span><span class="p">,</span> <span class="n">x1beta</span> <span class="o">+</span> <span class="n">results</span><span class="o">.</span><span class="n">resid</span><span class="p">,</span> <span class="s1">&#39;o&#39;</span><span class="p">)</span>
+    <span class="kn">from</span> <span class="nn">statsmodels.tools.tools</span> <span class="k">import</span> <span class="n">add_constant</span>
+    <span class="n">mod</span> <span class="o">=</span> <span class="n">OLS</span><span class="p">(</span><span class="n">x1beta</span><span class="p">,</span> <span class="n">add_constant</span><span class="p">(</span><span class="n">x1</span><span class="p">))</span><span class="o">.</span><span class="n">fit</span><span class="p">()</span>
+    <span class="n">params</span> <span class="o">=</span> <span class="n">mod</span><span class="o">.</span><span class="n">params</span>
+    <span class="n">fig</span> <span class="o">=</span> <span class="n">abline_plot</span><span class="p">(</span><span class="o">*</span><span class="n">params</span><span class="p">,</span> <span class="o">**</span><span class="nb">dict</span><span class="p">(</span><span class="n">ax</span><span class="o">=</span><span class="n">ax</span><span class="p">))</span>
+    <span class="c1">#ax.plot(x1, x1beta, &#39;-&#39;)</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">set_title</span><span class="p">(</span><span class="s1">&#39;Component and component plus residual plot&#39;</span><span class="p">)</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">set_ylabel</span><span class="p">(</span><span class="s2">&quot;Residual + </span><span class="si">%s</span><span class="s2">*beta_</span><span class="si">%d</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">exog_name</span><span class="p">,</span> <span class="n">exog_idx</span><span class="p">))</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">set_xlabel</span><span class="p">(</span><span class="s2">&quot;</span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="n">exog_name</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">fig</span></div>
+
+
+<span class="k">def</span> <span class="nf">plot_ccpr_grid</span><span class="p">(</span><span class="n">results</span><span class="p">,</span> <span class="n">exog_idx</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">grid</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">fig</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Generate CCPR plots against a set of regressors, plot in a grid.</span>
+
+<span class="sd">    Generates a grid of CCPR (component and component-plus-residual) plots.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    results : result instance</span>
+<span class="sd">        uses exog and params of the result instance</span>
+<span class="sd">    exog_idx : None or list of int</span>
+<span class="sd">        (column) indices of the exog used in the plot</span>
+<span class="sd">    grid : None or tuple of int (nrows, ncols)</span>
+<span class="sd">        If grid is given, then it is used for the arrangement of the subplots.</span>
+<span class="sd">        If grid is None, then ncol is one, if there are only 2 subplots, and</span>
+<span class="sd">        the number of columns is two otherwise.</span>
+<span class="sd">    fig : Matplotlib figure instance, optional</span>
+<span class="sd">        If given, this figure is simply returned.  Otherwise a new figure is</span>
+<span class="sd">        created.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    fig : Matplotlib figure instance</span>
+<span class="sd">        If `ax` is None, the created figure.  Otherwise the figure to which</span>
+<span class="sd">        `ax` is connected.</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    Partial residual plots are formed as::</span>
+
+<span class="sd">        Res + Betahat(i)*Xi versus Xi</span>
+
+<span class="sd">    and CCPR adds::</span>
+
+<span class="sd">        Betahat(i)*Xi versus Xi</span>
+
+<span class="sd">    See Also</span>
+<span class="sd">    --------</span>
+<span class="sd">    plot_ccpr : Creates CCPR plot for a single regressor.</span>
+
+<span class="sd">    References</span>
+<span class="sd">    ----------</span>
+<span class="sd">    See http://www.itl.nist.gov/div898/software/dataplot/refman1/auxillar/ccpr.htm</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">fig</span> <span class="o">=</span> <span class="n">utils</span><span class="o">.</span><span class="n">create_mpl_fig</span><span class="p">(</span><span class="n">fig</span><span class="p">)</span>
+
+    <span class="n">exog_name</span><span class="p">,</span> <span class="n">exog_idx</span> <span class="o">=</span> <span class="n">utils</span><span class="o">.</span><span class="n">maybe_name_or_idx</span><span class="p">(</span><span class="n">exog_idx</span><span class="p">,</span> <span class="n">results</span><span class="o">.</span><span class="n">model</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">grid</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">nrows</span><span class="p">,</span> <span class="n">ncols</span> <span class="o">=</span> <span class="n">grid</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">exog_idx</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">2</span><span class="p">:</span>
+            <span class="n">nrows</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">ceil</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">exog_idx</span><span class="p">)</span><span class="o">/</span><span class="mf">2.</span><span class="p">))</span>
+            <span class="n">ncols</span> <span class="o">=</span> <span class="mi">2</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">nrows</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">exog_idx</span><span class="p">)</span>
+            <span class="n">ncols</span> <span class="o">=</span> <span class="mi">1</span>
+
+    <span class="n">seen_constant</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">idx</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">exog_idx</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">results</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">exog</span><span class="p">[:,</span> <span class="n">idx</span><span class="p">]</span><span class="o">.</span><span class="n">var</span><span class="p">()</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">seen_constant</span> <span class="o">=</span> <span class="mi">1</span>
+            <span class="k">continue</span>
+
+        <span class="n">ax</span> <span class="o">=</span> <span class="n">fig</span><span class="o">.</span><span class="n">add_subplot</span><span class="p">(</span><span class="n">nrows</span><span class="p">,</span> <span class="n">ncols</span><span class="p">,</span> <span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="o">-</span><span class="n">seen_constant</span><span class="p">)</span>
+        <span class="n">fig</span> <span class="o">=</span> <span class="n">plot_ccpr</span><span class="p">(</span><span class="n">results</span><span class="p">,</span> <span class="n">exog_idx</span><span class="o">=</span><span class="n">idx</span><span class="p">,</span> <span class="n">ax</span><span class="o">=</span><span class="n">ax</span><span class="p">)</span>
+        <span class="n">ax</span><span class="o">.</span><span class="n">set_title</span><span class="p">(</span><span class="s2">&quot;&quot;</span><span class="p">)</span>
+
+    <span class="n">fig</span><span class="o">.</span><span class="n">suptitle</span><span class="p">(</span><span class="s2">&quot;Component-Component Plus Residual Plot&quot;</span><span class="p">,</span> <span class="n">fontsize</span><span class="o">=</span><span class="s2">&quot;large&quot;</span><span class="p">)</span>
+
+    <span class="n">fig</span><span class="o">.</span><span class="n">tight_layout</span><span class="p">()</span>
+
+    <span class="n">fig</span><span class="o">.</span><span class="n">subplots_adjust</span><span class="p">(</span><span class="n">top</span><span class="o">=.</span><span class="mi">95</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">fig</span>
+
+
+<div class="viewcode-block" id="abline_plot"><a class="viewcode-back" href="../../../generated/statsmodels.graphics.regressionplots.abline_plot.html#statsmodels.graphics.regressionplots.abline_plot">[docs]</a><span class="k">def</span> <span class="nf">abline_plot</span><span class="p">(</span><span class="n">intercept</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">slope</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">horiz</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">vert</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                <span class="n">model_results</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">ax</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Plots a line given an intercept and slope.</span>
+
+<span class="sd">    intercept : float</span>
+<span class="sd">        The intercept of the line</span>
+<span class="sd">    slope : float</span>
+<span class="sd">        The slope of the line</span>
+<span class="sd">    horiz : float or array-like</span>
+<span class="sd">        Data for horizontal lines on the y-axis</span>
+<span class="sd">    vert : array-like</span>
+<span class="sd">        Data for verterical lines on the x-axis</span>
+<span class="sd">    model_results : statsmodels results instance</span>
+<span class="sd">        Any object that has a two-value `params` attribute. Assumed that it</span>
+<span class="sd">        is (intercept, slope)</span>
+<span class="sd">    ax : axes, optional</span>
+<span class="sd">        Matplotlib axes instance</span>
+<span class="sd">    kwargs</span>
+<span class="sd">        Options passed to matplotlib.pyplot.plt</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    fig : Figure</span>
+<span class="sd">        The figure given by `ax.figure` or a new instance.</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    &gt;&gt;&gt; import numpy as np</span>
+<span class="sd">    &gt;&gt;&gt; import statsmodels.api as sm</span>
+<span class="sd">    &gt;&gt;&gt; np.random.seed(12345)</span>
+<span class="sd">    &gt;&gt;&gt; X = sm.add_constant(np.random.normal(0, 20, size=30))</span>
+<span class="sd">    &gt;&gt;&gt; y = np.dot(X, [25, 3.5]) + np.random.normal(0, 30, size=30)</span>
+<span class="sd">    &gt;&gt;&gt; mod = sm.OLS(y,X).fit()</span>
+<span class="sd">    &gt;&gt;&gt; fig = sm.graphics.abline_plot(model_results=mod)</span>
+<span class="sd">    &gt;&gt;&gt; ax = fig.axes[0]</span>
+<span class="sd">    &gt;&gt;&gt; ax.scatter(X[:,1], y)</span>
+<span class="sd">    &gt;&gt;&gt; ax.margins(.1)</span>
+<span class="sd">    &gt;&gt;&gt; import matplotlib.pyplot as plt</span>
+<span class="sd">    &gt;&gt;&gt; plt.show()</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">ax</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>  <span class="c1"># get axis limits first thing, don&#39;t change these</span>
+        <span class="n">x</span> <span class="o">=</span> <span class="n">ax</span><span class="o">.</span><span class="n">get_xlim</span><span class="p">()</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">x</span> <span class="o">=</span> <span class="kc">None</span>
+
+    <span class="n">fig</span><span class="p">,</span> <span class="n">ax</span> <span class="o">=</span> <span class="n">utils</span><span class="o">.</span><span class="n">create_mpl_ax</span><span class="p">(</span><span class="n">ax</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">model_results</span><span class="p">:</span>
+        <span class="n">intercept</span><span class="p">,</span> <span class="n">slope</span> <span class="o">=</span> <span class="n">model_results</span><span class="o">.</span><span class="n">params</span>
+        <span class="k">if</span> <span class="n">x</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">x</span> <span class="o">=</span> <span class="p">[</span><span class="n">model_results</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">exog</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">min</span><span class="p">(),</span>
+                 <span class="n">model_results</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">exog</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">max</span><span class="p">()]</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span><span class="n">intercept</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">slope</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;specify slope and intercepty or model_results&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">x</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">x</span> <span class="o">=</span> <span class="n">ax</span><span class="o">.</span><span class="n">get_xlim</span><span class="p">()</span>
+
+    <span class="n">data_y</span> <span class="o">=</span> <span class="p">[</span><span class="n">x</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">*</span><span class="n">slope</span><span class="o">+</span><span class="n">intercept</span><span class="p">,</span> <span class="n">x</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">*</span><span class="n">slope</span><span class="o">+</span><span class="n">intercept</span><span class="p">]</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">set_xlim</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+    <span class="c1">#ax.set_ylim(y)</span>
+
+    <span class="kn">from</span> <span class="nn">matplotlib.lines</span> <span class="k">import</span> <span class="n">Line2D</span>
+
+    <span class="k">class</span> <span class="nc">ABLine2D</span><span class="p">(</span><span class="n">Line2D</span><span class="p">):</span>
+
+        <span class="k">def</span> <span class="nf">update_datalim</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ax</span><span class="p">):</span>
+            <span class="n">ax</span><span class="o">.</span><span class="n">set_autoscale_on</span><span class="p">(</span><span class="kc">False</span><span class="p">)</span>
+
+            <span class="n">children</span> <span class="o">=</span> <span class="n">ax</span><span class="o">.</span><span class="n">get_children</span><span class="p">()</span>
+            <span class="n">abline</span> <span class="o">=</span> <span class="p">[</span><span class="n">children</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">children</span><span class="p">))</span>
+                      <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">children</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">ABLine2D</span><span class="p">)][</span><span class="mi">0</span><span class="p">]</span>
+            <span class="n">x</span> <span class="o">=</span> <span class="n">ax</span><span class="o">.</span><span class="n">get_xlim</span><span class="p">()</span>
+            <span class="n">y</span> <span class="o">=</span> <span class="p">[</span><span class="n">x</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">*</span><span class="n">slope</span><span class="o">+</span><span class="n">intercept</span><span class="p">,</span> <span class="n">x</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">*</span><span class="n">slope</span><span class="o">+</span><span class="n">intercept</span><span class="p">]</span>
+            <span class="n">abline</span><span class="o">.</span><span class="n">set_data</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">)</span>
+            <span class="n">ax</span><span class="o">.</span><span class="n">figure</span><span class="o">.</span><span class="n">canvas</span><span class="o">.</span><span class="n">draw</span><span class="p">()</span>
+    <span class="c1">#TODO: how to intercept something like a margins call and adjust?</span>
+
+    <span class="n">line</span> <span class="o">=</span> <span class="n">ABLine2D</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">data_y</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">add_line</span><span class="p">(</span><span class="n">line</span><span class="p">)</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">callbacks</span><span class="o">.</span><span class="n">connect</span><span class="p">(</span><span class="s1">&#39;xlim_changed&#39;</span><span class="p">,</span> <span class="n">line</span><span class="o">.</span><span class="n">update_datalim</span><span class="p">)</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">callbacks</span><span class="o">.</span><span class="n">connect</span><span class="p">(</span><span class="s1">&#39;ylim_changed&#39;</span><span class="p">,</span> <span class="n">line</span><span class="o">.</span><span class="n">update_datalim</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">horiz</span><span class="p">:</span>
+        <span class="n">ax</span><span class="o">.</span><span class="n">hline</span><span class="p">(</span><span class="n">horiz</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">vert</span><span class="p">:</span>
+        <span class="n">ax</span><span class="o">.</span><span class="n">vline</span><span class="p">(</span><span class="n">vert</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">fig</span></div>
+
+
+<div class="viewcode-block" id="influence_plot"><a class="viewcode-back" href="../../../generated/statsmodels.graphics.regressionplots.influence_plot.html#statsmodels.graphics.regressionplots.influence_plot">[docs]</a><span class="k">def</span> <span class="nf">influence_plot</span><span class="p">(</span><span class="n">results</span><span class="p">,</span> <span class="n">external</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=.</span><span class="mi">05</span><span class="p">,</span> <span class="n">criterion</span><span class="o">=</span><span class="s2">&quot;cooks&quot;</span><span class="p">,</span>
+                   <span class="n">size</span><span class="o">=</span><span class="mi">48</span><span class="p">,</span> <span class="n">plot_alpha</span><span class="o">=.</span><span class="mi">75</span><span class="p">,</span> <span class="n">ax</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Plot of influence in regression. Plots studentized resids vs. leverage.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    results : results instance</span>
+<span class="sd">        A fitted model.</span>
+<span class="sd">    external : bool</span>
+<span class="sd">        Whether to use externally or internally studentized residuals. It is</span>
+<span class="sd">        recommended to leave external as True.</span>
+<span class="sd">    alpha : float</span>
+<span class="sd">        The alpha value to identify large studentized residuals. Large means</span>
+<span class="sd">        abs(resid_studentized) &gt; t.ppf(1-alpha/2, dof=results.df_resid)</span>
+<span class="sd">    criterion : str {&#39;DFFITS&#39;, &#39;Cooks&#39;}</span>
+<span class="sd">        Which criterion to base the size of the points on. Options are</span>
+<span class="sd">        DFFITS or Cook&#39;s D.</span>
+<span class="sd">    size : float</span>
+<span class="sd">        The range of `criterion` is mapped to 10**2 - size**2 in points.</span>
+<span class="sd">    plot_alpha : float</span>
+<span class="sd">        The `alpha` of the plotted points.</span>
+<span class="sd">    ax : matplotlib Axes instance</span>
+<span class="sd">        An instance of a matplotlib Axes.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    fig : matplotlib figure</span>
+<span class="sd">        The matplotlib figure that contains the Axes.</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    Row labels for the observations in which the leverage, measured by the</span>
+<span class="sd">    diagonal of the hat matrix, is high or the residuals are large, as the</span>
+<span class="sd">    combination of large residuals and a high influence value indicates an</span>
+<span class="sd">    influence point. The value of large residuals can be controlled using the</span>
+<span class="sd">    `alpha` parameter. Large leverage points are identified as</span>
+<span class="sd">    hat_i &gt; 2 * (df_model + 1)/nobs.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">fig</span><span class="p">,</span> <span class="n">ax</span> <span class="o">=</span> <span class="n">utils</span><span class="o">.</span><span class="n">create_mpl_ax</span><span class="p">(</span><span class="n">ax</span><span class="p">)</span>
+
+    <span class="n">infl</span> <span class="o">=</span> <span class="n">results</span><span class="o">.</span><span class="n">get_influence</span><span class="p">()</span>
+
+    <span class="k">if</span> <span class="n">criterion</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s1">&#39;coo&#39;</span><span class="p">):</span>
+        <span class="n">psize</span> <span class="o">=</span> <span class="n">infl</span><span class="o">.</span><span class="n">cooks_distance</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="k">elif</span> <span class="n">criterion</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s1">&#39;dff&#39;</span><span class="p">):</span>
+        <span class="n">psize</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">infl</span><span class="o">.</span><span class="n">dffits</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Criterion </span><span class="si">%s</span><span class="s2"> not understood&quot;</span> <span class="o">%</span> <span class="n">criterion</span><span class="p">)</span>
+
+    <span class="c1"># scale the variables</span>
+    <span class="c1">#TODO: what is the correct scaling and the assumption here?</span>
+    <span class="c1">#we want plots to be comparable across different plots</span>
+    <span class="c1">#so we would need to use the expected distribution of criterion probably</span>
+    <span class="n">old_range</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ptp</span><span class="p">(</span><span class="n">psize</span><span class="p">)</span>
+    <span class="n">new_range</span> <span class="o">=</span> <span class="n">size</span><span class="o">**</span><span class="mi">2</span> <span class="o">-</span> <span class="mi">8</span><span class="o">**</span><span class="mi">2</span>
+
+    <span class="n">psize</span> <span class="o">=</span> <span class="p">(</span><span class="n">psize</span> <span class="o">-</span> <span class="n">psize</span><span class="o">.</span><span class="n">min</span><span class="p">())</span> <span class="o">*</span> <span class="n">new_range</span><span class="o">/</span><span class="n">old_range</span> <span class="o">+</span> <span class="mi">8</span><span class="o">**</span><span class="mi">2</span>
+
+    <span class="n">leverage</span> <span class="o">=</span> <span class="n">infl</span><span class="o">.</span><span class="n">hat_matrix_diag</span>
+    <span class="k">if</span> <span class="n">external</span><span class="p">:</span>
+        <span class="n">resids</span> <span class="o">=</span> <span class="n">infl</span><span class="o">.</span><span class="n">resid_studentized_external</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">resids</span> <span class="o">=</span> <span class="n">infl</span><span class="o">.</span><span class="n">resid_studentized_internal</span>
+
+    <span class="kn">from</span> <span class="nn">scipy</span> <span class="k">import</span> <span class="n">stats</span>
+
+    <span class="n">cutoff</span> <span class="o">=</span> <span class="n">stats</span><span class="o">.</span><span class="n">t</span><span class="o">.</span><span class="n">ppf</span><span class="p">(</span><span class="mf">1.</span><span class="o">-</span><span class="n">alpha</span><span class="o">/</span><span class="mi">2</span><span class="p">,</span> <span class="n">results</span><span class="o">.</span><span class="n">df_resid</span><span class="p">)</span>
+    <span class="n">large_resid</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">resids</span><span class="p">)</span> <span class="o">&gt;</span> <span class="n">cutoff</span>
+    <span class="n">large_leverage</span> <span class="o">=</span> <span class="n">leverage</span> <span class="o">&gt;</span> <span class="n">_high_leverage</span><span class="p">(</span><span class="n">results</span><span class="p">)</span>
+    <span class="n">large_points</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">logical_or</span><span class="p">(</span><span class="n">large_resid</span><span class="p">,</span> <span class="n">large_leverage</span><span class="p">)</span>
+
+    <span class="n">ax</span><span class="o">.</span><span class="n">scatter</span><span class="p">(</span><span class="n">leverage</span><span class="p">,</span> <span class="n">resids</span><span class="p">,</span> <span class="n">s</span><span class="o">=</span><span class="n">psize</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="n">plot_alpha</span><span class="p">)</span>
+
+    <span class="c1"># add point labels</span>
+    <span class="n">labels</span> <span class="o">=</span> <span class="n">results</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">row_labels</span>
+    <span class="k">if</span> <span class="n">labels</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">labels</span> <span class="o">=</span> <span class="n">lrange</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">resids</span><span class="p">))</span>
+    <span class="n">ax</span> <span class="o">=</span> <span class="n">utils</span><span class="o">.</span><span class="n">annotate_axes</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">large_points</span><span class="p">)[</span><span class="mi">0</span><span class="p">],</span> <span class="n">labels</span><span class="p">,</span>
+                             <span class="n">lzip</span><span class="p">(</span><span class="n">leverage</span><span class="p">,</span> <span class="n">resids</span><span class="p">),</span>
+                             <span class="n">lzip</span><span class="p">(</span><span class="o">-</span><span class="p">(</span><span class="n">psize</span><span class="o">/</span><span class="mi">2</span><span class="p">)</span><span class="o">**.</span><span class="mi">5</span><span class="p">,</span> <span class="p">(</span><span class="n">psize</span><span class="o">/</span><span class="mi">2</span><span class="p">)</span><span class="o">**.</span><span class="mi">5</span><span class="p">),</span> <span class="s2">&quot;x-large&quot;</span><span class="p">,</span>
+                             <span class="n">ax</span><span class="p">)</span>
+
+    <span class="c1">#TODO: make configurable or let people do it ex-post?</span>
+    <span class="n">font</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;fontsize&quot;</span> <span class="p">:</span> <span class="mi">16</span><span class="p">,</span> <span class="s2">&quot;color&quot;</span> <span class="p">:</span> <span class="s2">&quot;black&quot;</span><span class="p">}</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">set_ylabel</span><span class="p">(</span><span class="s2">&quot;Studentized Residuals&quot;</span><span class="p">,</span> <span class="o">**</span><span class="n">font</span><span class="p">)</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">set_xlabel</span><span class="p">(</span><span class="s2">&quot;H Leverage&quot;</span><span class="p">,</span> <span class="o">**</span><span class="n">font</span><span class="p">)</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">set_title</span><span class="p">(</span><span class="s2">&quot;Influence Plot&quot;</span><span class="p">,</span> <span class="o">**</span><span class="n">font</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">fig</span></div>
+
+
+<div class="viewcode-block" id="plot_leverage_resid2"><a class="viewcode-back" href="../../../generated/statsmodels.graphics.regressionplots.plot_leverage_resid2.html#statsmodels.graphics.regressionplots.plot_leverage_resid2">[docs]</a><span class="k">def</span> <span class="nf">plot_leverage_resid2</span><span class="p">(</span><span class="n">results</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=.</span><span class="mi">05</span><span class="p">,</span> <span class="n">ax</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                         <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Plots leverage statistics vs. normalized residuals squared</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    results : results instance</span>
+<span class="sd">        A regression results instance</span>
+<span class="sd">    alpha : float</span>
+<span class="sd">        Specifies the cut-off for large-standardized residuals. Residuals</span>
+<span class="sd">        are assumed to be distributed N(0, 1) with alpha=alpha.</span>
+<span class="sd">    ax : Axes instance</span>
+<span class="sd">        Matplotlib Axes instance</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    fig : matplotlib Figure</span>
+<span class="sd">        A matplotlib figure instance.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="kn">from</span> <span class="nn">scipy.stats</span> <span class="k">import</span> <span class="n">zscore</span><span class="p">,</span> <span class="n">norm</span>
+    <span class="n">fig</span><span class="p">,</span> <span class="n">ax</span> <span class="o">=</span> <span class="n">utils</span><span class="o">.</span><span class="n">create_mpl_ax</span><span class="p">(</span><span class="n">ax</span><span class="p">)</span>
+
+    <span class="n">infl</span> <span class="o">=</span> <span class="n">results</span><span class="o">.</span><span class="n">get_influence</span><span class="p">()</span>
+    <span class="n">leverage</span> <span class="o">=</span> <span class="n">infl</span><span class="o">.</span><span class="n">hat_matrix_diag</span>
+    <span class="n">resid</span> <span class="o">=</span> <span class="n">zscore</span><span class="p">(</span><span class="n">results</span><span class="o">.</span><span class="n">resid</span><span class="p">)</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">resid</span><span class="o">**</span><span class="mi">2</span><span class="p">,</span> <span class="n">leverage</span><span class="p">,</span> <span class="s1">&#39;o&#39;</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">set_xlabel</span><span class="p">(</span><span class="s2">&quot;Normalized residuals**2&quot;</span><span class="p">)</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">set_ylabel</span><span class="p">(</span><span class="s2">&quot;Leverage&quot;</span><span class="p">)</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">set_title</span><span class="p">(</span><span class="s2">&quot;Leverage vs. Normalized residuals squared&quot;</span><span class="p">)</span>
+
+    <span class="n">large_leverage</span> <span class="o">=</span> <span class="n">leverage</span> <span class="o">&gt;</span> <span class="n">_high_leverage</span><span class="p">(</span><span class="n">results</span><span class="p">)</span>
+    <span class="c1">#norm or t here if standardized?</span>
+    <span class="n">cutoff</span> <span class="o">=</span> <span class="n">norm</span><span class="o">.</span><span class="n">ppf</span><span class="p">(</span><span class="mf">1.</span><span class="o">-</span><span class="n">alpha</span><span class="o">/</span><span class="mi">2</span><span class="p">)</span>
+    <span class="n">large_resid</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">resid</span><span class="p">)</span> <span class="o">&gt;</span> <span class="n">cutoff</span>
+    <span class="n">labels</span> <span class="o">=</span> <span class="n">results</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">row_labels</span>
+    <span class="k">if</span> <span class="n">labels</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">labels</span> <span class="o">=</span> <span class="n">lrange</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">results</span><span class="o">.</span><span class="n">nobs</span><span class="p">))</span>
+    <span class="n">index</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">logical_or</span><span class="p">(</span><span class="n">large_leverage</span><span class="p">,</span> <span class="n">large_resid</span><span class="p">))[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">ax</span> <span class="o">=</span> <span class="n">utils</span><span class="o">.</span><span class="n">annotate_axes</span><span class="p">(</span><span class="n">index</span><span class="p">,</span> <span class="n">labels</span><span class="p">,</span> <span class="n">lzip</span><span class="p">(</span><span class="n">resid</span><span class="o">**</span><span class="mi">2</span><span class="p">,</span> <span class="n">leverage</span><span class="p">),</span>
+                             <span class="p">[(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">5</span><span class="p">)]</span><span class="o">*</span><span class="nb">int</span><span class="p">(</span><span class="n">results</span><span class="o">.</span><span class="n">nobs</span><span class="p">),</span> <span class="s2">&quot;large&quot;</span><span class="p">,</span>
+                             <span class="n">ax</span><span class="o">=</span><span class="n">ax</span><span class="p">,</span> <span class="n">ha</span><span class="o">=</span><span class="s2">&quot;center&quot;</span><span class="p">,</span> <span class="n">va</span><span class="o">=</span><span class="s2">&quot;bottom&quot;</span><span class="p">)</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">margins</span><span class="p">(</span><span class="o">.</span><span class="mi">075</span><span class="p">,</span> <span class="o">.</span><span class="mi">075</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">fig</span></div>
+
+<span class="k">def</span> <span class="nf">plot_added_variable</span><span class="p">(</span><span class="n">results</span><span class="p">,</span> <span class="n">focus_exog</span><span class="p">,</span> <span class="n">resid_type</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                        <span class="n">use_glm_weights</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">fit_kwargs</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">ax</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="c1"># Docstring attached below</span>
+
+    <span class="n">model</span> <span class="o">=</span> <span class="n">results</span><span class="o">.</span><span class="n">model</span>
+
+    <span class="n">fig</span><span class="p">,</span> <span class="n">ax</span> <span class="o">=</span> <span class="n">utils</span><span class="o">.</span><span class="n">create_mpl_ax</span><span class="p">(</span><span class="n">ax</span><span class="p">)</span>
+
+    <span class="n">endog_resid</span><span class="p">,</span> <span class="n">focus_exog_resid</span> <span class="o">=</span>\
+                 <span class="n">added_variable_resids</span><span class="p">(</span><span class="n">results</span><span class="p">,</span> <span class="n">focus_exog</span><span class="p">,</span>
+                                       <span class="n">resid_type</span><span class="o">=</span><span class="n">resid_type</span><span class="p">,</span>
+                                       <span class="n">use_glm_weights</span><span class="o">=</span><span class="n">use_glm_weights</span><span class="p">,</span>
+                                       <span class="n">fit_kwargs</span><span class="o">=</span><span class="n">fit_kwargs</span><span class="p">)</span>
+
+    <span class="n">ax</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">focus_exog_resid</span><span class="p">,</span> <span class="n">endog_resid</span><span class="p">,</span> <span class="s1">&#39;o&#39;</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="mf">0.6</span><span class="p">)</span>
+
+    <span class="n">ax</span><span class="o">.</span><span class="n">set_title</span><span class="p">(</span><span class="s1">&#39;Added variable plot&#39;</span><span class="p">,</span> <span class="n">fontsize</span><span class="o">=</span><span class="s1">&#39;large&#39;</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="nb">type</span><span class="p">(</span><span class="n">focus_exog</span><span class="p">)</span> <span class="ow">is</span> <span class="nb">str</span><span class="p">:</span>
+        <span class="n">xname</span> <span class="o">=</span> <span class="n">focus_exog</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">xname</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">exog_names</span><span class="p">[</span><span class="n">focus_exog</span><span class="p">]</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">set_xlabel</span><span class="p">(</span><span class="n">xname</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="mi">15</span><span class="p">)</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">set_ylabel</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">endog_names</span> <span class="o">+</span> <span class="s2">&quot; residuals&quot;</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="mi">15</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">fig</span>
+
+<span class="n">plot_added_variable</span><span class="o">.</span><span class="vm">__doc__</span> <span class="o">=</span> <span class="n">_plot_added_variable_doc</span> <span class="o">%</span> <span class="p">{</span>
+    <span class="s1">&#39;extra_params_doc&#39;</span> <span class="p">:</span> <span class="s2">&quot;results: object</span><span class="se">\n\t</span><span class="s2">Results for a fitted regression model&quot;</span><span class="p">}</span>
+
+<span class="k">def</span> <span class="nf">plot_partial_residuals</span><span class="p">(</span><span class="n">results</span><span class="p">,</span> <span class="n">focus_exog</span><span class="p">,</span> <span class="n">ax</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="c1"># Docstring attached below</span>
+
+    <span class="n">model</span> <span class="o">=</span> <span class="n">results</span><span class="o">.</span><span class="n">model</span>
+
+    <span class="n">focus_exog</span><span class="p">,</span> <span class="n">focus_col</span> <span class="o">=</span> <span class="n">utils</span><span class="o">.</span><span class="n">maybe_name_or_idx</span><span class="p">(</span><span class="n">focus_exog</span><span class="p">,</span> <span class="n">model</span><span class="p">)</span>
+
+    <span class="n">pr</span> <span class="o">=</span> <span class="n">partial_resids</span><span class="p">(</span><span class="n">results</span><span class="p">,</span> <span class="n">focus_exog</span><span class="p">)</span>
+    <span class="n">focus_exog_vals</span> <span class="o">=</span> <span class="n">results</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">exog</span><span class="p">[:,</span> <span class="n">focus_col</span><span class="p">]</span>
+
+    <span class="n">fig</span><span class="p">,</span> <span class="n">ax</span> <span class="o">=</span> <span class="n">utils</span><span class="o">.</span><span class="n">create_mpl_ax</span><span class="p">(</span><span class="n">ax</span><span class="p">)</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">focus_exog_vals</span><span class="p">,</span> <span class="n">pr</span><span class="p">,</span> <span class="s1">&#39;o&#39;</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="mf">0.6</span><span class="p">)</span>
+
+    <span class="n">ax</span><span class="o">.</span><span class="n">set_title</span><span class="p">(</span><span class="s1">&#39;Partial residuals plot&#39;</span><span class="p">,</span> <span class="n">fontsize</span><span class="o">=</span><span class="s1">&#39;large&#39;</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="nb">type</span><span class="p">(</span><span class="n">focus_exog</span><span class="p">)</span> <span class="ow">is</span> <span class="nb">str</span><span class="p">:</span>
+        <span class="n">xname</span> <span class="o">=</span> <span class="n">focus_exog</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">xname</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">exog_names</span><span class="p">[</span><span class="n">focus_exog</span><span class="p">]</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">set_xlabel</span><span class="p">(</span><span class="n">xname</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="mi">15</span><span class="p">)</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">set_ylabel</span><span class="p">(</span><span class="s2">&quot;Component plus residual&quot;</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="mi">15</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">fig</span>
+
+<span class="n">plot_partial_residuals</span><span class="o">.</span><span class="vm">__doc__</span> <span class="o">=</span> <span class="n">_plot_partial_residuals_doc</span> <span class="o">%</span> <span class="p">{</span>
+    <span class="s1">&#39;extra_params_doc&#39;</span> <span class="p">:</span> <span class="s2">&quot;results: object</span><span class="se">\n\t</span><span class="s2">Results for a fitted regression model&quot;</span><span class="p">}</span>
+
+<span class="k">def</span> <span class="nf">plot_ceres_residuals</span><span class="p">(</span><span class="n">results</span><span class="p">,</span> <span class="n">focus_exog</span><span class="p">,</span> <span class="n">frac</span><span class="o">=</span><span class="mf">0.66</span><span class="p">,</span> <span class="n">cond_means</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+               <span class="n">ax</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="c1"># Docstring attached below</span>
+
+    <span class="n">model</span> <span class="o">=</span> <span class="n">results</span><span class="o">.</span><span class="n">model</span>
+
+    <span class="n">focus_exog</span><span class="p">,</span> <span class="n">focus_col</span> <span class="o">=</span> <span class="n">utils</span><span class="o">.</span><span class="n">maybe_name_or_idx</span><span class="p">(</span><span class="n">focus_exog</span><span class="p">,</span> <span class="n">model</span><span class="p">)</span>
+
+    <span class="n">presid</span> <span class="o">=</span> <span class="n">ceres_resids</span><span class="p">(</span><span class="n">results</span><span class="p">,</span> <span class="n">focus_exog</span><span class="p">,</span> <span class="n">frac</span><span class="o">=</span><span class="n">frac</span><span class="p">,</span>
+                          <span class="n">cond_means</span><span class="o">=</span><span class="n">cond_means</span><span class="p">)</span>
+
+    <span class="n">focus_exog_vals</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">exog</span><span class="p">[:,</span> <span class="n">focus_col</span><span class="p">]</span>
+
+    <span class="n">fig</span><span class="p">,</span> <span class="n">ax</span> <span class="o">=</span> <span class="n">utils</span><span class="o">.</span><span class="n">create_mpl_ax</span><span class="p">(</span><span class="n">ax</span><span class="p">)</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">focus_exog_vals</span><span class="p">,</span> <span class="n">presid</span><span class="p">,</span> <span class="s1">&#39;o&#39;</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="mf">0.6</span><span class="p">)</span>
+
+    <span class="n">ax</span><span class="o">.</span><span class="n">set_title</span><span class="p">(</span><span class="s1">&#39;CERES residuals plot&#39;</span><span class="p">,</span> <span class="n">fontsize</span><span class="o">=</span><span class="s1">&#39;large&#39;</span><span class="p">)</span>
+
+    <span class="n">ax</span><span class="o">.</span><span class="n">set_xlabel</span><span class="p">(</span><span class="n">focus_exog</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="mi">15</span><span class="p">)</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">set_ylabel</span><span class="p">(</span><span class="s2">&quot;Component plus residual&quot;</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="mi">15</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">fig</span>
+
+<span class="n">plot_ceres_residuals</span><span class="o">.</span><span class="vm">__doc__</span> <span class="o">=</span> <span class="n">_plot_ceres_residuals_doc</span> <span class="o">%</span> <span class="p">{</span>
+    <span class="s1">&#39;extra_params_doc&#39;</span> <span class="p">:</span> <span class="s2">&quot;results: object</span><span class="se">\n\t</span><span class="s2">Results for a fitted regression model&quot;</span><span class="p">}</span>
+
+<span class="k">def</span> <span class="nf">ceres_resids</span><span class="p">(</span><span class="n">results</span><span class="p">,</span> <span class="n">focus_exog</span><span class="p">,</span> <span class="n">frac</span><span class="o">=</span><span class="mf">0.66</span><span class="p">,</span> <span class="n">cond_means</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Calculate the CERES residuals (Conditional Expectation Partial</span>
+<span class="sd">    Residuals) for a fitted model.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    results : model results instance</span>
+<span class="sd">        The fitted model for which the CERES residuals are calculated.</span>
+<span class="sd">    focus_exog : int</span>
+<span class="sd">        The column of results.model.exog used as the &#39;focus variable&#39;.</span>
+<span class="sd">    frac : float, optional</span>
+<span class="sd">        Lowess smoothing parameter for estimating the conditional</span>
+<span class="sd">        means.  Not used if `cond_means` is provided.</span>
+<span class="sd">    cond_means : array-like, optional</span>
+<span class="sd">        If provided, the columns of this array are the conditional</span>
+<span class="sd">        means E[exog | focus exog], where exog ranges over some</span>
+<span class="sd">        or all of the columns of exog other than focus exog.  If</span>
+<span class="sd">        this is an empty nx0 array, the conditional means are</span>
+<span class="sd">        treated as being zero.  If None, the conditional means are</span>
+<span class="sd">        estimated.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    An array containing the CERES residuals.</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    If `cond_means` is not provided, it is obtained by smoothing each</span>
+<span class="sd">    column of exog (except the focus column) against the focus column.</span>
+
+<span class="sd">    Currently only supports GLM, GEE, and OLS models.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">model</span> <span class="o">=</span> <span class="n">results</span><span class="o">.</span><span class="n">model</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="p">(</span><span class="n">GLM</span><span class="p">,</span> <span class="n">GEE</span><span class="p">,</span> <span class="n">OLS</span><span class="p">)):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;ceres residuals not available for </span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span>
+                         <span class="n">model</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="p">)</span>
+
+    <span class="n">focus_exog</span><span class="p">,</span> <span class="n">focus_col</span> <span class="o">=</span> <span class="n">utils</span><span class="o">.</span><span class="n">maybe_name_or_idx</span><span class="p">(</span><span class="n">focus_exog</span><span class="p">,</span> <span class="n">model</span><span class="p">)</span>
+
+    <span class="c1"># Indices of non-focus columns</span>
+    <span class="n">ix_nf</span> <span class="o">=</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">results</span><span class="o">.</span><span class="n">params</span><span class="p">))</span>
+    <span class="n">ix_nf</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">ix_nf</span><span class="p">)</span>
+    <span class="n">ix_nf</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="n">focus_col</span><span class="p">)</span>
+    <span class="n">nnf</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">ix_nf</span><span class="p">)</span>
+
+    <span class="c1"># Estimate the conditional means if not provided.</span>
+    <span class="k">if</span> <span class="n">cond_means</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+
+        <span class="c1"># Below we calculate E[x | focus] where x is each column other</span>
+        <span class="c1"># than the focus column.  We don&#39;t want the intercept when we do</span>
+        <span class="c1"># this so we remove it here.</span>
+        <span class="n">pexog</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">exog</span><span class="p">[:,</span> <span class="n">ix_nf</span><span class="p">]</span>
+        <span class="n">pexog</span> <span class="o">-=</span> <span class="n">pexog</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+        <span class="n">u</span><span class="p">,</span> <span class="n">s</span><span class="p">,</span> <span class="n">vt</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">svd</span><span class="p">(</span><span class="n">pexog</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+        <span class="n">ii</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">flatnonzero</span><span class="p">(</span><span class="n">s</span> <span class="o">&gt;</span> <span class="mf">1e-6</span><span class="p">)</span>
+        <span class="n">pexog</span> <span class="o">=</span> <span class="n">u</span><span class="p">[:,</span> <span class="n">ii</span><span class="p">]</span>
+
+        <span class="n">fcol</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">exog</span><span class="p">[:,</span> <span class="n">focus_col</span><span class="p">]</span>
+        <span class="n">cond_means</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">((</span><span class="nb">len</span><span class="p">(</span><span class="n">fcol</span><span class="p">),</span> <span class="n">pexog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]))</span>
+        <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">pexog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]):</span>
+
+            <span class="c1"># Get the fitted values for column i given the other</span>
+            <span class="c1"># columns (skip the intercept).</span>
+            <span class="n">y0</span> <span class="o">=</span> <span class="n">pexog</span><span class="p">[:,</span> <span class="n">j</span><span class="p">]</span>
+
+            <span class="n">cf</span> <span class="o">=</span> <span class="n">lowess</span><span class="p">(</span><span class="n">y0</span><span class="p">,</span> <span class="n">fcol</span><span class="p">,</span> <span class="n">frac</span><span class="o">=</span><span class="n">frac</span><span class="p">,</span> <span class="n">return_sorted</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+
+            <span class="n">cond_means</span><span class="p">[:,</span> <span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="n">cf</span>
+
+    <span class="n">new_exog</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">((</span><span class="n">model</span><span class="o">.</span><span class="n">exog</span><span class="p">[:,</span> <span class="n">ix_nf</span><span class="p">],</span> <span class="n">cond_means</span><span class="p">),</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+
+    <span class="c1"># Refit the model using the adjusted exog values</span>
+    <span class="n">klass</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="vm">__class__</span>
+    <span class="n">init_kwargs</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">_get_init_kwds</span><span class="p">()</span>
+    <span class="n">new_model</span> <span class="o">=</span> <span class="n">klass</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">endog</span><span class="p">,</span> <span class="n">new_exog</span><span class="p">,</span> <span class="o">**</span><span class="n">init_kwargs</span><span class="p">)</span>
+    <span class="n">new_result</span> <span class="o">=</span> <span class="n">new_model</span><span class="o">.</span><span class="n">fit</span><span class="p">()</span>
+
+    <span class="c1"># The partial residual, with respect to l(x2) (notation of Cook 1998)</span>
+    <span class="n">presid</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">endog</span> <span class="o">-</span> <span class="n">new_result</span><span class="o">.</span><span class="n">fittedvalues</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="p">(</span><span class="n">GLM</span><span class="p">,</span> <span class="n">GEE</span><span class="p">)):</span>
+        <span class="n">presid</span> <span class="o">*=</span> <span class="n">model</span><span class="o">.</span><span class="n">family</span><span class="o">.</span><span class="n">link</span><span class="o">.</span><span class="n">deriv</span><span class="p">(</span><span class="n">new_result</span><span class="o">.</span><span class="n">fittedvalues</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">new_exog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">&gt;</span> <span class="n">nnf</span><span class="p">:</span>
+        <span class="n">presid</span> <span class="o">+=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">new_exog</span><span class="p">[:,</span> <span class="n">nnf</span><span class="p">:],</span> <span class="n">new_result</span><span class="o">.</span><span class="n">params</span><span class="p">[</span><span class="n">nnf</span><span class="p">:])</span>
+
+    <span class="k">return</span> <span class="n">presid</span>
+
+<span class="k">def</span> <span class="nf">partial_resids</span><span class="p">(</span><span class="n">results</span><span class="p">,</span> <span class="n">focus_exog</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Returns partial residuals for a fitted model with respect to a</span>
+<span class="sd">    &#39;focus predictor&#39;.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    results : results instance</span>
+<span class="sd">        A fitted regression model.</span>
+<span class="sd">    focus col : int</span>
+<span class="sd">        The column index of model.exog with respect to which the</span>
+<span class="sd">        partial residuals are calculated.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    An array of partial residuals.</span>
+
+<span class="sd">    References</span>
+<span class="sd">    ----------</span>
+<span class="sd">    RD Cook and R Croos-Dabrera (1998).  Partial residual plots in</span>
+<span class="sd">    generalized linear models.  Journal of the American Statistical</span>
+<span class="sd">    Association, 93:442.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="c1"># TODO: could be a method of results</span>
+    <span class="c1"># TODO: see Cook et al (1998) for a more general definition</span>
+
+    <span class="c1"># The calculation follows equation (8) from Cook&#39;s paper.</span>
+    <span class="n">model</span> <span class="o">=</span> <span class="n">results</span><span class="o">.</span><span class="n">model</span>
+    <span class="n">resid</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">endog</span> <span class="o">-</span> <span class="n">results</span><span class="o">.</span><span class="n">predict</span><span class="p">()</span>
+
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="p">(</span><span class="n">GLM</span><span class="p">,</span> <span class="n">GEE</span><span class="p">)):</span>
+        <span class="n">resid</span> <span class="o">*=</span> <span class="n">model</span><span class="o">.</span><span class="n">family</span><span class="o">.</span><span class="n">link</span><span class="o">.</span><span class="n">deriv</span><span class="p">(</span><span class="n">results</span><span class="o">.</span><span class="n">fittedvalues</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="p">(</span><span class="n">OLS</span><span class="p">,</span> <span class="n">GLS</span><span class="p">,</span> <span class="n">WLS</span><span class="p">)):</span>
+        <span class="k">pass</span> <span class="c1"># No need to do anything</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Partial residuals for &#39;</span><span class="si">%s</span><span class="s2">&#39; not implemented.&quot;</span>
+                         <span class="o">%</span> <span class="nb">type</span><span class="p">(</span><span class="n">model</span><span class="p">))</span>
+
+    <span class="k">if</span> <span class="nb">type</span><span class="p">(</span><span class="n">focus_exog</span><span class="p">)</span> <span class="ow">is</span> <span class="nb">str</span><span class="p">:</span>
+        <span class="n">focus_col</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">exog_names</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="n">focus_exog</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">focus_col</span> <span class="o">=</span> <span class="n">focus_exog</span>
+
+    <span class="n">focus_val</span> <span class="o">=</span> <span class="n">results</span><span class="o">.</span><span class="n">params</span><span class="p">[</span><span class="n">focus_col</span><span class="p">]</span> <span class="o">*</span> <span class="n">model</span><span class="o">.</span><span class="n">exog</span><span class="p">[:,</span> <span class="n">focus_col</span><span class="p">]</span>
+
+    <span class="k">return</span> <span class="n">focus_val</span> <span class="o">+</span> <span class="n">resid</span>
+
+<span class="k">def</span> <span class="nf">added_variable_resids</span><span class="p">(</span><span class="n">results</span><span class="p">,</span> <span class="n">focus_exog</span><span class="p">,</span> <span class="n">resid_type</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                          <span class="n">use_glm_weights</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">fit_kwargs</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Residualize the endog variable and a &#39;focus&#39; exog variable in a</span>
+<span class="sd">    regression model with respect to the other exog variables.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    results : regression results instance</span>
+<span class="sd">        A fitted model including the focus exog and all other</span>
+<span class="sd">        predictors of interest.</span>
+<span class="sd">    focus_exog : integer or string</span>
+<span class="sd">        The column of results.model.exog or a variable name that is</span>
+<span class="sd">        to be residualized against the other predictors.</span>
+<span class="sd">    resid_type : string</span>
+<span class="sd">        The type of residuals to use for the dependent variable.  If</span>
+<span class="sd">        None, uses `resid_deviance` for GLM/GEE and `resid` otherwise.</span>
+<span class="sd">    use_glm_weights : bool</span>
+<span class="sd">        Only used if the model is a GLM or GEE.  If True, the</span>
+<span class="sd">        residuals for the focus predictor are computed using WLS, with</span>
+<span class="sd">        the weights obtained from the IRLS calculations for fitting</span>
+<span class="sd">        the GLM.  If False, unweighted regression is used.</span>
+<span class="sd">    fit_kwargs : dict, optional</span>
+<span class="sd">        Keyword arguments to be passed to fit when refitting the</span>
+<span class="sd">        model.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    endog_resid : array-like</span>
+<span class="sd">        The residuals for the original exog</span>
+<span class="sd">    focus_exog_resid : array-like</span>
+<span class="sd">        The residuals for the focus predictor</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    The &#39;focus variable&#39; residuals are always obtained using linear</span>
+<span class="sd">    regression.</span>
+
+<span class="sd">    Currently only GLM, GEE, and OLS models are supported.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">model</span> <span class="o">=</span> <span class="n">results</span><span class="o">.</span><span class="n">model</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="p">(</span><span class="n">GEE</span><span class="p">,</span> <span class="n">GLM</span><span class="p">,</span> <span class="n">OLS</span><span class="p">)):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;model type </span><span class="si">%s</span><span class="s2"> not supported for added variable residuals&quot;</span> <span class="o">%</span>
+                         <span class="n">model</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="p">)</span>
+
+    <span class="n">exog</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">exog</span>
+    <span class="n">endog</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">endog</span>
+
+    <span class="n">focus_exog</span><span class="p">,</span> <span class="n">focus_col</span> <span class="o">=</span> <span class="n">utils</span><span class="o">.</span><span class="n">maybe_name_or_idx</span><span class="p">(</span><span class="n">focus_exog</span><span class="p">,</span> <span class="n">model</span><span class="p">)</span>
+
+    <span class="n">focus_exog_vals</span> <span class="o">=</span> <span class="n">exog</span><span class="p">[:,</span> <span class="n">focus_col</span><span class="p">]</span>
+
+    <span class="c1"># Default residuals</span>
+    <span class="k">if</span> <span class="n">resid_type</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="p">(</span><span class="n">GEE</span><span class="p">,</span> <span class="n">GLM</span><span class="p">)):</span>
+            <span class="n">resid_type</span> <span class="o">=</span> <span class="s2">&quot;resid_deviance&quot;</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">resid_type</span> <span class="o">=</span> <span class="s2">&quot;resid&quot;</span>
+
+    <span class="n">ii</span> <span class="o">=</span> <span class="nb">range</span><span class="p">(</span><span class="n">exog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+    <span class="n">ii</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">ii</span><span class="p">)</span>
+    <span class="n">ii</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="n">focus_col</span><span class="p">)</span>
+    <span class="n">reduced_exog</span> <span class="o">=</span> <span class="n">exog</span><span class="p">[:,</span> <span class="n">ii</span><span class="p">]</span>
+    <span class="n">start_params</span> <span class="o">=</span> <span class="n">results</span><span class="o">.</span><span class="n">params</span><span class="p">[</span><span class="n">ii</span><span class="p">]</span>
+
+    <span class="n">klass</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="vm">__class__</span>
+
+    <span class="n">kwargs</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">_get_init_kwds</span><span class="p">()</span>
+    <span class="n">new_model</span> <span class="o">=</span> <span class="n">klass</span><span class="p">(</span><span class="n">endog</span><span class="p">,</span> <span class="n">reduced_exog</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+    <span class="n">args</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;start_params&quot;</span><span class="p">:</span> <span class="n">start_params</span><span class="p">}</span>
+    <span class="k">if</span> <span class="n">fit_kwargs</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">args</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">fit_kwargs</span><span class="p">)</span>
+    <span class="n">new_result</span> <span class="o">=</span> <span class="n">new_model</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="o">**</span><span class="n">args</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">new_result</span><span class="o">.</span><span class="n">converged</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;fit did not converge when calculating added variable residuals&quot;</span><span class="p">)</span>
+
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">endog_resid</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">new_result</span><span class="p">,</span> <span class="n">resid_type</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">AttributeError</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;&#39;</span><span class="si">%s</span><span class="s2">&#39; residual type not available&quot;</span> <span class="o">%</span> <span class="n">resid_type</span><span class="p">)</span>
+
+    <span class="kn">import</span> <span class="nn">statsmodels.regression.linear_model</span> <span class="k">as</span> <span class="nn">lm</span>
+
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="p">(</span><span class="n">GLM</span><span class="p">,</span> <span class="n">GEE</span><span class="p">))</span> <span class="ow">and</span> <span class="n">use_glm_weights</span><span class="p">:</span>
+        <span class="n">weights</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">family</span><span class="o">.</span><span class="n">weights</span><span class="p">(</span><span class="n">results</span><span class="o">.</span><span class="n">fittedvalues</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="s2">&quot;data_weights&quot;</span><span class="p">):</span>
+            <span class="n">weights</span> <span class="o">=</span> <span class="n">weights</span> <span class="o">*</span> <span class="n">model</span><span class="o">.</span><span class="n">data_weights</span>
+        <span class="n">lm_results</span> <span class="o">=</span> <span class="n">lm</span><span class="o">.</span><span class="n">WLS</span><span class="p">(</span><span class="n">focus_exog_vals</span><span class="p">,</span> <span class="n">reduced_exog</span><span class="p">,</span> <span class="n">weights</span><span class="p">)</span><span class="o">.</span><span class="n">fit</span><span class="p">()</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">lm_results</span> <span class="o">=</span> <span class="n">lm</span><span class="o">.</span><span class="n">OLS</span><span class="p">(</span><span class="n">focus_exog_vals</span><span class="p">,</span> <span class="n">reduced_exog</span><span class="p">)</span><span class="o">.</span><span class="n">fit</span><span class="p">()</span>
+    <span class="n">focus_exog_resid</span> <span class="o">=</span> <span class="n">lm_results</span><span class="o">.</span><span class="n">resid</span>
+
+    <span class="k">return</span> <span class="n">endog_resid</span><span class="p">,</span> <span class="n">focus_exog_resid</span>
+</pre></div>
+
+
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <form class="search" action="../../../search.html" method="get">
+      <div><input type="text" name="q" /></div>
+      <div><input type="submit" value="Go" /></div>
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer" role="contentinfo">
+        &#169; Copyright 2009-2017, Josef Perktold, Skipper Seabold, Jonathan Taylor, statsmodels-developers.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.5.3.
+    </div>
+  </body>
+</html>

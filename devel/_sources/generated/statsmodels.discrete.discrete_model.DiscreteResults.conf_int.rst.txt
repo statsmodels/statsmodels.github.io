@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.discrete.discrete\_model.DiscreteResults.conf\_int
+==============================================================
+
+.. currentmodule:: statsmodels.discrete.discrete_model
+
+.. automethod:: DiscreteResults.conf_int

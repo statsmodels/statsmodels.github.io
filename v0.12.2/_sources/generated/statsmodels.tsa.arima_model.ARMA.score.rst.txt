@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.tsa.arima\_model.ARMA.score
+=======================================
+
+.. currentmodule:: statsmodels.tsa.arima_model
+
+.. automethod:: ARMA.score

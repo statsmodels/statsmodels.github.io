@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.discrete.discrete\_model.GeneralizedPoissonResults.summary
+======================================================================
+
+.. currentmodule:: statsmodels.discrete.discrete_model
+
+.. automethod:: GeneralizedPoissonResults.summary

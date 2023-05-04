@@ -1,0 +1,337 @@
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>statsmodels.miscmodels.tmodel &#8212; statsmodels 0.8.0 documentation</title>
+    
+    <link rel="stylesheet" href="../../../_static/nature.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../../',
+        VERSION:     '0.8.0',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true,
+        SOURCELINK_SUFFIX: '.txt'
+      };
+    </script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <link rel="shortcut icon" href="../../../_static/statsmodels_hybi_favico.ico"/>
+    <link rel="author" title="About these documents" href="../../../about.html" />
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+<link rel="stylesheet" href="../../../_static/examples.css" type="text/css" />
+<link rel="stylesheet" href="../../../_static/facebox.css" type="text/css" />
+<script type="text/javascript" src="../../../_static/scripts.js">
+</script>
+<script type="text/javascript" src="../../../_static/facebox.js">
+</script>
+
+  </head>
+  <body role="document">
+<div class="headerwrap">
+    <div class = "header">
+        
+        <a href = "../../../index.html">
+<img src="../../../_static/statsmodels_hybi_banner.png" alt="Logo"
+    style="padding-left: 15px"/></a>
+        
+    </div>
+</div>
+
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+<li><a href ="../../../install.html">Install</a></li> &nbsp;|&nbsp;
+<li><a href="https://groups.google.com/group/pystatsmodels?hl=en">Support</a></li> &nbsp;|&nbsp;
+<li><a href="https://github.com/statsmodels/statsmodels/issues">Bugs</a></li> &nbsp;|&nbsp;
+<li><a href="../../../dev/index.html">Develop</a></li> &nbsp;|&nbsp;
+<li><a href="../../../examples/index.html">Examples</a></li> &nbsp;|&nbsp;
+<li><a href="../../../faq.html">FAQ</a></li> &nbsp;|&nbsp;
+
+          <li class="nav-item nav-item-1"><a href="../../index.html" accesskey="U">Module code</a> |</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+
+
+
+
+  <h1>Source code for statsmodels.miscmodels.tmodel</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;Linear Model with Student-t distributed errors</span>
+
+<span class="sd">Because the t distribution has fatter tails than the normal distribution, it</span>
+<span class="sd">can be used to model observations with heavier tails and observations that have</span>
+<span class="sd">some outliers. For the latter case, the t-distribution provides more robust</span>
+<span class="sd">estimators for mean or mean parameters (what about var?).</span>
+
+
+
+<span class="sd">References</span>
+<span class="sd">----------</span>
+<span class="sd">Kenneth L. Lange, Roderick J. A. Little, Jeremy M. G. Taylor (1989)</span>
+<span class="sd">Robust Statistical Modeling Using the t Distribution</span>
+<span class="sd">Journal of the American Statistical Association</span>
+<span class="sd">Vol. 84, No. 408 (Dec., 1989), pp. 881-896</span>
+<span class="sd">Published by: American Statistical Association</span>
+<span class="sd">Stable URL: http://www.jstor.org/stable/2290063</span>
+
+<span class="sd">not read yet</span>
+
+
+<span class="sd">Created on 2010-09-24</span>
+<span class="sd">Author: josef-pktd</span>
+<span class="sd">License: BSD</span>
+
+<span class="sd">TODO</span>
+<span class="sd">----</span>
+<span class="sd">* add starting values based on OLS</span>
+<span class="sd">* bugs: store_params doesn&#39;t seem to be defined, I think this was a module</span>
+<span class="sd">        global for debugging - commented out</span>
+<span class="sd">* parameter restriction: check whether version with some fixed parameters works</span>
+
+
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="c1">#mostly copied from the examples directory written for trying out generic mle.</span>
+
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+<span class="kn">from</span> <span class="nn">scipy</span> <span class="k">import</span> <span class="n">special</span> <span class="c1">#, stats</span>
+<span class="c1">#redefine some shortcuts</span>
+<span class="n">np_log</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">log</span>
+<span class="n">np_pi</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">pi</span>
+<span class="n">sps_gamln</span> <span class="o">=</span> <span class="n">special</span><span class="o">.</span><span class="n">gammaln</span>
+
+
+<span class="kn">from</span> <span class="nn">statsmodels.base.model</span> <span class="k">import</span> <span class="n">GenericLikelihoodModel</span>
+
+<div class="viewcode-block" id="TLinearModel"><a class="viewcode-back" href="../../../generated/statsmodels.miscmodels.tmodel.TLinearModel.html#statsmodels.miscmodels.tmodel.TLinearModel">[docs]</a><span class="k">class</span> <span class="nc">TLinearModel</span><span class="p">(</span><span class="n">GenericLikelihoodModel</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;Maximum Likelihood Estimation of Linear Model with t-distributed errors</span>
+
+<span class="sd">    This is an example for generic MLE.</span>
+
+<span class="sd">    Except for defining the negative log-likelihood method, all</span>
+<span class="sd">    methods and results are generic. Gradients and Hessian</span>
+<span class="sd">    and all resulting statistics are based on numerical</span>
+<span class="sd">    differentiation.</span>
+
+<span class="sd">    &#39;&#39;&#39;</span>
+
+<div class="viewcode-block" id="TLinearModel.initialize"><a class="viewcode-back" href="../../../generated/statsmodels.miscmodels.tmodel.TLinearModel.initialize.html#statsmodels.miscmodels.tmodel.TLinearModel.initialize">[docs]</a>    <span class="k">def</span> <span class="nf">initialize</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c1"># TODO: here or in __init__</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">k_vars</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">exog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s1">&#39;fix_df&#39;</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">fix_df</span> <span class="o">=</span> <span class="kc">False</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">fix_df</span> <span class="ow">is</span> <span class="kc">False</span><span class="p">:</span>
+            <span class="c1"># df will be estimated, no parameter restrictions</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">fixed_params</span> <span class="o">=</span> <span class="kc">None</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">fixed_paramsmask</span> <span class="o">=</span> <span class="kc">None</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">k_params</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">exog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="mi">2</span>
+            <span class="n">extra_params_names</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;df&#39;</span><span class="p">,</span> <span class="s1">&#39;scale&#39;</span><span class="p">]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># df fixed</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">k_params</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">exog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="mi">1</span>
+            <span class="n">fixdf</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">exog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="mi">2</span><span class="p">)</span>
+            <span class="n">fixdf</span><span class="p">[</span><span class="o">-</span><span class="mi">2</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">fix_df</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">fixed_params</span> <span class="o">=</span> <span class="n">fixdf</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">fixed_paramsmask</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">fixdf</span><span class="p">)</span>
+            <span class="n">extra_params_names</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;scale&#39;</span><span class="p">]</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_set_extra_params_names</span><span class="p">(</span><span class="n">extra_params_names</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_set_start_params</span><span class="p">()</span>
+
+        <span class="nb">super</span><span class="p">(</span><span class="n">TLinearModel</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">initialize</span><span class="p">()</span></div>
+
+    <span class="k">def</span> <span class="nf">_set_start_params</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">start_params</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">use_kurtosis</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">start_params</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">start_params</span> <span class="o">=</span> <span class="n">start_params</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="kn">from</span> <span class="nn">statsmodels.regression.linear_model</span> <span class="k">import</span> <span class="n">OLS</span>
+            <span class="n">res_ols</span> <span class="o">=</span> <span class="n">OLS</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">endog</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">exog</span><span class="p">)</span><span class="o">.</span><span class="n">fit</span><span class="p">()</span>
+            <span class="n">start_params</span> <span class="o">=</span> <span class="mf">0.1</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">k_params</span><span class="p">)</span>
+            <span class="n">start_params</span><span class="p">[:</span><span class="bp">self</span><span class="o">.</span><span class="n">k_vars</span><span class="p">]</span> <span class="o">=</span> <span class="n">res_ols</span><span class="o">.</span><span class="n">params</span>
+
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">fix_df</span> <span class="ow">is</span> <span class="kc">False</span><span class="p">:</span>
+
+                <span class="k">if</span> <span class="n">use_kurtosis</span><span class="p">:</span>
+                    <span class="n">kurt</span> <span class="o">=</span> <span class="n">stats</span><span class="o">.</span><span class="n">kurtosis</span><span class="p">(</span><span class="n">res_ols</span><span class="o">.</span><span class="n">resid</span><span class="p">)</span>
+                    <span class="n">df</span> <span class="o">=</span> <span class="mf">6.</span><span class="o">/</span><span class="n">kurt</span> <span class="o">+</span> <span class="mi">4</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">df</span> <span class="o">=</span> <span class="mi">5</span>
+
+                <span class="n">start_params</span><span class="p">[</span><span class="o">-</span><span class="mi">2</span><span class="p">]</span> <span class="o">=</span> <span class="n">df</span>
+                <span class="c1">#TODO adjust scale for df</span>
+                <span class="n">start_params</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">res_ols</span><span class="o">.</span><span class="n">scale</span><span class="p">)</span>
+
+            <span class="bp">self</span><span class="o">.</span><span class="n">start_params</span> <span class="o">=</span> <span class="n">start_params</span>
+
+
+
+
+<div class="viewcode-block" id="TLinearModel.loglike"><a class="viewcode-back" href="../../../generated/statsmodels.miscmodels.tmodel.TLinearModel.loglike.html#statsmodels.miscmodels.tmodel.TLinearModel.loglike">[docs]</a>    <span class="k">def</span> <span class="nf">loglike</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">):</span>
+        <span class="k">return</span> <span class="o">-</span><span class="bp">self</span><span class="o">.</span><span class="n">nloglikeobs</span><span class="p">(</span><span class="n">params</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="TLinearModel.nloglikeobs"><a class="viewcode-back" href="../../../generated/statsmodels.miscmodels.tmodel.TLinearModel.nloglikeobs.html#statsmodels.miscmodels.tmodel.TLinearModel.nloglikeobs">[docs]</a>    <span class="k">def</span> <span class="nf">nloglikeobs</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Loglikelihood of linear model with t distributed errors.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        params : array</span>
+<span class="sd">            The parameters of the model. The last 2 parameters are degrees of</span>
+<span class="sd">            freedom and scale.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        loglike : array, (nobs,)</span>
+<span class="sd">            The log likelihood of the model evaluated at `params` for each</span>
+<span class="sd">            observation defined by self.endog and self.exog.</span>
+
+<span class="sd">        Notes</span>
+<span class="sd">        -----</span>
+<span class="sd">        .. math :: \\ln L=\\sum_{i=1}^{n}\\left[-\\lambda_{i}+y_{i}x_{i}^{\\prime}\\beta-\\ln y_{i}!\\right]</span>
+
+<span class="sd">        The t distribution is the standard t distribution and not a standardized</span>
+<span class="sd">        t distribution, which means that the scale parameter is not equal to the</span>
+<span class="sd">        standard deviation.</span>
+
+<span class="sd">        self.fixed_params and self.expandparams can be used to fix some</span>
+<span class="sd">        parameters. (I doubt this has been tested in this model.)</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1">#print len(params),</span>
+        <span class="c1">#store_params.append(params)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">fixed_params</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="c1">#print &#39;using fixed&#39;</span>
+            <span class="n">params</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">expandparams</span><span class="p">(</span><span class="n">params</span><span class="p">)</span>
+
+        <span class="n">beta</span> <span class="o">=</span> <span class="n">params</span><span class="p">[:</span><span class="o">-</span><span class="mi">2</span><span class="p">]</span>
+        <span class="n">df</span> <span class="o">=</span> <span class="n">params</span><span class="p">[</span><span class="o">-</span><span class="mi">2</span><span class="p">]</span>
+        <span class="n">scale</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">params</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span>  <span class="c1">#TODO check behavior around zero</span>
+        <span class="n">loc</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">exog</span><span class="p">,</span> <span class="n">beta</span><span class="p">)</span>
+        <span class="n">endog</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">endog</span>
+        <span class="n">x</span> <span class="o">=</span> <span class="p">(</span><span class="n">endog</span> <span class="o">-</span> <span class="n">loc</span><span class="p">)</span><span class="o">/</span><span class="n">scale</span>
+        <span class="c1">#next part is stats.t._logpdf</span>
+        <span class="n">lPx</span> <span class="o">=</span> <span class="n">sps_gamln</span><span class="p">((</span><span class="n">df</span><span class="o">+</span><span class="mi">1</span><span class="p">)</span><span class="o">/</span><span class="mi">2</span><span class="p">)</span> <span class="o">-</span> <span class="n">sps_gamln</span><span class="p">(</span><span class="n">df</span><span class="o">/</span><span class="mf">2.</span><span class="p">)</span>
+        <span class="n">lPx</span> <span class="o">-=</span> <span class="mf">0.5</span><span class="o">*</span><span class="n">np_log</span><span class="p">(</span><span class="n">df</span><span class="o">*</span><span class="n">np_pi</span><span class="p">)</span> <span class="o">+</span> <span class="p">(</span><span class="n">df</span><span class="o">+</span><span class="mi">1</span><span class="p">)</span><span class="o">/</span><span class="mf">2.</span><span class="o">*</span><span class="n">np_log</span><span class="p">(</span><span class="mi">1</span><span class="o">+</span><span class="p">(</span><span class="n">x</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span><span class="o">/</span><span class="n">df</span><span class="p">)</span>
+        <span class="n">lPx</span> <span class="o">-=</span> <span class="n">np_log</span><span class="p">(</span><span class="n">scale</span><span class="p">)</span>  <span class="c1"># correction for scale</span>
+        <span class="k">return</span> <span class="o">-</span><span class="n">lPx</span></div>
+
+<div class="viewcode-block" id="TLinearModel.predict"><a class="viewcode-back" href="../../../generated/statsmodels.miscmodels.tmodel.TLinearModel.predict.html#statsmodels.miscmodels.tmodel.TLinearModel.predict">[docs]</a>    <span class="k">def</span> <span class="nf">predict</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">exog</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">exog</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">exog</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">exog</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">exog</span><span class="p">,</span> <span class="n">params</span><span class="p">[:</span><span class="bp">self</span><span class="o">.</span><span class="n">exog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]])</span></div></div>
+
+
+<span class="kn">from</span> <span class="nn">scipy</span> <span class="k">import</span> <span class="n">stats</span>
+<span class="kn">from</span> <span class="nn">statsmodels.tsa.arma_mle</span> <span class="k">import</span> <span class="n">Arma</span>
+
+<span class="k">class</span> <span class="nc">TArma</span><span class="p">(</span><span class="n">Arma</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;Univariate Arma Model with t-distributed errors</span>
+
+<span class="sd">    This inherit all methods except loglike from tsa.arma_mle.Arma</span>
+
+<span class="sd">    This uses the standard t-distribution, the implied variance of</span>
+<span class="sd">    the error is not equal to scale, but ::</span>
+
+<span class="sd">        error_variance = df/(df-2)*scale**2</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    This might be replaced by a standardized t-distribution with scale**2</span>
+<span class="sd">    equal to variance</span>
+
+<span class="sd">    &#39;&#39;&#39;</span>
+
+    <span class="k">def</span> <span class="nf">loglike</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">):</span>
+        <span class="k">return</span> <span class="o">-</span><span class="bp">self</span><span class="o">.</span><span class="n">nloglikeobs</span><span class="p">(</span><span class="n">params</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+
+
+    <span class="c1">#add for Jacobian calculation  bsejac in GenericMLE, copied from loglike</span>
+    <span class="k">def</span> <span class="nf">nloglikeobs</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Loglikelihood for arma model for each observation, t-distribute</span>
+
+<span class="sd">        Notes</span>
+<span class="sd">        -----</span>
+<span class="sd">        The ancillary parameter is assumed to be the last element of</span>
+<span class="sd">        the params vector</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="n">errorsest</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">geterrors</span><span class="p">(</span><span class="n">params</span><span class="p">[:</span><span class="o">-</span><span class="mi">2</span><span class="p">])</span>
+        <span class="c1">#sigma2 = np.maximum(params[-1]**2, 1e-6)  #do I need this</span>
+        <span class="c1">#axis = 0</span>
+        <span class="c1">#nobs = len(errorsest)</span>
+
+        <span class="n">df</span> <span class="o">=</span> <span class="n">params</span><span class="p">[</span><span class="o">-</span><span class="mi">2</span><span class="p">]</span>
+        <span class="n">scale</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">params</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span>
+        <span class="n">llike</span>  <span class="o">=</span> <span class="o">-</span> <span class="n">stats</span><span class="o">.</span><span class="n">t</span><span class="o">.</span><span class="n">_logpdf</span><span class="p">(</span><span class="n">errorsest</span><span class="o">/</span><span class="n">scale</span><span class="p">,</span> <span class="n">df</span><span class="p">)</span> <span class="o">+</span> <span class="n">np_log</span><span class="p">(</span><span class="n">scale</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">llike</span>
+
+    <span class="c1">#TODO rename fit_mle -&gt; fit, fit -&gt; fit_ls</span>
+    <span class="k">def</span> <span class="nf">fit_mle</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">order</span><span class="p">,</span> <span class="n">start_params</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s1">&#39;nm&#39;</span><span class="p">,</span> <span class="n">maxiter</span><span class="o">=</span><span class="mi">5000</span><span class="p">,</span>
+            <span class="n">tol</span><span class="o">=</span><span class="mf">1e-08</span><span class="p">,</span> <span class="o">**</span><span class="n">kwds</span><span class="p">):</span>
+        <span class="n">nar</span><span class="p">,</span> <span class="n">nma</span> <span class="o">=</span> <span class="n">order</span>
+        <span class="k">if</span> <span class="n">start_params</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">start_params</span><span class="p">)</span> <span class="o">!=</span> <span class="n">nar</span> <span class="o">+</span> <span class="n">nma</span> <span class="o">+</span> <span class="mi">2</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;start_param need sum(order) + 2 elements&#39;</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">start_params</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">((</span><span class="mf">0.05</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">nar</span> <span class="o">+</span> <span class="n">nma</span><span class="p">),</span> <span class="p">[</span><span class="mi">5</span><span class="p">,</span> <span class="mi">1</span><span class="p">]))</span>
+
+
+        <span class="n">res</span> <span class="o">=</span> <span class="nb">super</span><span class="p">(</span><span class="n">TArma</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">fit_mle</span><span class="p">(</span><span class="n">order</span><span class="o">=</span><span class="n">order</span><span class="p">,</span>
+                                         <span class="n">start_params</span><span class="o">=</span><span class="n">start_params</span><span class="p">,</span>
+                                         <span class="n">method</span><span class="o">=</span><span class="n">method</span><span class="p">,</span> <span class="n">maxiter</span><span class="o">=</span><span class="n">maxiter</span><span class="p">,</span>
+                                         <span class="n">tol</span><span class="o">=</span><span class="n">tol</span><span class="p">,</span> <span class="o">**</span><span class="n">kwds</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">res</span>
+</pre></div>
+
+
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <form class="search" action="../../../search.html" method="get">
+      <div><input type="text" name="q" /></div>
+      <div><input type="submit" value="Go" /></div>
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer" role="contentinfo">
+        &#169; Copyright 2009-2017, Josef Perktold, Skipper Seabold, Jonathan Taylor, statsmodels-developers.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.5.3.
+    </div>
+  </body>
+</html>

@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.genmod.generalized\_estimating\_equations.GEE.mean\_deriv\_exog
+===========================================================================
+
+.. currentmodule:: statsmodels.genmod.generalized_estimating_equations
+
+.. automethod:: GEE.mean_deriv_exog

@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.tsa.arima\_process.ArmaProcess.arma2ma
+==================================================
+
+.. currentmodule:: statsmodels.tsa.arima_process
+
+.. automethod:: ArmaProcess.arma2ma

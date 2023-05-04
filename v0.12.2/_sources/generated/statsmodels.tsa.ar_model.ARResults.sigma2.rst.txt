@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.tsa.ar\_model.ARResults.sigma2
+==========================================
+
+.. currentmodule:: statsmodels.tsa.ar_model
+
+.. automethod:: ARResults.sigma2

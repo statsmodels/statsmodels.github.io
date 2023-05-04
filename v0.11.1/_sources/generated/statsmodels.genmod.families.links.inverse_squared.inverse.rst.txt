@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.genmod.families.links.inverse\_squared.inverse
+==========================================================
+
+.. currentmodule:: statsmodels.genmod.families.links
+
+.. automethod:: inverse_squared.inverse

@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.tsa.ar\_model.AR.information
+========================================
+
+.. currentmodule:: statsmodels.tsa.ar_model
+
+.. automethod:: AR.information

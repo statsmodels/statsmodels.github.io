@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.discrete.discrete\_model.CountModel.score
+=====================================================
+
+.. currentmodule:: statsmodels.discrete.discrete_model
+
+.. automethod:: CountModel.score

@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.sandbox.distributions.extras.SkewNorm2\_gen.rvs
+===========================================================
+
+.. currentmodule:: statsmodels.sandbox.distributions.extras
+
+.. automethod:: SkewNorm2_gen.rvs

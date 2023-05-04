@@ -1,0 +1,423 @@
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>statsmodels.tsa.interp.denton &#8212; statsmodels 0.8.0 documentation</title>
+    
+    <link rel="stylesheet" href="../../../../_static/nature.css" type="text/css" />
+    <link rel="stylesheet" href="../../../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../../../',
+        VERSION:     '0.8.0',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true,
+        SOURCELINK_SUFFIX: '.txt'
+      };
+    </script>
+    <script type="text/javascript" src="../../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../../_static/doctools.js"></script>
+    <link rel="shortcut icon" href="../../../../_static/statsmodels_hybi_favico.ico"/>
+    <link rel="author" title="About these documents" href="../../../../about.html" />
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" />
+<link rel="stylesheet" href="../../../../_static/examples.css" type="text/css" />
+<link rel="stylesheet" href="../../../../_static/facebox.css" type="text/css" />
+<script type="text/javascript" src="../../../../_static/scripts.js">
+</script>
+<script type="text/javascript" src="../../../../_static/facebox.js">
+</script>
+
+  </head>
+  <body role="document">
+<div class="headerwrap">
+    <div class = "header">
+        
+        <a href = "../../../../index.html">
+<img src="../../../../_static/statsmodels_hybi_banner.png" alt="Logo"
+    style="padding-left: 15px"/></a>
+        
+    </div>
+</div>
+
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+<li><a href ="../../../../install.html">Install</a></li> &nbsp;|&nbsp;
+<li><a href="https://groups.google.com/group/pystatsmodels?hl=en">Support</a></li> &nbsp;|&nbsp;
+<li><a href="https://github.com/statsmodels/statsmodels/issues">Bugs</a></li> &nbsp;|&nbsp;
+<li><a href="../../../../dev/index.html">Develop</a></li> &nbsp;|&nbsp;
+<li><a href="../../../../examples/index.html">Examples</a></li> &nbsp;|&nbsp;
+<li><a href="../../../../faq.html">FAQ</a></li> &nbsp;|&nbsp;
+
+          <li class="nav-item nav-item-1"><a href="../../../index.html" accesskey="U">Module code</a> |</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+
+
+
+
+  <h1>Source code for statsmodels.tsa.interp.denton</h1><div class="highlight"><pre>
+<span></span>
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+<span class="kn">from</span> <span class="nn">numpy</span> <span class="k">import</span> <span class="p">(</span><span class="n">dot</span><span class="p">,</span> <span class="n">eye</span><span class="p">,</span> <span class="n">diag_indices</span><span class="p">,</span> <span class="n">zeros</span><span class="p">,</span> <span class="n">column_stack</span><span class="p">,</span> <span class="n">ones</span><span class="p">,</span> <span class="n">diag</span><span class="p">,</span>
+        <span class="n">asarray</span><span class="p">,</span> <span class="n">r_</span><span class="p">)</span>
+<span class="kn">from</span> <span class="nn">numpy.linalg</span> <span class="k">import</span> <span class="n">inv</span><span class="p">,</span> <span class="n">solve</span>
+<span class="c1">#from scipy.linalg import block_diag</span>
+<span class="kn">from</span> <span class="nn">scipy</span> <span class="k">import</span> <span class="n">linalg</span>
+
+<span class="c1">#def denton(indicator, benchmark, freq=&quot;aq&quot;, **kwarg):</span>
+<span class="c1">#    &quot;&quot;&quot;</span>
+<span class="c1">#    Denton&#39;s method to convert low-frequency to high frequency data.</span>
+<span class="c1">#</span>
+<span class="c1">#    Parameters</span>
+<span class="c1">#    ----------</span>
+<span class="c1">#    benchmark : array-like</span>
+<span class="c1">#        The higher frequency benchmark.  A 1d or 2d data series in columns.</span>
+<span class="c1">#        If 2d, then M series are assumed.</span>
+<span class="c1">#    indicator</span>
+<span class="c1">#        A low-frequency indicator series.  It is assumed that there are no</span>
+<span class="c1">#        pre-sample indicators.  Ie., the first indicators line up with</span>
+<span class="c1">#        the first benchmark.</span>
+<span class="c1">#    freq : str {&quot;aq&quot;,&quot;qm&quot;, &quot;other&quot;}</span>
+<span class="c1">#        &quot;aq&quot; - Benchmarking an annual series to quarterly.</span>
+<span class="c1">#        &quot;mq&quot; - Benchmarking a quarterly series to monthly.</span>
+<span class="c1">#        &quot;other&quot; - Custom stride.  A kwarg, k, must be supplied.</span>
+<span class="c1">#    kwargs :</span>
+<span class="c1">#        k : int</span>
+<span class="c1">#            The number of high-frequency observations that sum to make an</span>
+<span class="c1">#            aggregate low-frequency observation. `k` is used with</span>
+<span class="c1">#            `freq` == &quot;other&quot;.</span>
+<span class="c1">#    Returns</span>
+<span class="c1">#    -------</span>
+<span class="c1">#    benchmarked series : array</span>
+<span class="c1">#</span>
+<span class="c1">#    Notes</span>
+<span class="c1">#    -----</span>
+<span class="c1">#    Denton&#39;s method minimizes the distance given by the penalty function, in</span>
+<span class="c1">#    a least squares sense, between the unknown benchmarked series and the</span>
+<span class="c1">#    indicator series subject to the condition that the sum of the benchmarked</span>
+<span class="c1">#    series is equal to the benchmark.</span>
+<span class="c1">#</span>
+<span class="c1">#</span>
+<span class="c1">#    References</span>
+<span class="c1">#    ----------</span>
+<span class="c1">#    Bloem, A.M, Dippelsman, R.J. and Maehle, N.O.  2001 Quarterly National</span>
+<span class="c1">#        Accounts Manual--Concepts, Data Sources, and Compilation. IMF.</span>
+<span class="c1">#        http://www.imf.org/external/pubs/ft/qna/2000/Textbook/index.htm</span>
+<span class="c1">#    Denton, F.T. 1971. &quot;Adjustment of monthly or quarterly series to annual</span>
+<span class="c1">#        totals: an approach based on quadratic minimization.&quot; Journal of the</span>
+<span class="c1">#        American Statistical Association. 99-102.</span>
+<span class="c1">#</span>
+<span class="c1">#    &quot;&quot;&quot;</span>
+<span class="c1">#    # check arrays and make 2d</span>
+<span class="c1">#    indicator = np.asarray(indicator)</span>
+<span class="c1">#    if indicator.ndim == 1:</span>
+<span class="c1">#        indicator = indicator[:,None]</span>
+<span class="c1">#    benchmark = np.asarray(benchmark)</span>
+<span class="c1">#    if benchmark.ndim == 1:</span>
+<span class="c1">#        benchmark = benchmark[:,None]</span>
+<span class="c1">#</span>
+<span class="c1">#    # get dimensions</span>
+<span class="c1">#    N = len(indicator) # total number of high-freq</span>
+<span class="c1">#    m = len(benchmark) # total number of low-freq</span>
+<span class="c1">#</span>
+<span class="c1">#    # number of low-freq observations for aggregate measure</span>
+<span class="c1">#    # 4 for annual to quarter and 3 for quarter to monthly</span>
+<span class="c1">#    if freq == &quot;aq&quot;:</span>
+<span class="c1">#        k = 4</span>
+<span class="c1">#    elif freq == &quot;qm&quot;:</span>
+<span class="c1">#        k = 3</span>
+<span class="c1">#    elif freq == &quot;other&quot;:</span>
+<span class="c1">#        k = kwargs.get(&quot;k&quot;)</span>
+<span class="c1">#        if not k:</span>
+<span class="c1">#            raise ValueError(&quot;k must be supplied with freq=\&quot;other\&quot;&quot;)</span>
+<span class="c1">#    else:</span>
+<span class="c1">#        raise ValueError(&quot;freq %s not understood&quot; % freq)</span>
+<span class="c1">#</span>
+<span class="c1">#    n = k*m # number of indicator series with a benchmark for back-series</span>
+<span class="c1">#    # if k*m != n, then we are going to extrapolate q observations</span>
+<span class="c1">#</span>
+<span class="c1">#    B = block_diag(*(np.ones((k,1)),)*m)</span>
+<span class="c1">#</span>
+<span class="c1">#    r = benchmark - B.T.dot(indicator)</span>
+<span class="c1">#TODO: take code in the string at the end and implement Denton&#39;s original</span>
+<span class="c1"># method with a few of the penalty functions.</span>
+
+
+<div class="viewcode-block" id="dentonm"><a class="viewcode-back" href="../../../../generated/statsmodels.tsa.interp.denton.dentonm.html#statsmodels.tsa.interp.denton.dentonm">[docs]</a><span class="k">def</span> <span class="nf">dentonm</span><span class="p">(</span><span class="n">indicator</span><span class="p">,</span> <span class="n">benchmark</span><span class="p">,</span> <span class="n">freq</span><span class="o">=</span><span class="s2">&quot;aq&quot;</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Modified Denton&#39;s method to convert low-frequency to high-frequency data.</span>
+
+<span class="sd">    Uses proportionate first-differences as the penalty function.  See notes.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    indicator</span>
+<span class="sd">        A low-frequency indicator series.  It is assumed that there are no</span>
+<span class="sd">        pre-sample indicators.  Ie., the first indicators line up with</span>
+<span class="sd">        the first benchmark.</span>
+<span class="sd">    benchmark : array-like</span>
+<span class="sd">        The higher frequency benchmark.  A 1d or 2d data series in columns.</span>
+<span class="sd">        If 2d, then M series are assumed.</span>
+<span class="sd">    freq : str {&quot;aq&quot;,&quot;qm&quot;, &quot;other&quot;}</span>
+<span class="sd">        &quot;aq&quot; - Benchmarking an annual series to quarterly.</span>
+<span class="sd">        &quot;mq&quot; - Benchmarking a quarterly series to monthly.</span>
+<span class="sd">        &quot;other&quot; - Custom stride.  A kwarg, k, must be supplied.</span>
+<span class="sd">    kwargs :</span>
+<span class="sd">        k : int</span>
+<span class="sd">            The number of high-frequency observations that sum to make an</span>
+<span class="sd">            aggregate low-frequency observation. `k` is used with</span>
+<span class="sd">            `freq` == &quot;other&quot;.</span>
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    benchmarked series : array</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    &gt;&gt;&gt; indicator = [50,100,150,100] * 5</span>
+<span class="sd">    &gt;&gt;&gt; benchmark = [500,400,300,400,500]</span>
+<span class="sd">    &gt;&gt;&gt; benchmarked = dentonm(indicator, benchmark, freq=&quot;aq&quot;)</span>
+
+
+
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    Denton&#39;s method minimizes the distance given by the penalty function, in</span>
+<span class="sd">    a least squares sense, between the unknown benchmarked series and the</span>
+<span class="sd">    indicator series subject to the condition that the sum of the benchmarked</span>
+<span class="sd">    series is equal to the benchmark. The modification allows that the first</span>
+<span class="sd">    value not be pre-determined as is the case with Denton&#39;s original method.</span>
+<span class="sd">    If the there is no benchmark provided for the last few indicator</span>
+<span class="sd">    observations, then extrapolation is performed using the last</span>
+<span class="sd">    benchmark-indicator ratio of the previous period.</span>
+
+<span class="sd">    Minimizes sum((X[t]/I[t] - X[t-1]/I[t-1])**2)</span>
+
+<span class="sd">    s.t.</span>
+
+<span class="sd">    sum(X) = A, for each period.  Where X is the benchmarked series, I is</span>
+<span class="sd">    the indicator, and A is the benchmark.</span>
+
+
+<span class="sd">    References</span>
+<span class="sd">    ----------</span>
+<span class="sd">    Bloem, A.M, Dippelsman, R.J. and Maehle, N.O.  2001 Quarterly National</span>
+<span class="sd">        Accounts Manual--Concepts, Data Sources, and Compilation. IMF.</span>
+<span class="sd">        http://www.imf.org/external/pubs/ft/qna/2000/Textbook/index.htm</span>
+<span class="sd">    Cholette, P. 1988. &quot;Benchmarking systems of socio-economic time series.&quot;</span>
+<span class="sd">        Statistics Canada, Time Series Research and Analysis Division,</span>
+<span class="sd">        Working Paper No TSRA-88-017E.</span>
+<span class="sd">    Denton, F.T. 1971. &quot;Adjustment of monthly or quarterly series to annual</span>
+<span class="sd">        totals: an approach based on quadratic minimization.&quot; Journal of the</span>
+<span class="sd">        American Statistical Association. 99-102.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+<span class="c1">#    penalty : str</span>
+<span class="c1">#        Penalty function.  Can be &quot;D1&quot;, &quot;D2&quot;, &quot;D3&quot;, &quot;D4&quot;, &quot;D5&quot;.</span>
+<span class="c1">#        X is the benchmarked series and I is the indicator.</span>
+<span class="c1">#        D1 - sum((X[t] - X[t-1]) - (I[t] - I[ti-1])**2)</span>
+<span class="c1">#        D2 - sum((ln(X[t]/X[t-1]) - ln(I[t]/I[t-1]))**2)</span>
+<span class="c1">#        D3 - sum((X[t]/X[t-1] / I[t]/I[t-1])**2)</span>
+<span class="c1">#        D4 - sum((X[t]/I[t] - X[t-1]/I[t-1])**2)</span>
+<span class="c1">#        D5 - sum((X[t]/I[t] / X[t-1]/I[t-1] - 1)**2)</span>
+<span class="c1">#NOTE: only D4 is the only one implemented, see IMF chapter 6.</span>
+
+
+    <span class="c1"># check arrays and make 2d</span>
+    <span class="n">indicator</span> <span class="o">=</span> <span class="n">asarray</span><span class="p">(</span><span class="n">indicator</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">indicator</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="n">indicator</span> <span class="o">=</span> <span class="n">indicator</span><span class="p">[:,</span><span class="kc">None</span><span class="p">]</span>
+    <span class="n">benchmark</span> <span class="o">=</span> <span class="n">asarray</span><span class="p">(</span><span class="n">benchmark</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">benchmark</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="n">benchmark</span> <span class="o">=</span> <span class="n">benchmark</span><span class="p">[:,</span><span class="kc">None</span><span class="p">]</span>
+
+    <span class="c1"># get dimensions</span>
+    <span class="n">N</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">indicator</span><span class="p">)</span> <span class="c1"># total number of high-freq</span>
+    <span class="n">m</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">benchmark</span><span class="p">)</span> <span class="c1"># total number of low-freq</span>
+
+    <span class="c1"># number of low-freq observations for aggregate measure</span>
+    <span class="c1"># 4 for annual to quarter and 3 for quarter to monthly</span>
+    <span class="k">if</span> <span class="n">freq</span> <span class="o">==</span> <span class="s2">&quot;aq&quot;</span><span class="p">:</span>
+        <span class="n">k</span> <span class="o">=</span> <span class="mi">4</span>
+    <span class="k">elif</span> <span class="n">freq</span> <span class="o">==</span> <span class="s2">&quot;qm&quot;</span><span class="p">:</span>
+        <span class="n">k</span> <span class="o">=</span> <span class="mi">3</span>
+    <span class="k">elif</span> <span class="n">freq</span> <span class="o">==</span> <span class="s2">&quot;other&quot;</span><span class="p">:</span>
+        <span class="n">k</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;k&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">k</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;k must be supplied with freq=</span><span class="se">\&quot;</span><span class="s2">other</span><span class="se">\&quot;</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;freq </span><span class="si">%s</span><span class="s2"> not understood&quot;</span> <span class="o">%</span> <span class="n">freq</span><span class="p">)</span>
+
+    <span class="n">n</span> <span class="o">=</span> <span class="n">k</span><span class="o">*</span><span class="n">m</span> <span class="c1"># number of indicator series with a benchmark for back-series</span>
+    <span class="c1"># if k*m != n, then we are going to extrapolate q observations</span>
+    <span class="k">if</span> <span class="n">N</span> <span class="o">&gt;</span> <span class="n">n</span><span class="p">:</span>
+        <span class="n">q</span> <span class="o">=</span> <span class="n">N</span> <span class="o">-</span> <span class="n">n</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">q</span> <span class="o">=</span> <span class="mi">0</span>
+
+    <span class="c1"># make the aggregator matrix</span>
+    <span class="c1">#B = block_diag(*(ones((k,1)),)*m)</span>
+    <span class="n">B</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">kron</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="n">m</span><span class="p">),</span> <span class="n">ones</span><span class="p">((</span><span class="n">k</span><span class="p">,</span><span class="mi">1</span><span class="p">)))</span>
+
+    <span class="c1"># following the IMF paper, we can do</span>
+    <span class="n">Zinv</span> <span class="o">=</span> <span class="n">diag</span><span class="p">(</span><span class="mf">1.</span><span class="o">/</span><span class="n">indicator</span><span class="o">.</span><span class="n">squeeze</span><span class="p">()[:</span><span class="n">n</span><span class="p">])</span>
+    <span class="c1"># this is D in Denton&#39;s notation (not using initial value correction)</span>
+<span class="c1">#    D = eye(n)</span>
+    <span class="c1"># make off-diagonal = -1</span>
+<span class="c1">#    D[((np.diag_indices(n)[0])[:-1]+1,(np.diag_indices(n)[1])[:-1])] = -1</span>
+    <span class="c1"># account for starting conditions</span>
+<span class="c1">#    H = D[1:,:]</span>
+<span class="c1">#    HTH = dot(H.T,H)</span>
+    <span class="c1"># just make HTH</span>
+    <span class="n">HTH</span> <span class="o">=</span> <span class="n">eye</span><span class="p">(</span><span class="n">n</span><span class="p">)</span>
+    <span class="n">diag_idx0</span><span class="p">,</span> <span class="n">diag_idx1</span> <span class="o">=</span> <span class="n">diag_indices</span><span class="p">(</span><span class="n">n</span><span class="p">)</span>
+    <span class="n">HTH</span><span class="p">[</span><span class="n">diag_idx0</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span> <span class="n">diag_idx1</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">]]</span> <span class="o">+=</span> <span class="mi">1</span>
+    <span class="n">HTH</span><span class="p">[</span><span class="n">diag_idx0</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span> <span class="n">diag_idx1</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]]</span> <span class="o">=</span> <span class="o">-</span><span class="mi">1</span>
+    <span class="n">HTH</span><span class="p">[</span><span class="n">diag_idx0</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span> <span class="n">diag_idx1</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">+</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="mi">1</span>
+
+    <span class="n">W</span> <span class="o">=</span> <span class="n">dot</span><span class="p">(</span><span class="n">dot</span><span class="p">(</span><span class="n">Zinv</span><span class="p">,</span><span class="n">HTH</span><span class="p">),</span><span class="n">Zinv</span><span class="p">)</span>
+
+    <span class="c1"># make partitioned matrices</span>
+    <span class="c1">#TODO: break this out so that we can simplify the linalg?</span>
+    <span class="n">I</span> <span class="o">=</span> <span class="n">zeros</span><span class="p">((</span><span class="n">n</span><span class="o">+</span><span class="n">m</span><span class="p">,</span><span class="n">n</span><span class="o">+</span><span class="n">m</span><span class="p">))</span>
+    <span class="n">I</span><span class="p">[:</span><span class="n">n</span><span class="p">,:</span><span class="n">n</span><span class="p">]</span> <span class="o">=</span> <span class="n">W</span>
+    <span class="n">I</span><span class="p">[:</span><span class="n">n</span><span class="p">,</span><span class="n">n</span><span class="p">:]</span> <span class="o">=</span> <span class="n">B</span>
+    <span class="n">I</span><span class="p">[</span><span class="n">n</span><span class="p">:,:</span><span class="n">n</span><span class="p">]</span> <span class="o">=</span> <span class="n">B</span><span class="o">.</span><span class="n">T</span>
+
+    <span class="n">A</span> <span class="o">=</span> <span class="n">zeros</span><span class="p">((</span><span class="n">m</span><span class="o">+</span><span class="n">n</span><span class="p">,</span><span class="mi">1</span><span class="p">))</span> <span class="c1"># zero first-order constraints</span>
+    <span class="n">A</span><span class="p">[</span><span class="o">-</span><span class="n">m</span><span class="p">:]</span> <span class="o">=</span> <span class="n">benchmark</span> <span class="c1"># adding up constraints</span>
+    <span class="n">X</span> <span class="o">=</span> <span class="n">solve</span><span class="p">(</span><span class="n">I</span><span class="p">,</span><span class="n">A</span><span class="p">)</span>
+    <span class="n">X</span> <span class="o">=</span> <span class="n">X</span><span class="p">[:</span><span class="o">-</span><span class="n">m</span><span class="p">]</span>  <span class="c1"># drop the lagrange multipliers</span>
+
+    <span class="c1"># handle extrapolation</span>
+    <span class="k">if</span> <span class="n">q</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="c1"># get last Benchmark-Indicator ratio</span>
+        <span class="n">bi</span> <span class="o">=</span> <span class="n">X</span><span class="p">[</span><span class="n">n</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">/</span><span class="n">indicator</span><span class="p">[</span><span class="n">n</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+        <span class="n">extrapolated</span> <span class="o">=</span> <span class="n">bi</span> <span class="o">*</span> <span class="n">indicator</span><span class="p">[</span><span class="n">n</span><span class="p">:]</span>
+        <span class="n">X</span> <span class="o">=</span> <span class="n">r_</span><span class="p">[</span><span class="n">X</span><span class="p">,</span><span class="n">extrapolated</span><span class="p">]</span>
+
+    <span class="k">return</span> <span class="n">X</span><span class="o">.</span><span class="n">squeeze</span><span class="p">()</span></div>
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+    <span class="c1">#these will be the tests</span>
+    <span class="c1"># from IMF paper</span>
+
+    <span class="c1"># quarterly data</span>
+    <span class="n">indicator</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">98.2</span><span class="p">,</span> <span class="mf">100.8</span><span class="p">,</span> <span class="mf">102.2</span><span class="p">,</span> <span class="mf">100.8</span><span class="p">,</span> <span class="mf">99.0</span><span class="p">,</span> <span class="mf">101.6</span><span class="p">,</span>
+                          <span class="mf">102.7</span><span class="p">,</span> <span class="mf">101.5</span><span class="p">,</span> <span class="mf">100.5</span><span class="p">,</span> <span class="mf">103.0</span><span class="p">,</span> <span class="mf">103.5</span><span class="p">,</span> <span class="mf">101.5</span><span class="p">])</span>
+    <span class="c1"># two annual observations</span>
+    <span class="n">benchmark</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">4000.</span><span class="p">,</span><span class="mf">4161.4</span><span class="p">])</span>
+    <span class="n">x_imf</span> <span class="o">=</span> <span class="n">dentonm</span><span class="p">(</span><span class="n">indicator</span><span class="p">,</span> <span class="n">benchmark</span><span class="p">,</span> <span class="n">freq</span><span class="o">=</span><span class="s2">&quot;aq&quot;</span><span class="p">)</span>
+
+    <span class="n">imf_stata</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">969.8</span><span class="p">,</span> <span class="mf">998.4</span><span class="p">,</span> <span class="mf">1018.3</span><span class="p">,</span> <span class="mf">1013.4</span><span class="p">,</span> <span class="mf">1007.2</span><span class="p">,</span> <span class="mf">1042.9</span><span class="p">,</span>
+                                <span class="mf">1060.3</span><span class="p">,</span> <span class="mf">1051.0</span><span class="p">,</span> <span class="mf">1040.6</span><span class="p">,</span> <span class="mf">1066.5</span><span class="p">,</span> <span class="mf">1071.7</span><span class="p">,</span> <span class="mf">1051.0</span><span class="p">])</span>
+    <span class="n">np</span><span class="o">.</span><span class="n">testing</span><span class="o">.</span><span class="n">assert_almost_equal</span><span class="p">(</span><span class="n">imf_stata</span><span class="p">,</span> <span class="n">x_imf</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+
+    <span class="c1"># Denton example</span>
+    <span class="n">zQ</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">50</span><span class="p">,</span><span class="mi">100</span><span class="p">,</span><span class="mi">150</span><span class="p">,</span><span class="mi">100</span><span class="p">]</span> <span class="o">*</span> <span class="mi">5</span><span class="p">)</span>
+    <span class="n">Y</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">500</span><span class="p">,</span><span class="mi">400</span><span class="p">,</span><span class="mi">300</span><span class="p">,</span><span class="mi">400</span><span class="p">,</span><span class="mi">500</span><span class="p">])</span>
+    <span class="n">x_denton</span> <span class="o">=</span> <span class="n">dentonm</span><span class="p">(</span><span class="n">zQ</span><span class="p">,</span> <span class="n">Y</span><span class="p">,</span> <span class="n">freq</span><span class="o">=</span><span class="s2">&quot;aq&quot;</span><span class="p">)</span>
+    <span class="n">x_stata</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">64.334796</span><span class="p">,</span><span class="mf">127.80616</span><span class="p">,</span><span class="mf">187.82379</span><span class="p">,</span><span class="mf">120.03526</span><span class="p">,</span><span class="mf">56.563894</span><span class="p">,</span>
+                    <span class="mf">105.97568</span><span class="p">,</span><span class="mf">147.50144</span><span class="p">,</span><span class="mf">89.958987</span><span class="p">,</span><span class="mf">40.547201</span><span class="p">,</span><span class="mf">74.445963</span><span class="p">,</span>
+                    <span class="mf">108.34473</span><span class="p">,</span><span class="mf">76.66211</span><span class="p">,</span><span class="mf">42.763347</span><span class="p">,</span><span class="mf">94.14664</span><span class="p">,</span><span class="mf">153.41596</span><span class="p">,</span>
+                    <span class="mf">109.67405</span><span class="p">,</span><span class="mf">58.290761</span><span class="p">,</span><span class="mf">122.62556</span><span class="p">,</span><span class="mf">190.41409</span><span class="p">,</span><span class="mf">128.66959</span><span class="p">])</span>
+
+
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd"># Examples from the Denton 1971 paper</span>
+<span class="sd">k = 4</span>
+<span class="sd">m = 5</span>
+<span class="sd">n = m*k</span>
+
+<span class="sd">zQ = [50,100,150,100] * m</span>
+<span class="sd">Y = [500,400,300,400,500]</span>
+
+<span class="sd">A = np.eye(n)</span>
+<span class="sd">B = block_diag(*(np.ones((k,1)),)*m)</span>
+
+<span class="sd">r = Y - B.T.dot(zQ)</span>
+<span class="sd">#Ainv = inv(A)</span>
+<span class="sd">Ainv = A # shortcut for identity</span>
+<span class="sd">C = Ainv.dot(B).dot(inv(B.T.dot(Ainv).dot(B)))</span>
+<span class="sd">x = zQ + C.dot(r)</span>
+
+<span class="sd"># minimize first difference d(x-z)</span>
+<span class="sd">R = linalg.tri(n, dtype=float) # R is tril so actually R.T in paper</span>
+<span class="sd">Ainv = R.dot(R.T)</span>
+<span class="sd">C = Ainv.dot(B).dot(inv(B.T.dot(Ainv).dot(B)))</span>
+<span class="sd">x1 = zQ + C.dot(r)</span>
+
+<span class="sd"># minimize the second difference d**2(x-z)</span>
+<span class="sd">Ainv = R.dot(Ainv).dot(R.T)</span>
+<span class="sd">C = Ainv.dot(B).dot(inv(B.T.dot(Ainv).dot(B)))</span>
+<span class="sd">x12 = zQ + C.dot(r)</span>
+
+
+<span class="sd"># # do it proportionately (x-z)/z</span>
+<span class="sd">Z = np.diag(zQ)</span>
+<span class="sd">Ainv = np.eye(n)</span>
+<span class="sd">C = Z.dot(Ainv).dot(Z).dot(B).dot(inv(B.T.dot(Z).dot(Ainv).dot(Z).dot(B)))</span>
+<span class="sd">x11 = zQ + C.dot(r)</span>
+
+<span class="sd"># do it proportionately with differencing d((x-z)/z)</span>
+<span class="sd">Ainv = R.dot(R.T)</span>
+<span class="sd">C = Z.dot(Ainv).dot(Z).dot(B).dot(inv(B.T.dot(Z).dot(Ainv).dot(Z).dot(B)))</span>
+<span class="sd">x111 = zQ + C.dot(r)</span>
+
+<span class="sd">x_stata = np.array([64.334796,127.80616,187.82379,120.03526,56.563894,</span>
+<span class="sd">                    105.97568,147.50144,89.958987,40.547201,74.445963,</span>
+<span class="sd">                    108.34473,76.66211,42.763347,94.14664,153.41596,</span>
+<span class="sd">                    109.67405,58.290761,122.62556,190.41409,128.66959])</span>
+<span class="sd">&quot;&quot;&quot;</span>
+</pre></div>
+
+
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <form class="search" action="../../../../search.html" method="get">
+      <div><input type="text" name="q" /></div>
+      <div><input type="submit" value="Go" /></div>
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer" role="contentinfo">
+        &#169; Copyright 2009-2017, Josef Perktold, Skipper Seabold, Jonathan Taylor, statsmodels-developers.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.5.3.
+    </div>
+  </body>
+</html>

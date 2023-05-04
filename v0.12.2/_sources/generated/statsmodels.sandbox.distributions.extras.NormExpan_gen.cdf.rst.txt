@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.sandbox.distributions.extras.NormExpan\_gen.cdf
+===========================================================
+
+.. currentmodule:: statsmodels.sandbox.distributions.extras
+
+.. automethod:: NormExpan_gen.cdf

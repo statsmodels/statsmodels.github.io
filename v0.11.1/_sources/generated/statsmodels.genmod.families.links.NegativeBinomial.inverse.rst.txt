@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.genmod.families.links.NegativeBinomial.inverse
+==========================================================
+
+.. currentmodule:: statsmodels.genmod.families.links
+
+.. automethod:: NegativeBinomial.inverse

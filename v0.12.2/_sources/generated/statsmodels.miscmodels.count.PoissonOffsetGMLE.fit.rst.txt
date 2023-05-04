@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.miscmodels.count.PoissonOffsetGMLE.fit
+==================================================
+
+.. currentmodule:: statsmodels.miscmodels.count
+
+.. automethod:: PoissonOffsetGMLE.fit

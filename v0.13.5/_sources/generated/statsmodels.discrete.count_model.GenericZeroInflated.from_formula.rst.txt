@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.discrete.count\_model.GenericZeroInflated.from\_formula
+===================================================================
+
+.. currentmodule:: statsmodels.discrete.count_model
+
+.. automethod:: GenericZeroInflated.from_formula

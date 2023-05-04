@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.tsa.holtwinters.HoltWintersResults.initialize
+=========================================================
+
+.. currentmodule:: statsmodels.tsa.holtwinters
+
+.. automethod:: HoltWintersResults.initialize

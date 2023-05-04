@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.genmod.families.family.Gamma.variance
+=================================================
+
+.. currentmodule:: statsmodels.genmod.families.family
+
+.. autoattribute:: Gamma.variance

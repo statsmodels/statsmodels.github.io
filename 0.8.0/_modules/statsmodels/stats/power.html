@@ -1,0 +1,1246 @@
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>statsmodels.stats.power &#8212; statsmodels 0.8.0 documentation</title>
+    
+    <link rel="stylesheet" href="../../../_static/nature.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../../',
+        VERSION:     '0.8.0',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true,
+        SOURCELINK_SUFFIX: '.txt'
+      };
+    </script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <link rel="shortcut icon" href="../../../_static/statsmodels_hybi_favico.ico"/>
+    <link rel="author" title="About these documents" href="../../../about.html" />
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+<link rel="stylesheet" href="../../../_static/examples.css" type="text/css" />
+<link rel="stylesheet" href="../../../_static/facebox.css" type="text/css" />
+<script type="text/javascript" src="../../../_static/scripts.js">
+</script>
+<script type="text/javascript" src="../../../_static/facebox.js">
+</script>
+
+  </head>
+  <body role="document">
+<div class="headerwrap">
+    <div class = "header">
+        
+        <a href = "../../../index.html">
+<img src="../../../_static/statsmodels_hybi_banner.png" alt="Logo"
+    style="padding-left: 15px"/></a>
+        
+    </div>
+</div>
+
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+<li><a href ="../../../install.html">Install</a></li> &nbsp;|&nbsp;
+<li><a href="https://groups.google.com/group/pystatsmodels?hl=en">Support</a></li> &nbsp;|&nbsp;
+<li><a href="https://github.com/statsmodels/statsmodels/issues">Bugs</a></li> &nbsp;|&nbsp;
+<li><a href="../../../dev/index.html">Develop</a></li> &nbsp;|&nbsp;
+<li><a href="../../../examples/index.html">Examples</a></li> &nbsp;|&nbsp;
+<li><a href="../../../faq.html">FAQ</a></li> &nbsp;|&nbsp;
+
+          <li class="nav-item nav-item-1"><a href="../../index.html" accesskey="U">Module code</a> |</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+
+
+
+
+  <h1>Source code for statsmodels.stats.power</h1><div class="highlight"><pre>
+<span></span><span class="c1"># -*- coding: utf-8 -*-</span>
+<span class="c1">#pylint: disable-msg=W0142</span>
+<span class="sd">&quot;&quot;&quot;Statistical power, solving for nobs, ... - trial version</span>
+
+<span class="sd">Created on Sat Jan 12 21:48:06 2013</span>
+
+<span class="sd">Author: Josef Perktold</span>
+
+<span class="sd">Example</span>
+<span class="sd">roundtrip - root with respect to all variables</span>
+
+<span class="sd">       calculated, desired</span>
+<span class="sd">nobs   33.367204205 33.367204205</span>
+<span class="sd">effect 0.5 0.5</span>
+<span class="sd">alpha  0.05 0.05</span>
+<span class="sd">power   0.8 0.8</span>
+
+
+<span class="sd">TODO:</span>
+<span class="sd">refactoring</span>
+<span class="sd"> - rename beta -&gt; power,    beta (type 2 error is beta = 1-power)  DONE</span>
+<span class="sd"> - I think the current implementation can handle any kinds of extra keywords</span>
+<span class="sd">   (except for maybe raising meaningful exceptions</span>
+<span class="sd"> - streamline code, I think internally classes can be merged</span>
+<span class="sd">   how to extend to k-sample tests?</span>
+<span class="sd">   user interface for different tests that map to the same (internal) test class</span>
+<span class="sd"> - sequence of arguments might be inconsistent,</span>
+<span class="sd">   arg and/or kwds so python checks what&#39;s required and what can be None.</span>
+<span class="sd"> - templating for docstrings ?</span>
+
+
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="kn">from</span> <span class="nn">__future__</span> <span class="k">import</span> <span class="n">print_function</span>
+<span class="kn">from</span> <span class="nn">statsmodels.compat.python</span> <span class="k">import</span> <span class="n">iteritems</span>
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+<span class="kn">from</span> <span class="nn">scipy</span> <span class="k">import</span> <span class="n">stats</span><span class="p">,</span> <span class="n">optimize</span>
+<span class="kn">from</span> <span class="nn">statsmodels.tools.rootfinding</span> <span class="k">import</span> <span class="n">brentq_expanding</span>
+
+<span class="k">def</span> <span class="nf">ttest_power</span><span class="p">(</span><span class="n">effect_size</span><span class="p">,</span> <span class="n">nobs</span><span class="p">,</span> <span class="n">alpha</span><span class="p">,</span> <span class="n">df</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">alternative</span><span class="o">=</span><span class="s1">&#39;two-sided&#39;</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;Calculate power of a ttest</span>
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="n">d</span> <span class="o">=</span> <span class="n">effect_size</span>
+    <span class="k">if</span> <span class="n">df</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">df</span> <span class="o">=</span> <span class="n">nobs</span> <span class="o">-</span> <span class="mi">1</span>
+
+    <span class="k">if</span> <span class="n">alternative</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;two-sided&#39;</span><span class="p">,</span> <span class="s1">&#39;2s&#39;</span><span class="p">]:</span>
+        <span class="n">alpha_</span> <span class="o">=</span> <span class="n">alpha</span> <span class="o">/</span> <span class="mf">2.</span>  <span class="c1">#no inplace changes, doesn&#39;t work</span>
+    <span class="k">elif</span> <span class="n">alternative</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;smaller&#39;</span><span class="p">,</span> <span class="s1">&#39;larger&#39;</span><span class="p">]:</span>
+        <span class="n">alpha_</span> <span class="o">=</span> <span class="n">alpha</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;alternative has to be &#39;two-sided&#39;, &#39;larger&#39; &quot;</span> <span class="o">+</span>
+                         <span class="s2">&quot;or &#39;smaller&#39;&quot;</span><span class="p">)</span>
+
+    <span class="n">pow_</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="k">if</span> <span class="n">alternative</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;two-sided&#39;</span><span class="p">,</span> <span class="s1">&#39;2s&#39;</span><span class="p">,</span> <span class="s1">&#39;larger&#39;</span><span class="p">]:</span>
+        <span class="n">crit_upp</span> <span class="o">=</span> <span class="n">stats</span><span class="o">.</span><span class="n">t</span><span class="o">.</span><span class="n">isf</span><span class="p">(</span><span class="n">alpha_</span><span class="p">,</span> <span class="n">df</span><span class="p">)</span>
+        <span class="c1">#print crit_upp, df, d*np.sqrt(nobs)</span>
+        <span class="c1"># use private methods, generic methods return nan with negative d</span>
+        <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">crit_upp</span><span class="p">)):</span>
+            <span class="c1"># avoid endless loop, https://github.com/scipy/scipy/issues/2667</span>
+            <span class="n">pow_</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">pow_</span> <span class="o">=</span> <span class="n">stats</span><span class="o">.</span><span class="n">nct</span><span class="o">.</span><span class="n">_sf</span><span class="p">(</span><span class="n">crit_upp</span><span class="p">,</span> <span class="n">df</span><span class="p">,</span> <span class="n">d</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">nobs</span><span class="p">))</span>
+    <span class="k">if</span> <span class="n">alternative</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;two-sided&#39;</span><span class="p">,</span> <span class="s1">&#39;2s&#39;</span><span class="p">,</span> <span class="s1">&#39;smaller&#39;</span><span class="p">]:</span>
+        <span class="n">crit_low</span> <span class="o">=</span> <span class="n">stats</span><span class="o">.</span><span class="n">t</span><span class="o">.</span><span class="n">ppf</span><span class="p">(</span><span class="n">alpha_</span><span class="p">,</span> <span class="n">df</span><span class="p">)</span>
+        <span class="c1">#print crit_low, df, d*np.sqrt(nobs)</span>
+        <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">crit_low</span><span class="p">)):</span>
+            <span class="n">pow_</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">pow_</span> <span class="o">+=</span> <span class="n">stats</span><span class="o">.</span><span class="n">nct</span><span class="o">.</span><span class="n">_cdf</span><span class="p">(</span><span class="n">crit_low</span><span class="p">,</span> <span class="n">df</span><span class="p">,</span> <span class="n">d</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">nobs</span><span class="p">))</span>
+    <span class="k">return</span> <span class="n">pow_</span>
+
+<span class="k">def</span> <span class="nf">normal_power</span><span class="p">(</span><span class="n">effect_size</span><span class="p">,</span> <span class="n">nobs</span><span class="p">,</span> <span class="n">alpha</span><span class="p">,</span> <span class="n">alternative</span><span class="o">=</span><span class="s1">&#39;two-sided&#39;</span><span class="p">,</span> <span class="n">sigma</span><span class="o">=</span><span class="mf">1.</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;Calculate power of a normal distributed test statistic</span>
+
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="n">d</span> <span class="o">=</span> <span class="n">effect_size</span>
+
+    <span class="k">if</span> <span class="n">alternative</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;two-sided&#39;</span><span class="p">,</span> <span class="s1">&#39;2s&#39;</span><span class="p">]:</span>
+        <span class="n">alpha_</span> <span class="o">=</span> <span class="n">alpha</span> <span class="o">/</span> <span class="mf">2.</span>  <span class="c1">#no inplace changes, doesn&#39;t work</span>
+    <span class="k">elif</span> <span class="n">alternative</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;smaller&#39;</span><span class="p">,</span> <span class="s1">&#39;larger&#39;</span><span class="p">]:</span>
+        <span class="n">alpha_</span> <span class="o">=</span> <span class="n">alpha</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;alternative has to be &#39;two-sided&#39;, &#39;larger&#39; &quot;</span> <span class="o">+</span>
+                         <span class="s2">&quot;or &#39;smaller&#39;&quot;</span><span class="p">)</span>
+
+    <span class="n">pow_</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="k">if</span> <span class="n">alternative</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;two-sided&#39;</span><span class="p">,</span> <span class="s1">&#39;2s&#39;</span><span class="p">,</span> <span class="s1">&#39;larger&#39;</span><span class="p">]:</span>
+        <span class="n">crit</span> <span class="o">=</span> <span class="n">stats</span><span class="o">.</span><span class="n">norm</span><span class="o">.</span><span class="n">isf</span><span class="p">(</span><span class="n">alpha_</span><span class="p">)</span>
+        <span class="n">pow_</span> <span class="o">=</span> <span class="n">stats</span><span class="o">.</span><span class="n">norm</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="n">crit</span> <span class="o">-</span> <span class="n">d</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">nobs</span><span class="p">)</span><span class="o">/</span><span class="n">sigma</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">alternative</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;two-sided&#39;</span><span class="p">,</span> <span class="s1">&#39;2s&#39;</span><span class="p">,</span> <span class="s1">&#39;smaller&#39;</span><span class="p">]:</span>
+        <span class="n">crit</span> <span class="o">=</span> <span class="n">stats</span><span class="o">.</span><span class="n">norm</span><span class="o">.</span><span class="n">ppf</span><span class="p">(</span><span class="n">alpha_</span><span class="p">)</span>
+        <span class="n">pow_</span> <span class="o">+=</span> <span class="n">stats</span><span class="o">.</span><span class="n">norm</span><span class="o">.</span><span class="n">cdf</span><span class="p">(</span><span class="n">crit</span> <span class="o">-</span> <span class="n">d</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">nobs</span><span class="p">)</span><span class="o">/</span><span class="n">sigma</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">pow_</span>
+
+<span class="k">def</span> <span class="nf">ftest_anova_power</span><span class="p">(</span><span class="n">effect_size</span><span class="p">,</span> <span class="n">nobs</span><span class="p">,</span> <span class="n">alpha</span><span class="p">,</span> <span class="n">k_groups</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">df</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;power for ftest for one way anova with k equal sized groups</span>
+
+<span class="sd">    nobs total sample size, sum over all groups</span>
+
+<span class="sd">    should be general nobs observations, k_groups restrictions ???</span>
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="n">df_num</span> <span class="o">=</span> <span class="n">nobs</span> <span class="o">-</span> <span class="n">k_groups</span>
+    <span class="n">df_denom</span> <span class="o">=</span> <span class="n">k_groups</span> <span class="o">-</span> <span class="mi">1</span>
+    <span class="n">crit</span> <span class="o">=</span> <span class="n">stats</span><span class="o">.</span><span class="n">f</span><span class="o">.</span><span class="n">isf</span><span class="p">(</span><span class="n">alpha</span><span class="p">,</span> <span class="n">df_denom</span><span class="p">,</span> <span class="n">df_num</span><span class="p">)</span>
+    <span class="n">pow_</span> <span class="o">=</span> <span class="n">stats</span><span class="o">.</span><span class="n">ncf</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="n">crit</span><span class="p">,</span> <span class="n">df_denom</span><span class="p">,</span> <span class="n">df_num</span><span class="p">,</span> <span class="n">effect_size</span><span class="o">**</span><span class="mi">2</span> <span class="o">*</span> <span class="n">nobs</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">pow_</span><span class="c1">#, crit</span>
+
+<span class="k">def</span> <span class="nf">ftest_power</span><span class="p">(</span><span class="n">effect_size</span><span class="p">,</span> <span class="n">df_num</span><span class="p">,</span> <span class="n">df_denom</span><span class="p">,</span> <span class="n">alpha</span><span class="p">,</span> <span class="n">ncc</span><span class="o">=</span><span class="mi">1</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;Calculate the power of a F-test.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    effect_size : float</span>
+<span class="sd">        standardized effect size, mean divided by the standard deviation.</span>
+<span class="sd">        effect size has to be positive.</span>
+<span class="sd">    df_num : int or float</span>
+<span class="sd">        numerator degrees of freedom.</span>
+<span class="sd">    df_denom : int or float</span>
+<span class="sd">        denominator degrees of freedom.</span>
+<span class="sd">    alpha : float in interval (0,1)</span>
+<span class="sd">        significance level, e.g. 0.05, is the probability of a type I</span>
+<span class="sd">        error, that is wrong rejections if the Null Hypothesis is true.</span>
+<span class="sd">    ncc : int</span>
+<span class="sd">        degrees of freedom correction for non-centrality parameter.</span>
+<span class="sd">        see Notes</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    power : float</span>
+<span class="sd">        Power of the test, e.g. 0.8, is one minus the probability of a</span>
+<span class="sd">        type II error. Power is the probability that the test correctly</span>
+<span class="sd">        rejects the Null Hypothesis if the Alternative Hypothesis is true.</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+
+<span class="sd">    sample size is given implicitly by df_num</span>
+
+<span class="sd">    set ncc=0 to match t-test, or f-test in LikelihoodModelResults.</span>
+<span class="sd">    ncc=1 matches the non-centrality parameter in R::pwr::pwr.f2.test</span>
+
+<span class="sd">    ftest_power with ncc=0 should also be correct for f_test in regression</span>
+<span class="sd">    models, with df_num and d_denom as defined there. (not verified yet)</span>
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="n">nc</span> <span class="o">=</span> <span class="n">effect_size</span><span class="o">**</span><span class="mi">2</span> <span class="o">*</span> <span class="p">(</span><span class="n">df_denom</span> <span class="o">+</span> <span class="n">df_num</span> <span class="o">+</span> <span class="n">ncc</span><span class="p">)</span>
+    <span class="n">crit</span> <span class="o">=</span> <span class="n">stats</span><span class="o">.</span><span class="n">f</span><span class="o">.</span><span class="n">isf</span><span class="p">(</span><span class="n">alpha</span><span class="p">,</span> <span class="n">df_denom</span><span class="p">,</span> <span class="n">df_num</span><span class="p">)</span>
+    <span class="n">pow_</span> <span class="o">=</span> <span class="n">stats</span><span class="o">.</span><span class="n">ncf</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="n">crit</span><span class="p">,</span> <span class="n">df_denom</span><span class="p">,</span> <span class="n">df_num</span><span class="p">,</span> <span class="n">nc</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">pow_</span> <span class="c1">#, crit, nc</span>
+
+
+<span class="c1">#class based implementation</span>
+<span class="c1">#--------------------------</span>
+
+<span class="k">class</span> <span class="nc">Power</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;Statistical Power calculations, Base Class</span>
+
+<span class="sd">    so far this could all be class methods</span>
+<span class="sd">    &#39;&#39;&#39;</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwds</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="vm">__dict__</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">kwds</span><span class="p">)</span>
+        <span class="c1"># used only for instance level start values</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">start_ttp</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">effect_size</span><span class="o">=</span><span class="mf">0.01</span><span class="p">,</span> <span class="n">nobs</span><span class="o">=</span><span class="mf">10.</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="mf">0.15</span><span class="p">,</span>
+                              <span class="n">power</span><span class="o">=</span><span class="mf">0.6</span><span class="p">,</span> <span class="n">nobs1</span><span class="o">=</span><span class="mf">10.</span><span class="p">,</span> <span class="n">ratio</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+                              <span class="n">df_num</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span> <span class="n">df_denom</span><span class="o">=</span><span class="mi">3</span>   <span class="c1"># for FTestPower</span>
+                              <span class="p">)</span>
+        <span class="c1"># TODO: nobs1 and ratio are for ttest_ind,</span>
+        <span class="c1">#      need start_ttp for each test/class separately,</span>
+        <span class="c1"># possible rootfinding problem for effect_size, starting small seems to</span>
+        <span class="c1"># work</span>
+        <span class="kn">from</span> <span class="nn">collections</span> <span class="k">import</span> <span class="n">defaultdict</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">start_bqexp</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="nb">dict</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;nobs&#39;</span><span class="p">,</span> <span class="s1">&#39;nobs1&#39;</span><span class="p">,</span> <span class="s1">&#39;df_num&#39;</span><span class="p">,</span> <span class="s1">&#39;df_denom&#39;</span><span class="p">]:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">start_bqexp</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">low</span><span class="o">=</span><span class="mf">2.</span><span class="p">,</span> <span class="n">start_upp</span><span class="o">=</span><span class="mf">50.</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;df_denom&#39;</span><span class="p">]:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">start_bqexp</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">low</span><span class="o">=</span><span class="mf">1.</span><span class="p">,</span> <span class="n">start_upp</span><span class="o">=</span><span class="mf">50.</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;ratio&#39;</span><span class="p">]:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">start_bqexp</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">low</span><span class="o">=</span><span class="mf">1e-8</span><span class="p">,</span> <span class="n">start_upp</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;alpha&#39;</span><span class="p">]:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">start_bqexp</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">low</span><span class="o">=</span><span class="mf">1e-12</span><span class="p">,</span> <span class="n">upp</span><span class="o">=</span><span class="mi">1</span> <span class="o">-</span> <span class="mf">1e-12</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">power</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwds</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span>
+
+    <span class="k">def</span> <span class="nf">_power_identity</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwds</span><span class="p">):</span>
+        <span class="n">power_</span> <span class="o">=</span> <span class="n">kwds</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s1">&#39;power&#39;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">power</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwds</span><span class="p">)</span> <span class="o">-</span> <span class="n">power_</span>
+
+    <span class="k">def</span> <span class="nf">solve_power</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwds</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;solve for any one of the parameters of a t-test</span>
+
+<span class="sd">        for t-test the keywords are:</span>
+<span class="sd">            effect_size, nobs, alpha, power</span>
+
+<span class="sd">        exactly one needs to be ``None``, all others need numeric values</span>
+
+<span class="sd">        *attaches*</span>
+
+<span class="sd">        cache_fit_res : list</span>
+<span class="sd">            Cache of the result of the root finding procedure for the latest</span>
+<span class="sd">            call to ``solve_power``, mainly for debugging purposes.</span>
+<span class="sd">            The first element is the success indicator, one if successful.</span>
+<span class="sd">            The remaining elements contain the return information of the up to</span>
+<span class="sd">            three solvers that have been tried.</span>
+
+
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="c1">#TODO: maybe use explicit kwds,</span>
+        <span class="c1">#    nicer but requires inspect? and not generic across tests</span>
+        <span class="c1">#    I&#39;m duplicating this in the subclass to get informative docstring</span>
+        <span class="n">key</span> <span class="o">=</span> <span class="p">[</span><span class="n">k</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span><span class="n">v</span> <span class="ow">in</span> <span class="n">iteritems</span><span class="p">(</span><span class="n">kwds</span><span class="p">)</span> <span class="k">if</span> <span class="n">v</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">]</span>
+        <span class="c1">#print kwds, key;</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">key</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;need exactly one keyword that is None&#39;</span><span class="p">)</span>
+        <span class="n">key</span> <span class="o">=</span> <span class="n">key</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+        <span class="k">if</span> <span class="n">key</span> <span class="o">==</span> <span class="s1">&#39;power&#39;</span><span class="p">:</span>
+            <span class="k">del</span> <span class="n">kwds</span><span class="p">[</span><span class="s1">&#39;power&#39;</span><span class="p">]</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">power</span><span class="p">(</span><span class="o">**</span><span class="n">kwds</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_counter</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">def</span> <span class="nf">func</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+            <span class="n">kwds</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">x</span>
+            <span class="n">fval</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_power_identity</span><span class="p">(</span><span class="o">**</span><span class="n">kwds</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_counter</span> <span class="o">+=</span> <span class="mi">1</span>
+            <span class="c1">#print self._counter,</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_counter</span> <span class="o">&gt;</span> <span class="mi">500</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s1">&#39;possible endless loop (500 NaNs)&#39;</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">fval</span><span class="p">):</span>
+                <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">fval</span>
+
+        <span class="c1">#TODO: I&#39;m using the following so I get a warning when start_ttp is not defined</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">start_value</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">start_ttp</span><span class="p">[</span><span class="n">key</span><span class="p">]</span>
+        <span class="k">except</span> <span class="ne">KeyError</span><span class="p">:</span>
+            <span class="n">start_value</span> <span class="o">=</span> <span class="mf">0.9</span>
+            <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;Warning: using default start_value for </span><span class="si">{0}</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">key</span><span class="p">))</span>
+
+        <span class="n">fit_kwds</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">start_bqexp</span><span class="p">[</span><span class="n">key</span><span class="p">]</span>
+        <span class="n">fit_res</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="c1">#print vars()</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">val</span><span class="p">,</span> <span class="n">res</span> <span class="o">=</span> <span class="n">brentq_expanding</span><span class="p">(</span><span class="n">func</span><span class="p">,</span> <span class="n">full_output</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="o">**</span><span class="n">fit_kwds</span><span class="p">)</span>
+            <span class="n">failed</span> <span class="o">=</span> <span class="kc">False</span>
+            <span class="n">fit_res</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">res</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+            <span class="n">failed</span> <span class="o">=</span> <span class="kc">True</span>
+            <span class="n">fit_res</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>
+
+        <span class="n">success</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="p">(</span><span class="ow">not</span> <span class="n">failed</span><span class="p">)</span> <span class="ow">and</span> <span class="n">res</span><span class="o">.</span><span class="n">converged</span><span class="p">:</span>
+            <span class="n">success</span> <span class="o">=</span> <span class="mi">1</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># try backup</span>
+            <span class="c1">#TODO: check more cases to make this robust</span>
+            <span class="n">val</span><span class="p">,</span> <span class="n">infodict</span><span class="p">,</span> <span class="n">ier</span><span class="p">,</span> <span class="n">msg</span> <span class="o">=</span> <span class="n">optimize</span><span class="o">.</span><span class="n">fsolve</span><span class="p">(</span><span class="n">func</span><span class="p">,</span> <span class="n">start_value</span><span class="p">,</span>
+                                                      <span class="n">full_output</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span> <span class="c1">#scalar</span>
+            <span class="c1">#val = optimize.newton(func, start_value) #scalar</span>
+            <span class="n">fval</span> <span class="o">=</span> <span class="n">infodict</span><span class="p">[</span><span class="s1">&#39;fvec&#39;</span><span class="p">]</span>
+            <span class="n">fit_res</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">infodict</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">ier</span> <span class="o">==</span> <span class="mi">1</span> <span class="ow">and</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">fval</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mf">1e-4</span> <span class="p">:</span>
+                <span class="n">success</span> <span class="o">=</span> <span class="mi">1</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="c1">#print infodict</span>
+                <span class="k">if</span> <span class="n">key</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;alpha&#39;</span><span class="p">,</span> <span class="s1">&#39;power&#39;</span><span class="p">,</span> <span class="s1">&#39;effect_size&#39;</span><span class="p">]:</span>
+                    <span class="n">val</span><span class="p">,</span> <span class="n">r</span> <span class="o">=</span> <span class="n">optimize</span><span class="o">.</span><span class="n">brentq</span><span class="p">(</span><span class="n">func</span><span class="p">,</span> <span class="mf">1e-8</span><span class="p">,</span> <span class="mi">1</span><span class="o">-</span><span class="mf">1e-8</span><span class="p">,</span>
+                                             <span class="n">full_output</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span> <span class="c1">#scalar</span>
+                    <span class="n">success</span> <span class="o">=</span> <span class="mi">1</span> <span class="k">if</span> <span class="n">r</span><span class="o">.</span><span class="n">converged</span> <span class="k">else</span> <span class="mi">0</span>
+                    <span class="n">fit_res</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">r</span><span class="p">)</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">success</span> <span class="o">=</span> <span class="mi">0</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">success</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="kn">import</span> <span class="nn">warnings</span>
+            <span class="kn">from</span> <span class="nn">statsmodels.tools.sm_exceptions</span> <span class="k">import</span> <span class="p">(</span><span class="n">ConvergenceWarning</span><span class="p">,</span>
+                <span class="n">convergence_doc</span><span class="p">)</span>
+            <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="n">convergence_doc</span><span class="p">,</span> <span class="n">ConvergenceWarning</span><span class="p">)</span>
+
+        <span class="c1">#attach fit_res, for reading only, should be needed only for debugging</span>
+        <span class="n">fit_res</span><span class="o">.</span><span class="n">insert</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">success</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">cache_fit_res</span> <span class="o">=</span> <span class="n">fit_res</span>
+        <span class="k">return</span> <span class="n">val</span>
+
+    <span class="k">def</span> <span class="nf">plot_power</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dep_var</span><span class="o">=</span><span class="s1">&#39;nobs&#39;</span><span class="p">,</span> <span class="n">nobs</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">effect_size</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                   <span class="n">alpha</span><span class="o">=</span><span class="mf">0.05</span><span class="p">,</span> <span class="n">ax</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">title</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">plt_kwds</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwds</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;plot power with number of observations or effect size on x-axis</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        dep_var : string in [&#39;nobs&#39;, &#39;effect_size&#39;, &#39;alpha&#39;]</span>
+<span class="sd">            This specifies which variable is used for the horizontal axis.</span>
+<span class="sd">            If dep_var=&#39;nobs&#39; (default), then one curve is created for each</span>
+<span class="sd">            value of ``effect_size``. If dep_var=&#39;effect_size&#39; or alpha, then</span>
+<span class="sd">            one curve is created for each value of ``nobs``.</span>
+<span class="sd">        nobs : scalar or array_like</span>
+<span class="sd">            specifies the values of the number of observations in the plot</span>
+<span class="sd">        effect_size : scalar or array_like</span>
+<span class="sd">            specifies the values of the effect_size in the plot</span>
+<span class="sd">        alpha : float or array_like</span>
+<span class="sd">            The significance level (type I error) used in the power</span>
+<span class="sd">            calculation. Can only be more than a scalar, if ``dep_var=&#39;alpha&#39;``</span>
+<span class="sd">        ax : None or axis instance</span>
+<span class="sd">            If ax is None, than a matplotlib figure is created. If ax is a</span>
+<span class="sd">            matplotlib axis instance, then it is reused, and the plot elements</span>
+<span class="sd">            are created with it.</span>
+<span class="sd">        title : string</span>
+<span class="sd">            title for the axis. Use an empty string, ``&#39;&#39;``, to avoid a title.</span>
+<span class="sd">        plt_kwds : None or dict</span>
+<span class="sd">            not used yet</span>
+<span class="sd">        kwds : optional keywords for power function</span>
+<span class="sd">            These remaining keyword arguments are used as arguments to the</span>
+<span class="sd">            power function. Many power function support ``alternative`` as a</span>
+<span class="sd">            keyword argument, two-sample test support ``ratio``.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        fig : matplotlib figure instance</span>
+
+<span class="sd">        Notes</span>
+<span class="sd">        -----</span>
+<span class="sd">        This works only for classes where the ``power`` method has</span>
+<span class="sd">        ``effect_size``, ``nobs`` and ``alpha`` as the first three arguments.</span>
+<span class="sd">        If the second argument is ``nobs1``, then the number of observations</span>
+<span class="sd">        in the plot are those for the first sample.</span>
+<span class="sd">        TODO: fix this for FTestPower and GofChisquarePower</span>
+
+<span class="sd">        TODO: maybe add line variable, if we want more than nobs and effectsize</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="c1">#if pwr_kwds is None:</span>
+        <span class="c1">#    pwr_kwds = {}</span>
+        <span class="kn">from</span> <span class="nn">statsmodels.graphics</span> <span class="k">import</span> <span class="n">utils</span>
+        <span class="kn">from</span> <span class="nn">statsmodels.graphics.plottools</span> <span class="k">import</span> <span class="n">rainbow</span>
+        <span class="n">fig</span><span class="p">,</span> <span class="n">ax</span> <span class="o">=</span> <span class="n">utils</span><span class="o">.</span><span class="n">create_mpl_ax</span><span class="p">(</span><span class="n">ax</span><span class="p">)</span>
+        <span class="kn">import</span> <span class="nn">matplotlib.pyplot</span> <span class="k">as</span> <span class="nn">plt</span>
+        <span class="n">colormap</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">cm</span><span class="o">.</span><span class="n">Dark2</span> <span class="c1">#pylint: disable-msg=E1101</span>
+        <span class="n">plt_alpha</span> <span class="o">=</span> <span class="mi">1</span> <span class="c1">#0.75</span>
+        <span class="n">lw</span> <span class="o">=</span> <span class="mi">2</span>
+        <span class="k">if</span> <span class="n">dep_var</span> <span class="o">==</span> <span class="s1">&#39;nobs&#39;</span><span class="p">:</span>
+            <span class="n">colors</span> <span class="o">=</span> <span class="n">rainbow</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">effect_size</span><span class="p">))</span>
+            <span class="n">colors</span> <span class="o">=</span> <span class="p">[</span><span class="n">colormap</span><span class="p">(</span><span class="n">i</span><span class="p">)</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mf">0.9</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">effect_size</span><span class="p">))]</span>
+            <span class="k">for</span> <span class="n">ii</span><span class="p">,</span> <span class="n">es</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">effect_size</span><span class="p">):</span>
+                <span class="n">power</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">power</span><span class="p">(</span><span class="n">es</span><span class="p">,</span> <span class="n">nobs</span><span class="p">,</span> <span class="n">alpha</span><span class="p">,</span> <span class="o">**</span><span class="n">kwds</span><span class="p">)</span>
+                <span class="n">ax</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">nobs</span><span class="p">,</span> <span class="n">power</span><span class="p">,</span> <span class="n">lw</span><span class="o">=</span><span class="n">lw</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="n">plt_alpha</span><span class="p">,</span>
+                        <span class="n">color</span><span class="o">=</span><span class="n">colors</span><span class="p">[</span><span class="n">ii</span><span class="p">],</span> <span class="n">label</span><span class="o">=</span><span class="s1">&#39;es=</span><span class="si">%4.2F</span><span class="s1">&#39;</span> <span class="o">%</span> <span class="n">es</span><span class="p">)</span>
+                <span class="n">xlabel</span> <span class="o">=</span> <span class="s1">&#39;Number of Observations&#39;</span>
+        <span class="k">elif</span> <span class="n">dep_var</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;effect size&#39;</span><span class="p">,</span> <span class="s1">&#39;effect_size&#39;</span><span class="p">,</span> <span class="s1">&#39;es&#39;</span><span class="p">]:</span>
+            <span class="n">colors</span> <span class="o">=</span> <span class="n">rainbow</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">nobs</span><span class="p">))</span>
+            <span class="n">colors</span> <span class="o">=</span> <span class="p">[</span><span class="n">colormap</span><span class="p">(</span><span class="n">i</span><span class="p">)</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mf">0.9</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">nobs</span><span class="p">))]</span>
+            <span class="k">for</span> <span class="n">ii</span><span class="p">,</span> <span class="n">n</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">nobs</span><span class="p">):</span>
+                <span class="n">power</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">power</span><span class="p">(</span><span class="n">effect_size</span><span class="p">,</span> <span class="n">n</span><span class="p">,</span> <span class="n">alpha</span><span class="p">,</span> <span class="o">**</span><span class="n">kwds</span><span class="p">)</span>
+                <span class="n">ax</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">effect_size</span><span class="p">,</span> <span class="n">power</span><span class="p">,</span> <span class="n">lw</span><span class="o">=</span><span class="n">lw</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="n">plt_alpha</span><span class="p">,</span>
+                        <span class="n">color</span><span class="o">=</span><span class="n">colors</span><span class="p">[</span><span class="n">ii</span><span class="p">],</span> <span class="n">label</span><span class="o">=</span><span class="s1">&#39;N=</span><span class="si">%4.2F</span><span class="s1">&#39;</span> <span class="o">%</span> <span class="n">n</span><span class="p">)</span>
+                <span class="n">xlabel</span> <span class="o">=</span> <span class="s1">&#39;Effect Size&#39;</span>
+        <span class="k">elif</span> <span class="n">dep_var</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;alpha&#39;</span><span class="p">]:</span>
+            <span class="c1"># experimental nobs as defining separate lines</span>
+            <span class="n">colors</span> <span class="o">=</span> <span class="n">rainbow</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">nobs</span><span class="p">))</span>
+
+            <span class="k">for</span> <span class="n">ii</span><span class="p">,</span> <span class="n">n</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">nobs</span><span class="p">):</span>
+                <span class="n">power</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">power</span><span class="p">(</span><span class="n">effect_size</span><span class="p">,</span> <span class="n">n</span><span class="p">,</span> <span class="n">alpha</span><span class="p">,</span> <span class="o">**</span><span class="n">kwds</span><span class="p">)</span>
+                <span class="n">ax</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">alpha</span><span class="p">,</span> <span class="n">power</span><span class="p">,</span> <span class="n">lw</span><span class="o">=</span><span class="n">lw</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="n">plt_alpha</span><span class="p">,</span>
+                        <span class="n">color</span><span class="o">=</span><span class="n">colors</span><span class="p">[</span><span class="n">ii</span><span class="p">],</span> <span class="n">label</span><span class="o">=</span><span class="s1">&#39;N=</span><span class="si">%4.2F</span><span class="s1">&#39;</span> <span class="o">%</span> <span class="n">n</span><span class="p">)</span>
+                <span class="n">xlabel</span> <span class="o">=</span> <span class="s1">&#39;alpha&#39;</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s1">&#39;depvar not implemented&#39;</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">title</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">title</span> <span class="o">=</span> <span class="s1">&#39;Power of Test&#39;</span>
+        <span class="n">ax</span><span class="o">.</span><span class="n">set_xlabel</span><span class="p">(</span><span class="n">xlabel</span><span class="p">)</span>
+        <span class="n">ax</span><span class="o">.</span><span class="n">set_title</span><span class="p">(</span><span class="n">title</span><span class="p">)</span>
+        <span class="n">ax</span><span class="o">.</span><span class="n">legend</span><span class="p">(</span><span class="n">loc</span><span class="o">=</span><span class="s1">&#39;lower right&#39;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">fig</span>
+
+
+<div class="viewcode-block" id="TTestPower"><a class="viewcode-back" href="../../../generated/statsmodels.stats.power.TTestPower.html#statsmodels.stats.power.TTestPower">[docs]</a><span class="k">class</span> <span class="nc">TTestPower</span><span class="p">(</span><span class="n">Power</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;Statistical Power calculations for one sample or paired sample t-test</span>
+
+<span class="sd">    &#39;&#39;&#39;</span>
+
+<div class="viewcode-block" id="TTestPower.power"><a class="viewcode-back" href="../../../generated/statsmodels.stats.power.TTestPower.power.html#statsmodels.stats.power.TTestPower.power">[docs]</a>    <span class="k">def</span> <span class="nf">power</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">effect_size</span><span class="p">,</span> <span class="n">nobs</span><span class="p">,</span> <span class="n">alpha</span><span class="p">,</span> <span class="n">df</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">alternative</span><span class="o">=</span><span class="s1">&#39;two-sided&#39;</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;Calculate the power of a t-test for one sample or paired samples.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        effect_size : float</span>
+<span class="sd">            standardized effect size, mean divided by the standard deviation.</span>
+<span class="sd">            effect size has to be positive.</span>
+<span class="sd">        nobs : int or float</span>
+<span class="sd">            sample size, number of observations.</span>
+<span class="sd">        alpha : float in interval (0,1)</span>
+<span class="sd">            significance level, e.g. 0.05, is the probability of a type I</span>
+<span class="sd">            error, that is wrong rejections if the Null Hypothesis is true.</span>
+<span class="sd">        df : int or float</span>
+<span class="sd">            degrees of freedom. By default this is None, and the df from the</span>
+<span class="sd">            one sample or paired ttest is used, ``df = nobs1 - 1``</span>
+<span class="sd">        alternative : string, &#39;two-sided&#39; (default), &#39;larger&#39;, &#39;smaller&#39;</span>
+<span class="sd">            extra argument to choose whether the power is calculated for a</span>
+<span class="sd">            two-sided (default) or one sided test. The one-sided test can be</span>
+<span class="sd">            either &#39;larger&#39;, &#39;smaller&#39;.</span>
+<span class="sd">            .</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        power : float</span>
+<span class="sd">            Power of the test, e.g. 0.8, is one minus the probability of a</span>
+<span class="sd">            type II error. Power is the probability that the test correctly</span>
+<span class="sd">            rejects the Null Hypothesis if the Alternative Hypothesis is true.</span>
+
+<span class="sd">       &#39;&#39;&#39;</span>
+        <span class="c1"># for debugging</span>
+        <span class="c1">#print &#39;calling ttest power with&#39;, (effect_size, nobs, alpha, df, alternative)</span>
+        <span class="k">return</span> <span class="n">ttest_power</span><span class="p">(</span><span class="n">effect_size</span><span class="p">,</span> <span class="n">nobs</span><span class="p">,</span> <span class="n">alpha</span><span class="p">,</span> <span class="n">df</span><span class="o">=</span><span class="n">df</span><span class="p">,</span>
+                           <span class="n">alternative</span><span class="o">=</span><span class="n">alternative</span><span class="p">)</span></div>
+
+    <span class="c1">#method is only added to have explicit keywords and docstring</span>
+<div class="viewcode-block" id="TTestPower.solve_power"><a class="viewcode-back" href="../../../generated/statsmodels.stats.power.TTestPower.solve_power.html#statsmodels.stats.power.TTestPower.solve_power">[docs]</a>    <span class="k">def</span> <span class="nf">solve_power</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">effect_size</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">nobs</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">power</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                    <span class="n">alternative</span><span class="o">=</span><span class="s1">&#39;two-sided&#39;</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;solve for any one parameter of the power of a one sample t-test</span>
+
+<span class="sd">        for the one sample t-test the keywords are:</span>
+<span class="sd">            effect_size, nobs, alpha, power</span>
+
+<span class="sd">        Exactly one needs to be ``None``, all others need numeric values.</span>
+
+<span class="sd">        This test can also be used for a paired t-test, where effect size is</span>
+<span class="sd">        defined in terms of the mean difference, and nobs is the number of</span>
+<span class="sd">        pairs.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        effect_size : float</span>
+<span class="sd">            standardized effect size, mean divided by the standard deviation.</span>
+<span class="sd">            effect size has to be positive.</span>
+<span class="sd">        nobs : int or float</span>
+<span class="sd">            sample size, number of observations.</span>
+<span class="sd">        alpha : float in interval (0,1)</span>
+<span class="sd">            significance level, e.g. 0.05, is the probability of a type I</span>
+<span class="sd">            error, that is wrong rejections if the Null Hypothesis is true.</span>
+<span class="sd">        power : float in interval (0,1)</span>
+<span class="sd">            power of the test, e.g. 0.8, is one minus the probability of a</span>
+<span class="sd">            type II error. Power is the probability that the test correctly</span>
+<span class="sd">            rejects the Null Hypothesis if the Alternative Hypothesis is true.</span>
+<span class="sd">        alternative : string, &#39;two-sided&#39; (default) or &#39;one-sided&#39;</span>
+<span class="sd">            extra argument to choose whether the power is calculated for a</span>
+<span class="sd">            two-sided (default) or one sided test.</span>
+<span class="sd">            &#39;one-sided&#39; assumes we are in the relevant tail.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        value : float</span>
+<span class="sd">            The value of the parameter that was set to None in the call. The</span>
+<span class="sd">            value solves the power equation given the remaining parameters.</span>
+
+<span class="sd">        *attaches*</span>
+
+<span class="sd">        cache_fit_res : list</span>
+<span class="sd">            Cache of the result of the root finding procedure for the latest</span>
+<span class="sd">            call to ``solve_power``, mainly for debugging purposes.</span>
+<span class="sd">            The first element is the success indicator, one if successful.</span>
+<span class="sd">            The remaining elements contain the return information of the up to</span>
+<span class="sd">            three solvers that have been tried.</span>
+
+<span class="sd">        Notes</span>
+<span class="sd">        -----</span>
+<span class="sd">        The function uses scipy.optimize for finding the value that satisfies</span>
+<span class="sd">        the power equation. It first uses ``brentq`` with a prior search for</span>
+<span class="sd">        bounds. If this fails to find a root, ``fsolve`` is used. If ``fsolve``</span>
+<span class="sd">        also fails, then, for ``alpha``, ``power`` and ``effect_size``,</span>
+<span class="sd">        ``brentq`` with fixed bounds is used. However, there can still be cases</span>
+<span class="sd">        where this fails.</span>
+
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="c1"># for debugging</span>
+        <span class="c1">#print &#39;calling ttest solve with&#39;, (effect_size, nobs, alpha, power, alternative)</span>
+        <span class="k">return</span> <span class="nb">super</span><span class="p">(</span><span class="n">TTestPower</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">solve_power</span><span class="p">(</span><span class="n">effect_size</span><span class="o">=</span><span class="n">effect_size</span><span class="p">,</span>
+                                                      <span class="n">nobs</span><span class="o">=</span><span class="n">nobs</span><span class="p">,</span>
+                                                      <span class="n">alpha</span><span class="o">=</span><span class="n">alpha</span><span class="p">,</span>
+                                                      <span class="n">power</span><span class="o">=</span><span class="n">power</span><span class="p">,</span>
+                                                      <span class="n">alternative</span><span class="o">=</span><span class="n">alternative</span><span class="p">)</span></div></div>
+
+<div class="viewcode-block" id="TTestIndPower"><a class="viewcode-back" href="../../../generated/statsmodels.stats.power.TTestIndPower.html#statsmodels.stats.power.TTestIndPower">[docs]</a><span class="k">class</span> <span class="nc">TTestIndPower</span><span class="p">(</span><span class="n">Power</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;Statistical Power calculations for t-test for two independent sample</span>
+
+<span class="sd">    currently only uses pooled variance</span>
+
+<span class="sd">    &#39;&#39;&#39;</span>
+
+
+<div class="viewcode-block" id="TTestIndPower.power"><a class="viewcode-back" href="../../../generated/statsmodels.stats.power.TTestIndPower.power.html#statsmodels.stats.power.TTestIndPower.power">[docs]</a>    <span class="k">def</span> <span class="nf">power</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">effect_size</span><span class="p">,</span> <span class="n">nobs1</span><span class="p">,</span> <span class="n">alpha</span><span class="p">,</span> <span class="n">ratio</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">df</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+              <span class="n">alternative</span><span class="o">=</span><span class="s1">&#39;two-sided&#39;</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;Calculate the power of a t-test for two independent sample</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        effect_size : float</span>
+<span class="sd">            standardized effect size, difference between the two means divided</span>
+<span class="sd">            by the standard deviation. `effect_size` has to be positive.</span>
+<span class="sd">        nobs1 : int or float</span>
+<span class="sd">            number of observations of sample 1. The number of observations of</span>
+<span class="sd">            sample two is ratio times the size of sample 1,</span>
+<span class="sd">            i.e. ``nobs2 = nobs1 * ratio``</span>
+<span class="sd">        alpha : float in interval (0,1)</span>
+<span class="sd">            significance level, e.g. 0.05, is the probability of a type I</span>
+<span class="sd">            error, that is wrong rejections if the Null Hypothesis is true.</span>
+<span class="sd">        ratio : float</span>
+<span class="sd">            ratio of the number of observations in sample 2 relative to</span>
+<span class="sd">            sample 1. see description of nobs1</span>
+<span class="sd">            The default for ratio is 1; to solve for ratio given the other</span>
+<span class="sd">            arguments, it has to be explicitly set to None.</span>
+<span class="sd">        df : int or float</span>
+<span class="sd">            degrees of freedom. By default this is None, and the df from the</span>
+<span class="sd">            ttest with pooled variance is used, ``df = (nobs1 - 1 + nobs2 - 1)``</span>
+<span class="sd">        alternative : string, &#39;two-sided&#39; (default), &#39;larger&#39;, &#39;smaller&#39;</span>
+<span class="sd">            extra argument to choose whether the power is calculated for a</span>
+<span class="sd">            two-sided (default) or one sided test. The one-sided test can be</span>
+<span class="sd">            either &#39;larger&#39;, &#39;smaller&#39;.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        power : float</span>
+<span class="sd">            Power of the test, e.g. 0.8, is one minus the probability of a</span>
+<span class="sd">            type II error. Power is the probability that the test correctly</span>
+<span class="sd">            rejects the Null Hypothesis if the Alternative Hypothesis is true.</span>
+
+<span class="sd">        &#39;&#39;&#39;</span>
+
+        <span class="n">nobs2</span> <span class="o">=</span> <span class="n">nobs1</span><span class="o">*</span><span class="n">ratio</span>
+        <span class="c1">#pooled variance</span>
+        <span class="k">if</span> <span class="n">df</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">df</span> <span class="o">=</span> <span class="p">(</span><span class="n">nobs1</span> <span class="o">-</span> <span class="mi">1</span> <span class="o">+</span> <span class="n">nobs2</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
+
+        <span class="n">nobs</span> <span class="o">=</span> <span class="mf">1.</span><span class="o">/</span> <span class="p">(</span><span class="mf">1.</span> <span class="o">/</span> <span class="n">nobs1</span> <span class="o">+</span> <span class="mf">1.</span> <span class="o">/</span> <span class="n">nobs2</span><span class="p">)</span>
+        <span class="c1">#print &#39;calling ttest power with&#39;, (effect_size, nobs, alpha, df, alternative)</span>
+        <span class="k">return</span> <span class="n">ttest_power</span><span class="p">(</span><span class="n">effect_size</span><span class="p">,</span> <span class="n">nobs</span><span class="p">,</span> <span class="n">alpha</span><span class="p">,</span> <span class="n">df</span><span class="o">=</span><span class="n">df</span><span class="p">,</span> <span class="n">alternative</span><span class="o">=</span><span class="n">alternative</span><span class="p">)</span></div>
+
+    <span class="c1">#method is only added to have explicit keywords and docstring</span>
+<div class="viewcode-block" id="TTestIndPower.solve_power"><a class="viewcode-back" href="../../../generated/statsmodels.stats.power.TTestIndPower.solve_power.html#statsmodels.stats.power.TTestIndPower.solve_power">[docs]</a>    <span class="k">def</span> <span class="nf">solve_power</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">effect_size</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">nobs1</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">power</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                    <span class="n">ratio</span><span class="o">=</span><span class="mf">1.</span><span class="p">,</span> <span class="n">alternative</span><span class="o">=</span><span class="s1">&#39;two-sided&#39;</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;solve for any one parameter of the power of a two sample t-test</span>
+
+<span class="sd">        for t-test the keywords are:</span>
+<span class="sd">            effect_size, nobs1, alpha, power, ratio</span>
+
+<span class="sd">        exactly one needs to be ``None``, all others need numeric values</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        effect_size : float</span>
+<span class="sd">            standardized effect size, difference between the two means divided</span>
+<span class="sd">            by the standard deviation. `effect_size` has to be positive.</span>
+<span class="sd">        nobs1 : int or float</span>
+<span class="sd">            number of observations of sample 1. The number of observations of</span>
+<span class="sd">            sample two is ratio times the size of sample 1,</span>
+<span class="sd">            i.e. ``nobs2 = nobs1 * ratio``</span>
+<span class="sd">        alpha : float in interval (0,1)</span>
+<span class="sd">            significance level, e.g. 0.05, is the probability of a type I</span>
+<span class="sd">            error, that is wrong rejections if the Null Hypothesis is true.</span>
+<span class="sd">        power : float in interval (0,1)</span>
+<span class="sd">            power of the test, e.g. 0.8, is one minus the probability of a</span>
+<span class="sd">            type II error. Power is the probability that the test correctly</span>
+<span class="sd">            rejects the Null Hypothesis if the Alternative Hypothesis is true.</span>
+<span class="sd">        ratio : float</span>
+<span class="sd">            ratio of the number of observations in sample 2 relative to</span>
+<span class="sd">            sample 1. see description of nobs1</span>
+<span class="sd">            The default for ratio is 1; to solve for ratio given the other</span>
+<span class="sd">            arguments it has to be explicitly set to None.</span>
+<span class="sd">        alternative : string, &#39;two-sided&#39; (default), &#39;larger&#39;, &#39;smaller&#39;</span>
+<span class="sd">            extra argument to choose whether the power is calculated for a</span>
+<span class="sd">            two-sided (default) or one sided test. The one-sided test can be</span>
+<span class="sd">            either &#39;larger&#39;, &#39;smaller&#39;.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        value : float</span>
+<span class="sd">            The value of the parameter that was set to None in the call. The</span>
+<span class="sd">            value solves the power equation given the remaining parameters.</span>
+
+
+<span class="sd">        Notes</span>
+<span class="sd">        -----</span>
+<span class="sd">        The function uses scipy.optimize for finding the value that satisfies</span>
+<span class="sd">        the power equation. It first uses ``brentq`` with a prior search for</span>
+<span class="sd">        bounds. If this fails to find a root, ``fsolve`` is used. If ``fsolve``</span>
+<span class="sd">        also fails, then, for ``alpha``, ``power`` and ``effect_size``,</span>
+<span class="sd">        ``brentq`` with fixed bounds is used. However, there can still be cases</span>
+<span class="sd">        where this fails.</span>
+
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">return</span> <span class="nb">super</span><span class="p">(</span><span class="n">TTestIndPower</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">solve_power</span><span class="p">(</span><span class="n">effect_size</span><span class="o">=</span><span class="n">effect_size</span><span class="p">,</span>
+                                                      <span class="n">nobs1</span><span class="o">=</span><span class="n">nobs1</span><span class="p">,</span>
+                                                      <span class="n">alpha</span><span class="o">=</span><span class="n">alpha</span><span class="p">,</span>
+                                                      <span class="n">power</span><span class="o">=</span><span class="n">power</span><span class="p">,</span>
+                                                      <span class="n">ratio</span><span class="o">=</span><span class="n">ratio</span><span class="p">,</span>
+                                                      <span class="n">alternative</span><span class="o">=</span><span class="n">alternative</span><span class="p">)</span></div></div>
+
+<div class="viewcode-block" id="NormalIndPower"><a class="viewcode-back" href="../../../generated/statsmodels.stats.power.NormalIndPower.html#statsmodels.stats.power.NormalIndPower">[docs]</a><span class="k">class</span> <span class="nc">NormalIndPower</span><span class="p">(</span><span class="n">Power</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;Statistical Power calculations for z-test for two independent samples.</span>
+
+<span class="sd">    currently only uses pooled variance</span>
+
+<span class="sd">    &#39;&#39;&#39;</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ddof</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="o">**</span><span class="n">kwds</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">ddof</span> <span class="o">=</span> <span class="n">ddof</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">NormalIndPower</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">**</span><span class="n">kwds</span><span class="p">)</span>
+
+<div class="viewcode-block" id="NormalIndPower.power"><a class="viewcode-back" href="../../../generated/statsmodels.stats.power.NormalIndPower.power.html#statsmodels.stats.power.NormalIndPower.power">[docs]</a>    <span class="k">def</span> <span class="nf">power</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">effect_size</span><span class="p">,</span> <span class="n">nobs1</span><span class="p">,</span> <span class="n">alpha</span><span class="p">,</span> <span class="n">ratio</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+              <span class="n">alternative</span><span class="o">=</span><span class="s1">&#39;two-sided&#39;</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;Calculate the power of a t-test for two independent sample</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        effect_size : float</span>
+<span class="sd">            standardized effect size, difference between the two means divided</span>
+<span class="sd">            by the standard deviation. effect size has to be positive.</span>
+<span class="sd">        nobs1 : int or float</span>
+<span class="sd">            number of observations of sample 1. The number of observations of</span>
+<span class="sd">            sample two is ratio times the size of sample 1,</span>
+<span class="sd">            i.e. ``nobs2 = nobs1 * ratio``</span>
+<span class="sd">            ``ratio`` can be set to zero in order to get the power for a</span>
+<span class="sd">            one sample test.</span>
+<span class="sd">        alpha : float in interval (0,1)</span>
+<span class="sd">            significance level, e.g. 0.05, is the probability of a type I</span>
+<span class="sd">            error, that is wrong rejections if the Null Hypothesis is true.</span>
+<span class="sd">        ratio : float</span>
+<span class="sd">            ratio of the number of observations in sample 2 relative to</span>
+<span class="sd">            sample 1. see description of nobs1</span>
+<span class="sd">            The default for ratio is 1; to solve for ratio given the other</span>
+<span class="sd">            arguments it has to be explicitly set to None.</span>
+<span class="sd">        alternative : string, &#39;two-sided&#39; (default), &#39;larger&#39;, &#39;smaller&#39;</span>
+<span class="sd">            extra argument to choose whether the power is calculated for a</span>
+<span class="sd">            two-sided (default) or one sided test. The one-sided test can be</span>
+<span class="sd">            either &#39;larger&#39;, &#39;smaller&#39;.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        power : float</span>
+<span class="sd">            Power of the test, e.g. 0.8, is one minus the probability of a</span>
+<span class="sd">            type II error. Power is the probability that the test correctly</span>
+<span class="sd">            rejects the Null Hypothesis if the Alternative Hypothesis is true.</span>
+
+<span class="sd">        &#39;&#39;&#39;</span>
+
+        <span class="n">ddof</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ddof</span>  <span class="c1"># for correlation, ddof=3</span>
+
+        <span class="c1"># get effective nobs, factor for std of test statistic</span>
+        <span class="k">if</span> <span class="n">ratio</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">nobs2</span> <span class="o">=</span> <span class="n">nobs1</span><span class="o">*</span><span class="n">ratio</span>
+            <span class="c1">#equivalent to nobs = n1*n2/(n1+n2)=n1*ratio/(1+ratio)</span>
+            <span class="n">nobs</span> <span class="o">=</span> <span class="mf">1.</span><span class="o">/</span> <span class="p">(</span><span class="mf">1.</span> <span class="o">/</span> <span class="p">(</span><span class="n">nobs1</span> <span class="o">-</span> <span class="n">ddof</span><span class="p">)</span> <span class="o">+</span> <span class="mf">1.</span> <span class="o">/</span> <span class="p">(</span><span class="n">nobs2</span> <span class="o">-</span> <span class="n">ddof</span><span class="p">))</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">nobs</span> <span class="o">=</span> <span class="n">nobs1</span> <span class="o">-</span> <span class="n">ddof</span>
+        <span class="k">return</span> <span class="n">normal_power</span><span class="p">(</span><span class="n">effect_size</span><span class="p">,</span> <span class="n">nobs</span><span class="p">,</span> <span class="n">alpha</span><span class="p">,</span> <span class="n">alternative</span><span class="o">=</span><span class="n">alternative</span><span class="p">)</span></div>
+
+    <span class="c1">#method is only added to have explicit keywords and docstring</span>
+<div class="viewcode-block" id="NormalIndPower.solve_power"><a class="viewcode-back" href="../../../generated/statsmodels.stats.power.NormalIndPower.solve_power.html#statsmodels.stats.power.NormalIndPower.solve_power">[docs]</a>    <span class="k">def</span> <span class="nf">solve_power</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">effect_size</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">nobs1</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">power</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                    <span class="n">ratio</span><span class="o">=</span><span class="mf">1.</span><span class="p">,</span> <span class="n">alternative</span><span class="o">=</span><span class="s1">&#39;two-sided&#39;</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;solve for any one parameter of the power of a two sample z-test</span>
+
+<span class="sd">        for z-test the keywords are:</span>
+<span class="sd">            effect_size, nobs1, alpha, power, ratio</span>
+
+<span class="sd">        exactly one needs to be ``None``, all others need numeric values</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        effect_size : float</span>
+<span class="sd">            standardized effect size, difference between the two means divided</span>
+<span class="sd">            by the standard deviation.</span>
+<span class="sd">            If ratio=0, then this is the standardized mean in the one sample</span>
+<span class="sd">            test.</span>
+<span class="sd">        nobs1 : int or float</span>
+<span class="sd">            number of observations of sample 1. The number of observations of</span>
+<span class="sd">            sample two is ratio times the size of sample 1,</span>
+<span class="sd">            i.e. ``nobs2 = nobs1 * ratio``</span>
+<span class="sd">            ``ratio`` can be set to zero in order to get the power for a</span>
+<span class="sd">            one sample test.</span>
+<span class="sd">        alpha : float in interval (0,1)</span>
+<span class="sd">            significance level, e.g. 0.05, is the probability of a type I</span>
+<span class="sd">            error, that is wrong rejections if the Null Hypothesis is true.</span>
+<span class="sd">        power : float in interval (0,1)</span>
+<span class="sd">            power of the test, e.g. 0.8, is one minus the probability of a</span>
+<span class="sd">            type II error. Power is the probability that the test correctly</span>
+<span class="sd">            rejects the Null Hypothesis if the Alternative Hypothesis is true.</span>
+<span class="sd">        ratio : float</span>
+<span class="sd">            ratio of the number of observations in sample 2 relative to</span>
+<span class="sd">            sample 1. see description of nobs1</span>
+<span class="sd">            The default for ratio is 1; to solve for ration given the other</span>
+<span class="sd">            arguments it has to be explicitly set to None.</span>
+<span class="sd">        alternative : string, &#39;two-sided&#39; (default), &#39;larger&#39;, &#39;smaller&#39;</span>
+<span class="sd">            extra argument to choose whether the power is calculated for a</span>
+<span class="sd">            two-sided (default) or one sided test. The one-sided test can be</span>
+<span class="sd">            either &#39;larger&#39;, &#39;smaller&#39;.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        value : float</span>
+<span class="sd">            The value of the parameter that was set to None in the call. The</span>
+<span class="sd">            value solves the power equation given the remaining parameters.</span>
+
+
+<span class="sd">        Notes</span>
+<span class="sd">        -----</span>
+<span class="sd">        The function uses scipy.optimize for finding the value that satisfies</span>
+<span class="sd">        the power equation. It first uses ``brentq`` with a prior search for</span>
+<span class="sd">        bounds. If this fails to find a root, ``fsolve`` is used. If ``fsolve``</span>
+<span class="sd">        also fails, then, for ``alpha``, ``power`` and ``effect_size``,</span>
+<span class="sd">        ``brentq`` with fixed bounds is used. However, there can still be cases</span>
+<span class="sd">        where this fails.</span>
+
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">return</span> <span class="nb">super</span><span class="p">(</span><span class="n">NormalIndPower</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">solve_power</span><span class="p">(</span><span class="n">effect_size</span><span class="o">=</span><span class="n">effect_size</span><span class="p">,</span>
+                                                      <span class="n">nobs1</span><span class="o">=</span><span class="n">nobs1</span><span class="p">,</span>
+                                                      <span class="n">alpha</span><span class="o">=</span><span class="n">alpha</span><span class="p">,</span>
+                                                      <span class="n">power</span><span class="o">=</span><span class="n">power</span><span class="p">,</span>
+                                                      <span class="n">ratio</span><span class="o">=</span><span class="n">ratio</span><span class="p">,</span>
+                                                      <span class="n">alternative</span><span class="o">=</span><span class="n">alternative</span><span class="p">)</span></div></div>
+
+
+<div class="viewcode-block" id="FTestPower"><a class="viewcode-back" href="../../../generated/statsmodels.stats.power.FTestPower.html#statsmodels.stats.power.FTestPower">[docs]</a><span class="k">class</span> <span class="nc">FTestPower</span><span class="p">(</span><span class="n">Power</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;Statistical Power calculations for generic F-test</span>
+
+<span class="sd">    &#39;&#39;&#39;</span>
+
+<div class="viewcode-block" id="FTestPower.power"><a class="viewcode-back" href="../../../generated/statsmodels.stats.power.FTestPower.power.html#statsmodels.stats.power.FTestPower.power">[docs]</a>    <span class="k">def</span> <span class="nf">power</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">effect_size</span><span class="p">,</span> <span class="n">df_num</span><span class="p">,</span> <span class="n">df_denom</span><span class="p">,</span> <span class="n">alpha</span><span class="p">,</span> <span class="n">ncc</span><span class="o">=</span><span class="mi">1</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;Calculate the power of a F-test.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        effect_size : float</span>
+<span class="sd">            standardized effect size, mean divided by the standard deviation.</span>
+<span class="sd">            effect size has to be positive.</span>
+<span class="sd">        df_num : int or float</span>
+<span class="sd">            numerator degrees of freedom.</span>
+<span class="sd">        df_denom : int or float</span>
+<span class="sd">            denominator degrees of freedom.</span>
+<span class="sd">        alpha : float in interval (0,1)</span>
+<span class="sd">            significance level, e.g. 0.05, is the probability of a type I</span>
+<span class="sd">            error, that is wrong rejections if the Null Hypothesis is true.</span>
+<span class="sd">        ncc : int</span>
+<span class="sd">            degrees of freedom correction for non-centrality parameter.</span>
+<span class="sd">            see Notes</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        power : float</span>
+<span class="sd">            Power of the test, e.g. 0.8, is one minus the probability of a</span>
+<span class="sd">            type II error. Power is the probability that the test correctly</span>
+<span class="sd">            rejects the Null Hypothesis if the Alternative Hypothesis is true.</span>
+
+<span class="sd">        Notes</span>
+<span class="sd">        -----</span>
+
+<span class="sd">        sample size is given implicitly by df_num</span>
+
+<span class="sd">        set ncc=0 to match t-test, or f-test in LikelihoodModelResults.</span>
+<span class="sd">        ncc=1 matches the non-centrality parameter in R::pwr::pwr.f2.test</span>
+
+<span class="sd">        ftest_power with ncc=0 should also be correct for f_test in regression</span>
+<span class="sd">        models, with df_num and d_denom as defined there. (not verified yet)</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+
+        <span class="n">pow_</span> <span class="o">=</span> <span class="n">ftest_power</span><span class="p">(</span><span class="n">effect_size</span><span class="p">,</span> <span class="n">df_num</span><span class="p">,</span> <span class="n">df_denom</span><span class="p">,</span> <span class="n">alpha</span><span class="p">,</span> <span class="n">ncc</span><span class="o">=</span><span class="n">ncc</span><span class="p">)</span>
+        <span class="c1">#print effect_size, df_num, df_denom, alpha, pow_</span>
+        <span class="k">return</span> <span class="n">pow_</span></div>
+
+    <span class="c1">#method is only added to have explicit keywords and docstring</span>
+<div class="viewcode-block" id="FTestPower.solve_power"><a class="viewcode-back" href="../../../generated/statsmodels.stats.power.FTestPower.solve_power.html#statsmodels.stats.power.FTestPower.solve_power">[docs]</a>    <span class="k">def</span> <span class="nf">solve_power</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">effect_size</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">df_num</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">df_denom</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                    <span class="n">nobs</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">power</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">ncc</span><span class="o">=</span><span class="mi">1</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;solve for any one parameter of the power of a F-test</span>
+
+<span class="sd">        for the one sample F-test the keywords are:</span>
+<span class="sd">            effect_size, df_num, df_denom, alpha, power</span>
+
+<span class="sd">        Exactly one needs to be ``None``, all others need numeric values.</span>
+
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        effect_size : float</span>
+<span class="sd">            standardized effect size, mean divided by the standard deviation.</span>
+<span class="sd">            effect size has to be positive.</span>
+<span class="sd">        nobs : int or float</span>
+<span class="sd">            sample size, number of observations.</span>
+<span class="sd">        alpha : float in interval (0,1)</span>
+<span class="sd">            significance level, e.g. 0.05, is the probability of a type I</span>
+<span class="sd">            error, that is wrong rejections if the Null Hypothesis is true.</span>
+<span class="sd">        power : float in interval (0,1)</span>
+<span class="sd">            power of the test, e.g. 0.8, is one minus the probability of a</span>
+<span class="sd">            type II error. Power is the probability that the test correctly</span>
+<span class="sd">            rejects the Null Hypothesis if the Alternative Hypothesis is true.</span>
+<span class="sd">        alternative : string, &#39;two-sided&#39; (default) or &#39;one-sided&#39;</span>
+<span class="sd">            extra argument to choose whether the power is calculated for a</span>
+<span class="sd">            two-sided (default) or one sided test.</span>
+<span class="sd">            &#39;one-sided&#39; assumes we are in the relevant tail.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        value : float</span>
+<span class="sd">            The value of the parameter that was set to None in the call. The</span>
+<span class="sd">            value solves the power equation given the remainding parameters.</span>
+
+
+<span class="sd">        Notes</span>
+<span class="sd">        -----</span>
+<span class="sd">        The function uses scipy.optimize for finding the value that satisfies</span>
+<span class="sd">        the power equation. It first uses ``brentq`` with a prior search for</span>
+<span class="sd">        bounds. If this fails to find a root, ``fsolve`` is used. If ``fsolve``</span>
+<span class="sd">        also fails, then, for ``alpha``, ``power`` and ``effect_size``,</span>
+<span class="sd">        ``brentq`` with fixed bounds is used. However, there can still be cases</span>
+<span class="sd">        where this fails.</span>
+
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">return</span> <span class="nb">super</span><span class="p">(</span><span class="n">FTestPower</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">solve_power</span><span class="p">(</span><span class="n">effect_size</span><span class="o">=</span><span class="n">effect_size</span><span class="p">,</span>
+                                                      <span class="n">df_num</span><span class="o">=</span><span class="n">df_num</span><span class="p">,</span>
+                                                      <span class="n">df_denom</span><span class="o">=</span><span class="n">df_denom</span><span class="p">,</span>
+                                                      <span class="n">alpha</span><span class="o">=</span><span class="n">alpha</span><span class="p">,</span>
+                                                      <span class="n">power</span><span class="o">=</span><span class="n">power</span><span class="p">,</span>
+                                                      <span class="n">ncc</span><span class="o">=</span><span class="n">ncc</span><span class="p">)</span></div></div>
+
+<div class="viewcode-block" id="FTestAnovaPower"><a class="viewcode-back" href="../../../generated/statsmodels.stats.power.FTestAnovaPower.html#statsmodels.stats.power.FTestAnovaPower">[docs]</a><span class="k">class</span> <span class="nc">FTestAnovaPower</span><span class="p">(</span><span class="n">Power</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;Statistical Power calculations F-test for one factor balanced ANOVA</span>
+
+<span class="sd">    &#39;&#39;&#39;</span>
+
+<div class="viewcode-block" id="FTestAnovaPower.power"><a class="viewcode-back" href="../../../generated/statsmodels.stats.power.FTestAnovaPower.power.html#statsmodels.stats.power.FTestAnovaPower.power">[docs]</a>    <span class="k">def</span> <span class="nf">power</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">effect_size</span><span class="p">,</span> <span class="n">nobs</span><span class="p">,</span> <span class="n">alpha</span><span class="p">,</span> <span class="n">k_groups</span><span class="o">=</span><span class="mi">2</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;Calculate the power of a F-test for one factor ANOVA.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        effect_size : float</span>
+<span class="sd">            standardized effect size, mean divided by the standard deviation.</span>
+<span class="sd">            effect size has to be positive.</span>
+<span class="sd">        nobs : int or float</span>
+<span class="sd">            sample size, number of observations.</span>
+<span class="sd">        alpha : float in interval (0,1)</span>
+<span class="sd">            significance level, e.g. 0.05, is the probability of a type I</span>
+<span class="sd">            error, that is wrong rejections if the Null Hypothesis is true.</span>
+<span class="sd">        k_groups : int or float</span>
+<span class="sd">            number of groups in the ANOVA or k-sample comparison. Default is 2.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        power : float</span>
+<span class="sd">            Power of the test, e.g. 0.8, is one minus the probability of a</span>
+<span class="sd">            type II error. Power is the probability that the test correctly</span>
+<span class="sd">            rejects the Null Hypothesis if the Alternative Hypothesis is true.</span>
+
+<span class="sd">       &#39;&#39;&#39;</span>
+        <span class="k">return</span> <span class="n">ftest_anova_power</span><span class="p">(</span><span class="n">effect_size</span><span class="p">,</span> <span class="n">nobs</span><span class="p">,</span> <span class="n">alpha</span><span class="p">,</span> <span class="n">k_groups</span><span class="o">=</span><span class="n">k_groups</span><span class="p">)</span></div>
+
+    <span class="c1">#method is only added to have explicit keywords and docstring</span>
+<div class="viewcode-block" id="FTestAnovaPower.solve_power"><a class="viewcode-back" href="../../../generated/statsmodels.stats.power.FTestAnovaPower.solve_power.html#statsmodels.stats.power.FTestAnovaPower.solve_power">[docs]</a>    <span class="k">def</span> <span class="nf">solve_power</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">effect_size</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">nobs</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">power</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                    <span class="n">k_groups</span><span class="o">=</span><span class="mi">2</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;solve for any one parameter of the power of a F-test</span>
+
+<span class="sd">        for the one sample F-test the keywords are:</span>
+<span class="sd">            effect_size, nobs, alpha, power</span>
+
+<span class="sd">        Exactly one needs to be ``None``, all others need numeric values.</span>
+
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        effect_size : float</span>
+<span class="sd">            standardized effect size, mean divided by the standard deviation.</span>
+<span class="sd">            effect size has to be positive.</span>
+<span class="sd">        nobs : int or float</span>
+<span class="sd">            sample size, number of observations.</span>
+<span class="sd">        alpha : float in interval (0,1)</span>
+<span class="sd">            significance level, e.g. 0.05, is the probability of a type I</span>
+<span class="sd">            error, that is wrong rejections if the Null Hypothesis is true.</span>
+<span class="sd">        power : float in interval (0,1)</span>
+<span class="sd">            power of the test, e.g. 0.8, is one minus the probability of a</span>
+<span class="sd">            type II error. Power is the probability that the test correctly</span>
+<span class="sd">            rejects the Null Hypothesis if the Alternative Hypothesis is true.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        value : float</span>
+<span class="sd">            The value of the parameter that was set to None in the call. The</span>
+<span class="sd">            value solves the power equation given the remainding parameters.</span>
+
+
+<span class="sd">        Notes</span>
+<span class="sd">        -----</span>
+<span class="sd">        The function uses scipy.optimize for finding the value that satisfies</span>
+<span class="sd">        the power equation. It first uses ``brentq`` with a prior search for</span>
+<span class="sd">        bounds. If this fails to find a root, ``fsolve`` is used. If ``fsolve``</span>
+<span class="sd">        also fails, then, for ``alpha``, ``power`` and ``effect_size``,</span>
+<span class="sd">        ``brentq`` with fixed bounds is used. However, there can still be cases</span>
+<span class="sd">        where this fails.</span>
+
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="c1"># update start values for root finding</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">k_groups</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">start_ttp</span><span class="p">[</span><span class="s1">&#39;nobs&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">k_groups</span> <span class="o">*</span> <span class="mi">10</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">start_bqexp</span><span class="p">[</span><span class="s1">&#39;nobs&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">low</span><span class="o">=</span><span class="n">k_groups</span> <span class="o">*</span> <span class="mi">2</span><span class="p">,</span>
+                                            <span class="n">start_upp</span><span class="o">=</span><span class="n">k_groups</span> <span class="o">*</span> <span class="mi">10</span><span class="p">)</span>
+        <span class="c1"># first attempt at special casing</span>
+        <span class="k">if</span> <span class="n">effect_size</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_solve_effect_size</span><span class="p">(</span><span class="n">effect_size</span><span class="o">=</span><span class="n">effect_size</span><span class="p">,</span>
+                                           <span class="n">nobs</span><span class="o">=</span><span class="n">nobs</span><span class="p">,</span>
+                                           <span class="n">alpha</span><span class="o">=</span><span class="n">alpha</span><span class="p">,</span>
+                                           <span class="n">k_groups</span><span class="o">=</span><span class="n">k_groups</span><span class="p">,</span>
+                                           <span class="n">power</span><span class="o">=</span><span class="n">power</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="nb">super</span><span class="p">(</span><span class="n">FTestAnovaPower</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">solve_power</span><span class="p">(</span><span class="n">effect_size</span><span class="o">=</span><span class="n">effect_size</span><span class="p">,</span>
+                                                      <span class="n">nobs</span><span class="o">=</span><span class="n">nobs</span><span class="p">,</span>
+                                                      <span class="n">alpha</span><span class="o">=</span><span class="n">alpha</span><span class="p">,</span>
+                                                      <span class="n">k_groups</span><span class="o">=</span><span class="n">k_groups</span><span class="p">,</span>
+                                                      <span class="n">power</span><span class="o">=</span><span class="n">power</span><span class="p">)</span></div>
+
+    <span class="k">def</span> <span class="nf">_solve_effect_size</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">effect_size</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">nobs</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                           <span class="n">power</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">k_groups</span><span class="o">=</span><span class="mi">2</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;experimental, test failure in solve_power for effect_size</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">def</span> <span class="nf">func</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+            <span class="n">effect_size</span> <span class="o">=</span> <span class="n">x</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_power_identity</span><span class="p">(</span><span class="n">effect_size</span><span class="o">=</span><span class="n">effect_size</span><span class="p">,</span>
+                                          <span class="n">nobs</span><span class="o">=</span><span class="n">nobs</span><span class="p">,</span>
+                                          <span class="n">alpha</span><span class="o">=</span><span class="n">alpha</span><span class="p">,</span>
+                                          <span class="n">k_groups</span><span class="o">=</span><span class="n">k_groups</span><span class="p">,</span>
+                                          <span class="n">power</span><span class="o">=</span><span class="n">power</span><span class="p">)</span>
+
+        <span class="n">val</span><span class="p">,</span> <span class="n">r</span> <span class="o">=</span> <span class="n">optimize</span><span class="o">.</span><span class="n">brentq</span><span class="p">(</span><span class="n">func</span><span class="p">,</span> <span class="mf">1e-8</span><span class="p">,</span> <span class="mi">1</span><span class="o">-</span><span class="mf">1e-8</span><span class="p">,</span> <span class="n">full_output</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">r</span><span class="o">.</span><span class="n">converged</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="n">r</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">val</span></div>
+
+
+<div class="viewcode-block" id="GofChisquarePower"><a class="viewcode-back" href="../../../generated/statsmodels.stats.power.GofChisquarePower.html#statsmodels.stats.power.GofChisquarePower">[docs]</a><span class="k">class</span> <span class="nc">GofChisquarePower</span><span class="p">(</span><span class="n">Power</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;Statistical Power calculations for one sample chisquare test</span>
+
+<span class="sd">    &#39;&#39;&#39;</span>
+
+<div class="viewcode-block" id="GofChisquarePower.power"><a class="viewcode-back" href="../../../generated/statsmodels.stats.power.GofChisquarePower.power.html#statsmodels.stats.power.GofChisquarePower.power">[docs]</a>    <span class="k">def</span> <span class="nf">power</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">effect_size</span><span class="p">,</span> <span class="n">nobs</span><span class="p">,</span> <span class="n">alpha</span><span class="p">,</span> <span class="n">n_bins</span><span class="p">,</span> <span class="n">ddof</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+              <span class="c1">#alternative=&#39;two-sided&#39;):</span>
+        <span class="sd">&#39;&#39;&#39;Calculate the power of a chisquare test for one sample</span>
+
+<span class="sd">        Only two-sided alternative is implemented</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        effect_size : float</span>
+<span class="sd">            standardized effect size, according to Cohen&#39;s definition.</span>
+<span class="sd">            see :func:`statsmodels.stats.gof.chisquare_effectsize`</span>
+<span class="sd">        nobs : int or float</span>
+<span class="sd">            sample size, number of observations.</span>
+<span class="sd">        alpha : float in interval (0,1)</span>
+<span class="sd">            significance level, e.g. 0.05, is the probability of a type I</span>
+<span class="sd">            error, that is wrong rejections if the Null Hypothesis is true.</span>
+<span class="sd">        n_bins : int</span>
+<span class="sd">            number of bins or cells in the distribution.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        power : float</span>
+<span class="sd">            Power of the test, e.g. 0.8, is one minus the probability of a</span>
+<span class="sd">            type II error. Power is the probability that the test correctly</span>
+<span class="sd">            rejects the Null Hypothesis if the Alternative Hypothesis is true.</span>
+
+<span class="sd">       &#39;&#39;&#39;</span>
+        <span class="kn">from</span> <span class="nn">statsmodels.stats.gof</span> <span class="k">import</span> <span class="n">chisquare_power</span>
+        <span class="k">return</span> <span class="n">chisquare_power</span><span class="p">(</span><span class="n">effect_size</span><span class="p">,</span> <span class="n">nobs</span><span class="p">,</span> <span class="n">n_bins</span><span class="p">,</span> <span class="n">alpha</span><span class="p">,</span> <span class="n">ddof</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span></div>
+
+    <span class="c1">#method is only added to have explicit keywords and docstring</span>
+<div class="viewcode-block" id="GofChisquarePower.solve_power"><a class="viewcode-back" href="../../../generated/statsmodels.stats.power.GofChisquarePower.solve_power.html#statsmodels.stats.power.GofChisquarePower.solve_power">[docs]</a>    <span class="k">def</span> <span class="nf">solve_power</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">effect_size</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">nobs</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                    <span class="n">power</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">n_bins</span><span class="o">=</span><span class="mi">2</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;solve for any one parameter of the power of a one sample chisquare-test</span>
+
+<span class="sd">        for the one sample chisquare-test the keywords are:</span>
+<span class="sd">            effect_size, nobs, alpha, power</span>
+
+<span class="sd">        Exactly one needs to be ``None``, all others need numeric values.</span>
+
+<span class="sd">        n_bins needs to be defined, a default=2 is used.</span>
+
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        effect_size : float</span>
+<span class="sd">            standardized effect size, according to Cohen&#39;s definition.</span>
+<span class="sd">            see :func:`statsmodels.stats.gof.chisquare_effectsize`</span>
+<span class="sd">        nobs : int or float</span>
+<span class="sd">            sample size, number of observations.</span>
+<span class="sd">        alpha : float in interval (0,1)</span>
+<span class="sd">            significance level, e.g. 0.05, is the probability of a type I</span>
+<span class="sd">            error, that is wrong rejections if the Null Hypothesis is true.</span>
+<span class="sd">        power : float in interval (0,1)</span>
+<span class="sd">            power of the test, e.g. 0.8, is one minus the probability of a</span>
+<span class="sd">            type II error. Power is the probability that the test correctly</span>
+<span class="sd">            rejects the Null Hypothesis if the Alternative Hypothesis is true.</span>
+<span class="sd">        n_bins : int</span>
+<span class="sd">            number of bins or cells in the distribution</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        value : float</span>
+<span class="sd">            The value of the parameter that was set to None in the call. The</span>
+<span class="sd">            value solves the power equation given the remaining parameters.</span>
+
+
+<span class="sd">        Notes</span>
+<span class="sd">        -----</span>
+<span class="sd">        The function uses scipy.optimize for finding the value that satisfies</span>
+<span class="sd">        the power equation. It first uses ``brentq`` with a prior search for</span>
+<span class="sd">        bounds. If this fails to find a root, ``fsolve`` is used. If ``fsolve``</span>
+<span class="sd">        also fails, then, for ``alpha``, ``power`` and ``effect_size``,</span>
+<span class="sd">        ``brentq`` with fixed bounds is used. However, there can still be cases</span>
+<span class="sd">        where this fails.</span>
+
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">return</span> <span class="nb">super</span><span class="p">(</span><span class="n">GofChisquarePower</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">solve_power</span><span class="p">(</span><span class="n">effect_size</span><span class="o">=</span><span class="n">effect_size</span><span class="p">,</span>
+                                                      <span class="n">nobs</span><span class="o">=</span><span class="n">nobs</span><span class="p">,</span>
+                                                      <span class="n">n_bins</span><span class="o">=</span><span class="n">n_bins</span><span class="p">,</span>
+                                                      <span class="n">alpha</span><span class="o">=</span><span class="n">alpha</span><span class="p">,</span>
+                                                      <span class="n">power</span><span class="o">=</span><span class="n">power</span><span class="p">)</span></div></div>
+
+<span class="k">class</span> <span class="nc">_GofChisquareIndPower</span><span class="p">(</span><span class="n">Power</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;Statistical Power calculations for chisquare goodness-of-fit test</span>
+
+<span class="sd">    TODO: this is not working yet</span>
+<span class="sd">          for 2sample case need two nobs in function</span>
+<span class="sd">          no one-sided chisquare test, is there one? use normal distribution?</span>
+<span class="sd">          -&gt; drop one-sided options?</span>
+<span class="sd">    &#39;&#39;&#39;</span>
+
+
+    <span class="k">def</span> <span class="nf">power</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">effect_size</span><span class="p">,</span> <span class="n">nobs1</span><span class="p">,</span> <span class="n">alpha</span><span class="p">,</span> <span class="n">ratio</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+              <span class="n">alternative</span><span class="o">=</span><span class="s1">&#39;two-sided&#39;</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;Calculate the power of a chisquare for two independent sample</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        effect_size : float</span>
+<span class="sd">            standardize effect size, difference between the two means divided</span>
+<span class="sd">            by the standard deviation. effect size has to be positive.</span>
+<span class="sd">        nobs1 : int or float</span>
+<span class="sd">            number of observations of sample 1. The number of observations of</span>
+<span class="sd">            sample two is ratio times the size of sample 1,</span>
+<span class="sd">            i.e. ``nobs2 = nobs1 * ratio``</span>
+<span class="sd">        alpha : float in interval (0,1)</span>
+<span class="sd">            significance level, e.g. 0.05, is the probability of a type I</span>
+<span class="sd">            error, that is wrong rejections if the Null Hypothesis is true.</span>
+<span class="sd">        ratio : float</span>
+<span class="sd">            ratio of the number of observations in sample 2 relative to</span>
+<span class="sd">            sample 1. see description of nobs1</span>
+<span class="sd">            The default for ratio is 1; to solve for ration given the other</span>
+<span class="sd">            arguments it has to be explicitely set to None.</span>
+<span class="sd">        alternative : string, &#39;two-sided&#39; (default) or &#39;one-sided&#39;</span>
+<span class="sd">            extra argument to choose whether the power is calculated for a</span>
+<span class="sd">            two-sided (default) or one sided test.</span>
+<span class="sd">            &#39;one-sided&#39; assumes we are in the relevant tail.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        power : float</span>
+<span class="sd">            Power of the test, e.g. 0.8, is one minus the probability of a</span>
+<span class="sd">            type II error. Power is the probability that the test correctly</span>
+<span class="sd">            rejects the Null Hypothesis if the Alternative Hypothesis is true.</span>
+
+<span class="sd">        &#39;&#39;&#39;</span>
+
+        <span class="kn">from</span> <span class="nn">statsmodels.stats.gof</span> <span class="k">import</span> <span class="n">chisquare_power</span>
+        <span class="n">nobs2</span> <span class="o">=</span> <span class="n">nobs1</span><span class="o">*</span><span class="n">ratio</span>
+        <span class="c1">#equivalent to nobs = n1*n2/(n1+n2)=n1*ratio/(1+ratio)</span>
+        <span class="n">nobs</span> <span class="o">=</span> <span class="mf">1.</span><span class="o">/</span> <span class="p">(</span><span class="mf">1.</span> <span class="o">/</span> <span class="n">nobs1</span> <span class="o">+</span> <span class="mf">1.</span> <span class="o">/</span> <span class="n">nobs2</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">chisquare_power</span><span class="p">(</span><span class="n">effect_size</span><span class="p">,</span> <span class="n">nobs</span><span class="p">,</span> <span class="n">alpha</span><span class="p">)</span>
+
+    <span class="c1">#method is only added to have explicit keywords and docstring</span>
+    <span class="k">def</span> <span class="nf">solve_power</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">effect_size</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">nobs1</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">power</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                    <span class="n">ratio</span><span class="o">=</span><span class="mf">1.</span><span class="p">,</span> <span class="n">alternative</span><span class="o">=</span><span class="s1">&#39;two-sided&#39;</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;solve for any one parameter of the power of a two sample z-test</span>
+
+<span class="sd">        for z-test the keywords are:</span>
+<span class="sd">            effect_size, nobs1, alpha, power, ratio</span>
+
+<span class="sd">        exactly one needs to be ``None``, all others need numeric values</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        effect_size : float</span>
+<span class="sd">            standardize effect size, difference between the two means divided</span>
+<span class="sd">            by the standard deviation.</span>
+<span class="sd">        nobs1 : int or float</span>
+<span class="sd">            number of observations of sample 1. The number of observations of</span>
+<span class="sd">            sample two is ratio times the size of sample 1,</span>
+<span class="sd">            i.e. ``nobs2 = nobs1 * ratio``</span>
+<span class="sd">        alpha : float in interval (0,1)</span>
+<span class="sd">            significance level, e.g. 0.05, is the probability of a type I</span>
+<span class="sd">            error, that is wrong rejections if the Null Hypothesis is true.</span>
+<span class="sd">        power : float in interval (0,1)</span>
+<span class="sd">            power of the test, e.g. 0.8, is one minus the probability of a</span>
+<span class="sd">            type II error. Power is the probability that the test correctly</span>
+<span class="sd">            rejects the Null Hypothesis if the Alternative Hypothesis is true.</span>
+<span class="sd">        ratio : float</span>
+<span class="sd">            ratio of the number of observations in sample 2 relative to</span>
+<span class="sd">            sample 1. see description of nobs1</span>
+<span class="sd">            The default for ratio is 1; to solve for ration given the other</span>
+<span class="sd">            arguments it has to be explicitely set to None.</span>
+<span class="sd">        alternative : string, &#39;two-sided&#39; (default) or &#39;one-sided&#39;</span>
+<span class="sd">            extra argument to choose whether the power is calculated for a</span>
+<span class="sd">            two-sided (default) or one sided test.</span>
+<span class="sd">            &#39;one-sided&#39; assumes we are in the relevant tail.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        value : float</span>
+<span class="sd">            The value of the parameter that was set to None in the call. The</span>
+<span class="sd">            value solves the power equation given the remainding parameters.</span>
+
+
+<span class="sd">        Notes</span>
+<span class="sd">        -----</span>
+<span class="sd">        The function uses scipy.optimize for finding the value that satisfies</span>
+<span class="sd">        the power equation. It first uses ``brentq`` with a prior search for</span>
+<span class="sd">        bounds. If this fails to find a root, ``fsolve`` is used. If ``fsolve``</span>
+<span class="sd">        also fails, then, for ``alpha``, ``power`` and ``effect_size``,</span>
+<span class="sd">        ``brentq`` with fixed bounds is used. However, there can still be cases</span>
+<span class="sd">        where this fails.</span>
+
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">return</span> <span class="nb">super</span><span class="p">(</span><span class="n">_GofChisquareIndPower</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">solve_power</span><span class="p">(</span><span class="n">effect_size</span><span class="o">=</span><span class="n">effect_size</span><span class="p">,</span>
+                                                      <span class="n">nobs1</span><span class="o">=</span><span class="n">nobs1</span><span class="p">,</span>
+                                                      <span class="n">alpha</span><span class="o">=</span><span class="n">alpha</span><span class="p">,</span>
+                                                      <span class="n">power</span><span class="o">=</span><span class="n">power</span><span class="p">,</span>
+                                                      <span class="n">ratio</span><span class="o">=</span><span class="n">ratio</span><span class="p">,</span>
+                                                      <span class="n">alternative</span><span class="o">=</span><span class="n">alternative</span><span class="p">)</span>
+
+<span class="c1">#shortcut functions</span>
+<span class="n">tt_solve_power</span> <span class="o">=</span> <span class="n">TTestPower</span><span class="p">()</span><span class="o">.</span><span class="n">solve_power</span>
+<span class="n">tt_ind_solve_power</span> <span class="o">=</span> <span class="n">TTestIndPower</span><span class="p">()</span><span class="o">.</span><span class="n">solve_power</span>
+<span class="n">zt_ind_solve_power</span> <span class="o">=</span> <span class="n">NormalIndPower</span><span class="p">()</span><span class="o">.</span><span class="n">solve_power</span>
+</pre></div>
+
+
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <form class="search" action="../../../search.html" method="get">
+      <div><input type="text" name="q" /></div>
+      <div><input type="submit" value="Go" /></div>
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer" role="contentinfo">
+        &#169; Copyright 2009-2017, Josef Perktold, Skipper Seabold, Jonathan Taylor, statsmodels-developers.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.5.3.
+    </div>
+  </body>
+</html>

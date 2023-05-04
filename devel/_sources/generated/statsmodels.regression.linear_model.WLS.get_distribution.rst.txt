@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.regression.linear\_model.WLS.get\_distribution
+==========================================================
+
+.. currentmodule:: statsmodels.regression.linear_model
+
+.. automethod:: WLS.get_distribution

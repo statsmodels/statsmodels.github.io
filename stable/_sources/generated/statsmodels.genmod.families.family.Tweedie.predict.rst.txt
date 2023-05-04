@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.genmod.families.family.Tweedie.predict
+==================================================
+
+.. currentmodule:: statsmodels.genmod.families.family
+
+.. automethod:: Tweedie.predict

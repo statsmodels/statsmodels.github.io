@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.multivariate.cancorr.CanCorr.predict
+================================================
+
+.. currentmodule:: statsmodels.multivariate.cancorr
+
+.. automethod:: CanCorr.predict

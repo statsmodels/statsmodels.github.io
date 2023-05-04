@@ -1,0 +1,422 @@
+{
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# GEE score tests\n",
+    "\n",
+    "This notebook uses simulation to demonstrate robust GEE score tests.  These tests can be used in a GEE analysis to compare nested hypotheses about the mean structure.  The tests are robust to miss-specification of the working correlation model, and to certain forms of misspecification of the variance structure (e.g. as captured by the scale parameter in a quasi-Poisson analysis).\n",
+    "\n",
+    "The data are simulated as clusters, where there is dependence within but not between clusters.  The cluster-wise dependence is induced using a copula approach.  The data marginally follow a negative binomial (gamma/Poisson) mixture.\n",
+    "\n",
+    "The level and power of the tests are considered below to assess the performance of the tests."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 1,
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2023-04-26T13:43:49.224689Z",
+     "iopub.status.busy": "2023-04-26T13:43:49.224430Z",
+     "iopub.status.idle": "2023-04-26T13:43:50.409993Z",
+     "shell.execute_reply": "2023-04-26T13:43:50.409321Z"
+    }
+   },
+   "outputs": [],
+   "source": [
+    "import pandas as pd\n",
+    "import numpy as np\n",
+    "from scipy.stats.distributions import norm, poisson\n",
+    "import statsmodels.api as sm\n",
+    "import matplotlib.pyplot as plt"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "The function defined in the following cell uses a copula approach to simulate correlated random values that marginally follow a negative binomial distribution.  The input parameter `u` is an array of values in (0, 1).  The elements of `u` must be marginally uniformly distributed on (0, 1).  Correlation in `u` will induce correlations in the returned negative binomial values.  The array parameter `mu` gives the marginal means, and the scalar parameter `scale` defines the mean/variance relationship (the variance is `scale` times the mean).  The lengths of `u` and `mu` must be the same."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 2,
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2023-04-26T13:43:50.414348Z",
+     "iopub.status.busy": "2023-04-26T13:43:50.413682Z",
+     "iopub.status.idle": "2023-04-26T13:43:50.417740Z",
+     "shell.execute_reply": "2023-04-26T13:43:50.417199Z"
+    },
+    "lines_to_next_cell": 1
+   },
+   "outputs": [],
+   "source": [
+    "def negbinom(u, mu, scale):\n",
+    "    p = (scale - 1) / scale\n",
+    "    r = mu * (1 - p) / p\n",
+    "    x = np.random.gamma(r, p / (1 - p), len(u))\n",
+    "    return poisson.ppf(u, mu=x)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Below are some parameters that govern the data used in the simulation."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 3,
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2023-04-26T13:43:50.421820Z",
+     "iopub.status.busy": "2023-04-26T13:43:50.420526Z",
+     "iopub.status.idle": "2023-04-26T13:43:50.425854Z",
+     "shell.execute_reply": "2023-04-26T13:43:50.425313Z"
+    }
+   },
+   "outputs": [],
+   "source": [
+    "# Sample size\n",
+    "n = 1000\n",
+    "\n",
+    "# Number of covariates (including intercept) in the alternative hypothesis model\n",
+    "p = 5\n",
+    "\n",
+    "# Cluster size\n",
+    "m = 10\n",
+    "\n",
+    "# Intraclass correlation (controls strength of clustering)\n",
+    "r = 0.5\n",
+    "\n",
+    "# Group indicators\n",
+    "grp = np.kron(np.arange(n/m), np.ones(m))"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "The simulation uses a fixed design matrix."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 4,
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2023-04-26T13:43:50.430127Z",
+     "iopub.status.busy": "2023-04-26T13:43:50.429032Z",
+     "iopub.status.idle": "2023-04-26T13:43:50.433852Z",
+     "shell.execute_reply": "2023-04-26T13:43:50.433314Z"
+    }
+   },
+   "outputs": [],
+   "source": [
+    "# Build a design matrix for the alternative (more complex) model\n",
+    "x = np.random.normal(size=(n, p))\n",
+    "x[:, 0] = 1"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "The null design matrix is nested in the alternative design matrix.  It has rank two less than the alternative design matrix."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 5,
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2023-04-26T13:43:50.438070Z",
+     "iopub.status.busy": "2023-04-26T13:43:50.436980Z",
+     "iopub.status.idle": "2023-04-26T13:43:50.441413Z",
+     "shell.execute_reply": "2023-04-26T13:43:50.440877Z"
+    }
+   },
+   "outputs": [],
+   "source": [
+    "x0 = x[:, 0:3]"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "The GEE score test is robust to dependence and overdispersion.  Here we set the overdispersion parameter.  The variance of the negative binomial distribution for each observation is equal to `scale` times its mean value."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 6,
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2023-04-26T13:43:50.445666Z",
+     "iopub.status.busy": "2023-04-26T13:43:50.444585Z",
+     "iopub.status.idle": "2023-04-26T13:43:50.448835Z",
+     "shell.execute_reply": "2023-04-26T13:43:50.448288Z"
+    }
+   },
+   "outputs": [],
+   "source": [
+    "# Scale parameter for negative binomial distribution\n",
+    "scale = 10"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "In the next cell, we set up the mean structures for the null and alternative models"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 7,
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2023-04-26T13:43:50.453016Z",
+     "iopub.status.busy": "2023-04-26T13:43:50.451948Z",
+     "iopub.status.idle": "2023-04-26T13:43:50.457786Z",
+     "shell.execute_reply": "2023-04-26T13:43:50.457260Z"
+    }
+   },
+   "outputs": [],
+   "source": [
+    "# The coefficients used to define the linear predictors\n",
+    "coeff = [[4, 0.4, -0.2], [4, 0.4, -0.2, 0, -0.04]]\n",
+    "\n",
+    "# The linear predictors\n",
+    "lp = [np.dot(x0, coeff[0]), np.dot(x, coeff[1])]\n",
+    "\n",
+    "# The mean values\n",
+    "mu = [np.exp(lp[0]), np.exp(lp[1])]"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Below is a function that carries out the simulation."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 8,
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2023-04-26T13:43:50.461975Z",
+     "iopub.status.busy": "2023-04-26T13:43:50.460905Z",
+     "iopub.status.idle": "2023-04-26T13:43:50.469159Z",
+     "shell.execute_reply": "2023-04-26T13:43:50.468616Z"
+    }
+   },
+   "outputs": [],
+   "source": [
+    "# hyp = 0 is the null hypothesis, hyp = 1 is the alternative hypothesis.\n",
+    "# cov_struct is a statsmodels covariance structure\n",
+    "def dosim(hyp, cov_struct=None, mcrep=500):\n",
+    "    \n",
+    "    # Storage for the simulation results\n",
+    "    scales = [[], []]\n",
+    "    \n",
+    "    # P-values from the score test\n",
+    "    pv = []\n",
+    "    \n",
+    "    # Monte Carlo loop\n",
+    "    for k in range(mcrep):\n",
+    "\n",
+    "        # Generate random \"probability points\" u  that are uniformly \n",
+    "        # distributed, and correlated within clusters\n",
+    "        z = np.random.normal(size=n)\n",
+    "        u = np.random.normal(size=n//m)\n",
+    "        u = np.kron(u, np.ones(m))\n",
+    "        z = r*z +np.sqrt(1-r**2)*u\n",
+    "        u = norm.cdf(z)\n",
+    "\n",
+    "        # Generate the observed responses\n",
+    "        y = negbinom(u, mu=mu[hyp], scale=scale)\n",
+    "\n",
+    "        # Fit the null model\n",
+    "        m0 = sm.GEE(y, x0, groups=grp, cov_struct=cov_struct, family=sm.families.Poisson())\n",
+    "        r0 = m0.fit(scale='X2')\n",
+    "        scales[0].append(r0.scale)\n",
+    "        \n",
+    "        # Fit the alternative model\n",
+    "        m1 = sm.GEE(y, x, groups=grp, cov_struct=cov_struct, family=sm.families.Poisson())\n",
+    "        r1 = m1.fit(scale='X2')\n",
+    "        scales[1].append(r1.scale)\n",
+    "        \n",
+    "        # Carry out the score test\n",
+    "        st = m1.compare_score_test(r0)\n",
+    "        pv.append(st[\"p-value\"])\n",
+    "\n",
+    "    pv = np.asarray(pv)\n",
+    "    rslt = [np.mean(pv), np.mean(pv < 0.1)]\n",
+    "    \n",
+    "    return rslt, scales"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Run the simulation using the independence working covariance structure.  We expect the mean to be around 0 under the null hypothesis, and much lower under the alternative hypothesis.  Similarly, we expect that under the null hypothesis, around 10% of the p-values are less than 0.1, and a much greater fraction of the p-values are less than 0.1 under the alternative hypothesis."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 9,
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2023-04-26T13:43:50.473380Z",
+     "iopub.status.busy": "2023-04-26T13:43:50.472312Z",
+     "iopub.status.idle": "2023-04-26T13:44:55.925869Z",
+     "shell.execute_reply": "2023-04-26T13:44:55.924715Z"
+    }
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "        Mean  Prop(p<0.1)\n",
+      "H0  0.508705        0.090\n",
+      "H1  0.055836        0.842\n"
+     ]
+    }
+   ],
+   "source": [
+    "rslt, scales = [], []\n",
+    "\n",
+    "for hyp in 0, 1:\n",
+    "    s, t = dosim(hyp, sm.cov_struct.Independence())\n",
+    "    rslt.append(s)\n",
+    "    scales.append(t)\n",
+    "    \n",
+    "rslt = pd.DataFrame(rslt, index=[\"H0\", \"H1\"], columns=[\"Mean\", \"Prop(p<0.1)\"])\n",
+    "\n",
+    "print(rslt)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Next we check to make sure that the scale parameter estimates are reasonable. We are assessing the robustness of the GEE score test to dependence and overdispersion, so here we are confirming that the overdispersion is present as expected."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 10,
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2023-04-26T13:44:55.929056Z",
+     "iopub.status.busy": "2023-04-26T13:44:55.928804Z",
+     "iopub.status.idle": "2023-04-26T13:44:56.149182Z",
+     "shell.execute_reply": "2023-04-26T13:44:56.148603Z"
+    }
+   },
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "Text(0, 0.5, 'Estimated scale')"
+      ]
+     },
+     "execution_count": 10,
+     "metadata": {},
+     "output_type": "execute_result"
+    },
+    {
+     "data": {
+      "image/png": "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",
+      "text/plain": [
+       "<Figure size 640x480 with 1 Axes>"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "_ = plt.boxplot([scales[0][0], scales[0][1], scales[1][0], scales[1][1]])\n",
+    "plt.ylabel(\"Estimated scale\")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Next we conduct the same analysis using an exchangeable working correlation model.  Note that this will be slower than the example above using independent working correlation, so we use fewer Monte Carlo repetitions."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 11,
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2023-04-26T13:44:56.153192Z",
+     "iopub.status.busy": "2023-04-26T13:44:56.151875Z",
+     "iopub.status.idle": "2023-04-26T13:45:30.035712Z",
+     "shell.execute_reply": "2023-04-26T13:45:30.035106Z"
+    }
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "        Mean  Prop(p<0.1)\n",
+      "H0  0.509600         0.10\n",
+      "H1  0.057652         0.87\n"
+     ]
+    }
+   ],
+   "source": [
+    "rslt, scales = [], []\n",
+    "\n",
+    "for hyp in 0, 1:\n",
+    "    s, t = dosim(hyp, sm.cov_struct.Exchangeable(), mcrep=100)\n",
+    "    rslt.append(s)\n",
+    "    scales.append(t)\n",
+    "    \n",
+    "rslt = pd.DataFrame(rslt, index=[\"H0\", \"H1\"], columns=[\"Mean\", \"Prop(p<0.1)\"])\n",
+    "\n",
+    "print(rslt)"
+   ]
+  }
+ ],
+ "metadata": {
+  "jupytext": {
+   "cell_metadata_filter": "-all",
+   "main_language": "python",
+   "notebook_metadata_filter": "-all"
+  },
+  "kernelspec": {
+   "display_name": "Python 3",
+   "language": "python",
+   "name": "python3"
+  },
+  "language_info": {
+   "codemirror_mode": {
+    "name": "ipython",
+    "version": 3
+   },
+   "file_extension": ".py",
+   "mimetype": "text/x-python",
+   "name": "python",
+   "nbconvert_exporter": "python",
+   "pygments_lexer": "ipython3",
+   "version": "3.10.11"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 4
+}

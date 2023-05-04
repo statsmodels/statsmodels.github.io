@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.duration.survfunc.SurvfuncRight.quantile\_ci
+========================================================
+
+.. currentmodule:: statsmodels.duration.survfunc
+
+.. automethod:: SurvfuncRight.quantile_ci

@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.discrete.discrete\_model.Probit.loglike
+===================================================
+
+.. currentmodule:: statsmodels.discrete.discrete_model
+
+.. automethod:: Probit.loglike

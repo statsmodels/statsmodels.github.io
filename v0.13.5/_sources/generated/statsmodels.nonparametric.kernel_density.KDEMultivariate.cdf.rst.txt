@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.nonparametric.kernel\_density.KDEMultivariate.cdf
+=============================================================
+
+.. currentmodule:: statsmodels.nonparametric.kernel_density
+
+.. automethod:: KDEMultivariate.cdf

@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.tsa.statespace.kalman\_smoother.KalmanSmoother.conserve\_memory
+===========================================================================
+
+.. currentmodule:: statsmodels.tsa.statespace.kalman_smoother
+
+.. autoattribute:: KalmanSmoother.conserve_memory

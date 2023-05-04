@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.stats.correlation\_tools.FactoredPSDMatrix.to\_matrix
+=================================================================
+
+.. currentmodule:: statsmodels.stats.correlation_tools
+
+.. automethod:: FactoredPSDMatrix.to_matrix

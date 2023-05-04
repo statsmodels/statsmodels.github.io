@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.genmod.families.family.NegativeBinomial.predict
+===========================================================
+
+.. currentmodule:: statsmodels.genmod.families.family
+
+.. automethod:: NegativeBinomial.predict

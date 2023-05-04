@@ -1,0 +1,487 @@
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>statsmodels.sandbox.sysreg &#8212; statsmodels 0.8.0 documentation</title>
+    
+    <link rel="stylesheet" href="../../../_static/nature.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../../',
+        VERSION:     '0.8.0',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true,
+        SOURCELINK_SUFFIX: '.txt'
+      };
+    </script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <link rel="shortcut icon" href="../../../_static/statsmodels_hybi_favico.ico"/>
+    <link rel="author" title="About these documents" href="../../../about.html" />
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+<link rel="stylesheet" href="../../../_static/examples.css" type="text/css" />
+<link rel="stylesheet" href="../../../_static/facebox.css" type="text/css" />
+<script type="text/javascript" src="../../../_static/scripts.js">
+</script>
+<script type="text/javascript" src="../../../_static/facebox.js">
+</script>
+
+  </head>
+  <body role="document">
+<div class="headerwrap">
+    <div class = "header">
+        
+        <a href = "../../../index.html">
+<img src="../../../_static/statsmodels_hybi_banner.png" alt="Logo"
+    style="padding-left: 15px"/></a>
+        
+    </div>
+</div>
+
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+<li><a href ="../../../install.html">Install</a></li> &nbsp;|&nbsp;
+<li><a href="https://groups.google.com/group/pystatsmodels?hl=en">Support</a></li> &nbsp;|&nbsp;
+<li><a href="https://github.com/statsmodels/statsmodels/issues">Bugs</a></li> &nbsp;|&nbsp;
+<li><a href="../../../dev/index.html">Develop</a></li> &nbsp;|&nbsp;
+<li><a href="../../../examples/index.html">Examples</a></li> &nbsp;|&nbsp;
+<li><a href="../../../faq.html">FAQ</a></li> &nbsp;|&nbsp;
+
+          <li class="nav-item nav-item-1"><a href="../../index.html" accesskey="U">Module code</a> |</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+
+
+
+
+  <h1>Source code for statsmodels.sandbox.sysreg</h1><div class="highlight"><pre>
+<span></span><span class="kn">from</span> <span class="nn">statsmodels.compat.python</span> <span class="k">import</span> <span class="n">iterkeys</span>
+<span class="kn">from</span> <span class="nn">statsmodels.regression.linear_model</span> <span class="k">import</span> <span class="n">GLS</span>
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+<span class="kn">from</span> <span class="nn">statsmodels.base.model</span> <span class="k">import</span> <span class="n">LikelihoodModelResults</span>
+<span class="kn">from</span> <span class="nn">scipy</span> <span class="k">import</span> <span class="n">sparse</span>
+<span class="kn">from</span> <span class="nn">statsmodels.compat.numpy</span> <span class="k">import</span> <span class="n">np_matrix_rank</span>
+
+<span class="c1">#http://www.irisa.fr/aladin/wg-statlin/WORKSHOPS/RENNES02/SLIDES/Foschi.pdf</span>
+
+<span class="n">__all__</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;SUR&#39;</span><span class="p">,</span> <span class="s1">&#39;Sem2SLS&#39;</span><span class="p">]</span>
+
+<span class="c1">#probably should have a SystemModel superclass</span>
+<span class="c1"># TODO: does it make sense of SUR equations to have</span>
+<span class="c1"># independent endogenous regressors?  If so, then</span>
+<span class="c1"># change docs to LHS = RHS</span>
+<span class="c1">#TODO: make a dictionary that holds equation specific information</span>
+<span class="c1">#rather than these cryptic lists?  Slower to get a dict value?</span>
+<span class="c1">#TODO: refine sigma definition</span>
+<div class="viewcode-block" id="SUR"><a class="viewcode-back" href="../../../generated/statsmodels.sandbox.sysreg.SUR.html#statsmodels.sandbox.sysreg.SUR">[docs]</a><span class="k">class</span> <span class="nc">SUR</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Seemingly Unrelated Regression</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    sys : list</span>
+<span class="sd">        [endog1, exog1, endog2, exog2,...] It will be of length 2 x M,</span>
+<span class="sd">        where M is the number of equations endog = exog.</span>
+<span class="sd">    sigma : array-like</span>
+<span class="sd">        M x M array where sigma[i,j] is the covariance between equation i and j</span>
+<span class="sd">    dfk : None, &#39;dfk1&#39;, or &#39;dfk2&#39;</span>
+<span class="sd">        Default is None.  Correction for the degrees of freedom</span>
+<span class="sd">        should be specified for small samples.  See the notes for more</span>
+<span class="sd">        information.</span>
+
+<span class="sd">    Attributes</span>
+<span class="sd">    ----------</span>
+<span class="sd">    cholsigmainv : array</span>
+<span class="sd">        The transpose of the Cholesky decomposition of `pinv_wexog`</span>
+<span class="sd">    df_model : array</span>
+<span class="sd">        Model degrees of freedom of each equation. p_{m} - 1 where p is</span>
+<span class="sd">        the number of regressors for each equation m and one is subtracted</span>
+<span class="sd">        for the constant.</span>
+<span class="sd">    df_resid : array</span>
+<span class="sd">        Residual degrees of freedom of each equation. Number of observations</span>
+<span class="sd">        less the number of parameters.</span>
+<span class="sd">    endog : array</span>
+<span class="sd">        The LHS variables for each equation in the system.</span>
+<span class="sd">        It is a M x nobs array where M is the number of equations.</span>
+<span class="sd">    exog : array</span>
+<span class="sd">        The RHS variable for each equation in the system.</span>
+<span class="sd">        It is a nobs x sum(p_{m}) array.  Which is just each</span>
+<span class="sd">        RHS array stacked next to each other in columns.</span>
+<span class="sd">    history : dict</span>
+<span class="sd">        Contains the history of fitting the model. Probably not of interest</span>
+<span class="sd">        if the model is fit with `igls` = False.</span>
+<span class="sd">    iterations : int</span>
+<span class="sd">        The number of iterations until convergence if the model is fit</span>
+<span class="sd">        iteratively.</span>
+<span class="sd">    nobs : float</span>
+<span class="sd">        The number of observations of the equations.</span>
+<span class="sd">    normalized_cov_params : array</span>
+<span class="sd">        sum(p_{m}) x sum(p_{m}) array</span>
+<span class="sd">        :math:`\\left[X^{T}\\left(\\Sigma^{-1}\\otimes\\boldsymbol{I}\\right)X\\right]^{-1}`</span>
+<span class="sd">    pinv_wexog : array</span>
+<span class="sd">        The pseudo-inverse of the `wexog`</span>
+<span class="sd">    sigma : array</span>
+<span class="sd">        M x M covariance matrix of the cross-equation disturbances. See notes.</span>
+<span class="sd">    sp_exog : CSR sparse matrix</span>
+<span class="sd">        Contains a block diagonal sparse matrix of the design so that</span>
+<span class="sd">        exog1 ... exogM are on the diagonal.</span>
+<span class="sd">    wendog : array</span>
+<span class="sd">        M * nobs x 1 array of the endogenous variables whitened by</span>
+<span class="sd">        `cholsigmainv` and stacked into a single column.</span>
+<span class="sd">    wexog : array</span>
+<span class="sd">        M*nobs x sum(p_{m}) array of the whitened exogenous variables.</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    All individual equations are assumed to be well-behaved, homoeskedastic</span>
+<span class="sd">    iid errors.  This is basically an extension of GLS, using sparse matrices.</span>
+
+<span class="sd">    .. math:: \\Sigma=\\left[\\begin{array}{cccc}</span>
+<span class="sd">              \\sigma_{11} &amp; \\sigma_{12} &amp; \\cdots &amp; \\sigma_{1M}\\\\</span>
+<span class="sd">              \\sigma_{21} &amp; \\sigma_{22} &amp; \\cdots &amp; \\sigma_{2M}\\\\</span>
+<span class="sd">              \\vdots &amp; \\vdots &amp; \\ddots &amp; \\vdots\\\\</span>
+<span class="sd">              \\sigma_{M1} &amp; \\sigma_{M2} &amp; \\cdots &amp; \\sigma_{MM}\\end{array}\\right]</span>
+
+<span class="sd">    References</span>
+<span class="sd">    ----------</span>
+<span class="sd">    Zellner (1962), Greene (2003)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+<span class="c1">#TODO: Does each equation need nobs to be the same?</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sys</span><span class="p">,</span> <span class="n">sigma</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">dfk</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">sys</span><span class="p">)</span> <span class="o">%</span> <span class="mi">2</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;sys must be a list of pairs of endogenous and </span><span class="se">\</span>
+<span class="s2">exogenous variables.  Got length </span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="nb">len</span><span class="p">(</span><span class="n">sys</span><span class="p">))</span>
+        <span class="k">if</span> <span class="n">dfk</span><span class="p">:</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">dfk</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;dfk1&#39;</span><span class="p">,</span><span class="s1">&#39;dfk2&#39;</span><span class="p">]:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;dfk option </span><span class="si">%s</span><span class="s2"> not understood&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">dfk</span><span class="p">))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_dfk</span> <span class="o">=</span> <span class="n">dfk</span>
+        <span class="n">M</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">sys</span><span class="p">[</span><span class="mi">1</span><span class="p">::</span><span class="mi">2</span><span class="p">])</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_M</span> <span class="o">=</span> <span class="n">M</span>
+<span class="c1">#        exog = np.zeros((M,M), dtype=object)</span>
+<span class="c1">#        for i,eq in enumerate(sys[1::2]):</span>
+<span class="c1">#            exog[i,i] = np.asarray(eq)  # not sure this exog is needed</span>
+                                        <span class="c1"># used to compute resids for now</span>
+        <span class="n">exog</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">column_stack</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">sys</span><span class="p">[</span><span class="mi">1</span><span class="p">::</span><span class="mi">2</span><span class="p">][</span><span class="n">i</span><span class="p">])</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">M</span><span class="p">))</span>
+<span class="c1">#       exog = np.vstack(np.asarray(sys[1::2][i]) for i in range(M))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">exog</span> <span class="o">=</span> <span class="n">exog</span> <span class="c1"># 2d ndarray exog is better</span>
+<span class="c1"># Endog, might just go ahead and reshape this?</span>
+        <span class="n">endog</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">sys</span><span class="p">[::</span><span class="mi">2</span><span class="p">])</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">endog</span> <span class="o">=</span> <span class="n">endog</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">endog</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="c1"># assumes all the same length</span>
+
+<span class="c1"># Degrees of Freedom</span>
+        <span class="n">df_resid</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">df_model</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="p">[</span><span class="n">df_resid</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">nobs</span> <span class="o">-</span> <span class="n">np_matrix_rank</span><span class="p">(</span><span class="n">_</span><span class="p">))</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="n">sys</span><span class="p">[</span><span class="mi">1</span><span class="p">::</span><span class="mi">2</span><span class="p">]]</span>
+        <span class="p">[</span><span class="n">df_model</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">np_matrix_rank</span><span class="p">(</span><span class="n">_</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="n">sys</span><span class="p">[</span><span class="mi">1</span><span class="p">::</span><span class="mi">2</span><span class="p">]]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">df_resid</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">df_resid</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">df_model</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">df_model</span><span class="p">)</span>
+
+<span class="c1"># &quot;Block-diagonal&quot; sparse matrix of exog</span>
+        <span class="n">sp_exog</span> <span class="o">=</span> <span class="n">sparse</span><span class="o">.</span><span class="n">lil_matrix</span><span class="p">((</span><span class="nb">int</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">nobs</span><span class="o">*</span><span class="n">M</span><span class="p">),</span>
+            <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">df_model</span><span class="o">+</span><span class="mi">1</span><span class="p">))))</span> <span class="c1"># linked lists to build</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_cols</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">cumsum</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">hstack</span><span class="p">((</span><span class="mi">0</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">df_model</span><span class="o">+</span><span class="mi">1</span><span class="p">)))</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">M</span><span class="p">):</span>
+            <span class="n">sp_exog</span><span class="p">[</span><span class="n">i</span><span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">nobs</span><span class="p">:(</span><span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="p">)</span><span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">nobs</span><span class="p">,</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">_cols</span><span class="p">[</span><span class="n">i</span><span class="p">]:</span><span class="bp">self</span><span class="o">.</span><span class="n">_cols</span><span class="p">[</span><span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="p">]]</span> <span class="o">=</span> <span class="n">sys</span><span class="p">[</span><span class="mi">1</span><span class="p">::</span><span class="mi">2</span><span class="p">][</span><span class="n">i</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">sp_exog</span> <span class="o">=</span> <span class="n">sp_exog</span><span class="o">.</span><span class="n">tocsr</span><span class="p">()</span> <span class="c1"># cast to compressed for efficiency</span>
+<span class="c1"># Deal with sigma, check shape earlier if given</span>
+        <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">sigma</span><span class="p">):</span>
+            <span class="n">sigma</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">sigma</span><span class="p">)</span> <span class="c1"># check shape</span>
+        <span class="k">elif</span> <span class="n">sigma</span> <span class="o">==</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">resids</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">M</span><span class="p">):</span>
+                <span class="n">resids</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">GLS</span><span class="p">(</span><span class="n">endog</span><span class="p">[</span><span class="n">i</span><span class="p">],</span><span class="n">exog</span><span class="p">[:,</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">_cols</span><span class="p">[</span><span class="n">i</span><span class="p">]:</span><span class="bp">self</span><span class="o">.</span><span class="n">_cols</span><span class="p">[</span><span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="p">]])</span><span class="o">.</span><span class="n">fit</span><span class="p">()</span><span class="o">.</span><span class="n">resid</span><span class="p">)</span>
+            <span class="n">resids</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">resids</span><span class="p">)</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">M</span><span class="p">,</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+            <span class="n">sigma</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_compute_sigma</span><span class="p">(</span><span class="n">resids</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">sigma</span> <span class="o">=</span> <span class="n">sigma</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">cholsigmainv</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">cholesky</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">pinv</span><span class="p">(</span>\
+                    <span class="bp">self</span><span class="o">.</span><span class="n">sigma</span><span class="p">))</span><span class="o">.</span><span class="n">T</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">initialize</span><span class="p">()</span>
+
+<div class="viewcode-block" id="SUR.initialize"><a class="viewcode-back" href="../../../generated/statsmodels.sandbox.sysreg.SUR.initialize.html#statsmodels.sandbox.sysreg.SUR.initialize">[docs]</a>    <span class="k">def</span> <span class="nf">initialize</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">wendog</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">whiten</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">endog</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">wexog</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">whiten</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">sp_exog</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">pinv_wexog</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">pinv</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">wexog</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">normalized_cov_params</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">pinv_wexog</span><span class="p">,</span>
+                <span class="n">np</span><span class="o">.</span><span class="n">transpose</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">pinv_wexog</span><span class="p">))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">history</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;params&#39;</span> <span class="p">:</span> <span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">]}</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">iterations</span> <span class="o">=</span> <span class="mi">0</span></div>
+
+    <span class="k">def</span> <span class="nf">_update_history</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">history</span><span class="p">[</span><span class="s1">&#39;params&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">params</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_compute_sigma</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">resids</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Computes the sigma matrix and update the cholesky decomposition.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">M</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_M</span>
+        <span class="n">nobs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span>
+        <span class="n">sig</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">resids</span><span class="p">,</span> <span class="n">resids</span><span class="o">.</span><span class="n">T</span><span class="p">)</span>  <span class="c1"># faster way to do this?</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_dfk</span><span class="p">:</span>
+            <span class="n">div</span> <span class="o">=</span> <span class="n">nobs</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">_dfk</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="s1">&#39;dfk1&#39;</span><span class="p">:</span>
+            <span class="n">div</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">M</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">M</span><span class="p">):</span>
+                <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">M</span><span class="p">):</span>
+                    <span class="n">div</span><span class="p">[</span><span class="n">i</span><span class="o">+</span><span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="p">((</span><span class="bp">self</span><span class="o">.</span><span class="n">df_model</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">+</span><span class="mi">1</span><span class="p">)</span> <span class="o">*</span>\
+                            <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">df_model</span><span class="p">[</span><span class="n">j</span><span class="p">]</span><span class="o">+</span><span class="mi">1</span><span class="p">))</span><span class="o">**</span><span class="p">(</span><span class="mi">1</span><span class="o">/</span><span class="mi">2</span><span class="p">)</span>
+            <span class="n">div</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">M</span><span class="p">,</span><span class="n">M</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span> <span class="c1"># &#39;dfk2&#39; error checking is done earlier</span>
+            <span class="n">div</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">M</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">M</span><span class="p">):</span>
+                <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">M</span><span class="p">):</span>
+                    <span class="n">div</span><span class="p">[</span><span class="n">i</span><span class="o">+</span><span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="n">nobs</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">df_model</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">df_model</span><span class="p">[</span><span class="n">j</span><span class="p">]</span><span class="o">+</span><span class="mi">1</span><span class="p">)</span>
+            <span class="n">div</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">M</span><span class="p">,</span><span class="n">M</span><span class="p">)</span>
+<span class="c1"># doesn&#39;t handle (#,)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">cholsigmainv</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">cholesky</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">pinv</span><span class="p">(</span><span class="n">sig</span><span class="o">/</span><span class="n">div</span><span class="p">))</span><span class="o">.</span><span class="n">T</span>
+        <span class="k">return</span> <span class="n">sig</span><span class="o">/</span><span class="n">div</span>
+
+<div class="viewcode-block" id="SUR.whiten"><a class="viewcode-back" href="../../../generated/statsmodels.sandbox.sysreg.SUR.whiten.html#statsmodels.sandbox.sysreg.SUR.whiten">[docs]</a>    <span class="k">def</span> <span class="nf">whiten</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">X</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        SUR whiten method.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        -----------</span>
+<span class="sd">        X : list of arrays</span>
+<span class="sd">            Data to be whitened.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        If X is the exogenous RHS of the system.</span>
+<span class="sd">        ``np.dot(np.kron(cholsigmainv,np.eye(M)),np.diag(X))``</span>
+
+<span class="sd">        If X is the endogenous LHS of the system.</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">nobs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span>
+        <span class="k">if</span> <span class="n">X</span> <span class="ow">is</span> <span class="bp">self</span><span class="o">.</span><span class="n">endog</span><span class="p">:</span> <span class="c1"># definitely not a robust check</span>
+            <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">kron</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">cholsigmainv</span><span class="p">,</span><span class="n">np</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="n">nobs</span><span class="p">)),</span>
+                <span class="n">X</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">))</span>
+        <span class="k">elif</span> <span class="n">X</span> <span class="ow">is</span> <span class="bp">self</span><span class="o">.</span><span class="n">sp_exog</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">(</span><span class="n">sparse</span><span class="o">.</span><span class="n">kron</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">cholsigmainv</span><span class="p">,</span>
+                <span class="n">sparse</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="n">nobs</span><span class="p">,</span><span class="n">nobs</span><span class="p">))</span><span class="o">*</span><span class="n">X</span><span class="p">)</span><span class="o">.</span><span class="n">toarray</span><span class="p">()</span><span class="c1">#*=dot until cast to array</span></div>
+
+<div class="viewcode-block" id="SUR.fit"><a class="viewcode-back" href="../../../generated/statsmodels.sandbox.sysreg.SUR.fit.html#statsmodels.sandbox.sysreg.SUR.fit">[docs]</a>    <span class="k">def</span> <span class="nf">fit</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">igls</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">tol</span><span class="o">=</span><span class="mf">1e-5</span><span class="p">,</span> <span class="n">maxiter</span><span class="o">=</span><span class="mi">100</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        igls : bool</span>
+<span class="sd">            Iterate until estimates converge if sigma is None instead of</span>
+<span class="sd">            two-step GLS, which is the default is sigma is None.</span>
+
+<span class="sd">        tol : float</span>
+
+<span class="sd">        maxiter : int</span>
+
+<span class="sd">        Notes</span>
+<span class="sd">        -----</span>
+<span class="sd">        This ia naive implementation that does not exploit the block</span>
+<span class="sd">        diagonal structure. It should work for ill-conditioned `sigma`</span>
+<span class="sd">        but this is untested.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">sigma</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">sigma</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_compute_sigma</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">endog</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">exog</span><span class="p">)</span>
+        <span class="n">M</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_M</span>
+        <span class="n">beta</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">pinv_wexog</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">wendog</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_update_history</span><span class="p">(</span><span class="n">beta</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">iterations</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">igls</span><span class="p">:</span>
+            <span class="n">sur_fit</span> <span class="o">=</span> <span class="n">SysResults</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">beta</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">normalized_cov_params</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">sur_fit</span>
+
+        <span class="n">conv</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">history</span><span class="p">[</span><span class="s1">&#39;params&#39;</span><span class="p">]</span>
+        <span class="k">while</span> <span class="n">igls</span> <span class="ow">and</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">conv</span><span class="p">[</span><span class="o">-</span><span class="mi">2</span><span class="p">]</span> <span class="o">-</span> <span class="n">conv</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span> <span class="o">&gt;</span> <span class="n">tol</span><span class="p">))</span> <span class="ow">and</span> \
+                <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">iterations</span> <span class="o">&lt;</span> <span class="n">maxiter</span><span class="p">):</span>
+            <span class="n">fittedvalues</span> <span class="o">=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">sp_exog</span><span class="o">*</span><span class="n">beta</span><span class="p">)</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">M</span><span class="p">,</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+            <span class="n">resids</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">endog</span> <span class="o">-</span> <span class="n">fittedvalues</span> <span class="c1"># don&#39;t attach results yet</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">sigma</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_compute_sigma</span><span class="p">(</span><span class="n">resids</span><span class="p">)</span> <span class="c1"># need to attach for compute?</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">wendog</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">whiten</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">endog</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">wexog</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">whiten</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">sp_exog</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">pinv_wexog</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">pinv</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">wexog</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">normalized_cov_params</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">pinv_wexog</span><span class="p">,</span>
+                    <span class="n">np</span><span class="o">.</span><span class="n">transpose</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">pinv_wexog</span><span class="p">))</span>
+            <span class="n">beta</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">pinv_wexog</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">wendog</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_update_history</span><span class="p">(</span><span class="n">beta</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">iterations</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="n">sur_fit</span> <span class="o">=</span> <span class="n">SysResults</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">beta</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">normalized_cov_params</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">sur_fit</span></div>
+
+<div class="viewcode-block" id="SUR.predict"><a class="viewcode-back" href="../../../generated/statsmodels.sandbox.sysreg.SUR.predict.html#statsmodels.sandbox.sysreg.SUR.predict">[docs]</a>    <span class="k">def</span> <span class="nf">predict</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">design</span><span class="p">):</span>
+        <span class="k">pass</span></div></div>
+
+<span class="c1">#TODO: Should just have a general 2SLS estimator to subclass</span>
+<span class="c1"># for IV, FGLS, etc.</span>
+<span class="c1"># Also should probably have SEM class and estimators as subclasses</span>
+<div class="viewcode-block" id="Sem2SLS"><a class="viewcode-back" href="../../../generated/statsmodels.sandbox.sysreg.Sem2SLS.html#statsmodels.sandbox.sysreg.Sem2SLS">[docs]</a><span class="k">class</span> <span class="nc">Sem2SLS</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Two-Stage Least Squares for Simultaneous equations</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    sys : list</span>
+<span class="sd">        [endog1, exog1, endog2, exog2,...] It will be of length 2 x M,</span>
+<span class="sd">        where M is the number of equations endog = exog.</span>
+<span class="sd">    indep_endog : dict</span>
+<span class="sd">        A dictionary mapping the equation to the column numbers of the</span>
+<span class="sd">        the independent endogenous regressors in each equation.</span>
+<span class="sd">        It is assumed that the system is inputed as broken up into</span>
+<span class="sd">        LHS and RHS. For now, the values of the dict have to be sequences.</span>
+<span class="sd">        Note that the keys for the equations should be zero-indexed.</span>
+<span class="sd">    instruments : array</span>
+<span class="sd">        Array of the exogenous independent variables.</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    This is unfinished, and the design should be refactored.</span>
+<span class="sd">    Estimation is done by brute force and there is no exploitation of</span>
+<span class="sd">    the structure of the system.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sys</span><span class="p">,</span> <span class="n">indep_endog</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">instruments</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">sys</span><span class="p">)</span> <span class="o">%</span> <span class="mi">2</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;sys must be a list of pairs of endogenous and </span><span class="se">\</span>
+<span class="s2">exogenous variables.  Got length </span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="nb">len</span><span class="p">(</span><span class="n">sys</span><span class="p">))</span>
+        <span class="n">M</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">sys</span><span class="p">[</span><span class="mi">1</span><span class="p">::</span><span class="mi">2</span><span class="p">])</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_M</span> <span class="o">=</span> <span class="n">M</span>
+<span class="c1"># The lists are probably a bad idea</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">endog</span> <span class="o">=</span> <span class="n">sys</span><span class="p">[::</span><span class="mi">2</span><span class="p">]</span>   <span class="c1"># these are just list containers</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">exog</span> <span class="o">=</span> <span class="n">sys</span><span class="p">[</span><span class="mi">1</span><span class="p">::</span><span class="mi">2</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_K</span> <span class="o">=</span> <span class="p">[</span><span class="n">np_matrix_rank</span><span class="p">(</span><span class="n">_</span><span class="p">)</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="n">sys</span><span class="p">[</span><span class="mi">1</span><span class="p">::</span><span class="mi">2</span><span class="p">]]</span>
+<span class="c1">#        fullexog = np.column_stack((_ for _ in self.exog))</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">instruments</span> <span class="o">=</span> <span class="n">instruments</span>
+
+        <span class="c1"># Keep the Y_j&#39;s in a container to get IVs</span>
+        <span class="n">instr_endog</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="p">[</span><span class="n">instr_endog</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="n">_</span><span class="p">,[])</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="n">iterkeys</span><span class="p">(</span><span class="n">indep_endog</span><span class="p">)]</span>
+
+        <span class="k">for</span> <span class="n">eq_key</span> <span class="ow">in</span> <span class="n">indep_endog</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">varcol</span> <span class="ow">in</span> <span class="n">indep_endog</span><span class="p">[</span><span class="n">eq_key</span><span class="p">]:</span>
+                <span class="n">instr_endog</span><span class="p">[</span><span class="n">eq_key</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">exog</span><span class="p">[</span><span class="n">eq_key</span><span class="p">][:,</span><span class="n">varcol</span><span class="p">])</span>
+                <span class="c1"># ^ copy needed?</span>
+<span class="c1">#        self._instr_endog = instr_endog</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_indep_endog</span> <span class="o">=</span> <span class="n">indep_endog</span>
+        <span class="n">_col_map</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">cumsum</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">hstack</span><span class="p">((</span><span class="mi">0</span><span class="p">,</span><span class="bp">self</span><span class="o">.</span><span class="n">_K</span><span class="p">)))</span> <span class="c1"># starting col no.s</span>
+<span class="c1"># move this check to whiten since we&#39;re not going to build a full exog?</span>
+        <span class="k">for</span> <span class="n">eq_key</span> <span class="ow">in</span> <span class="n">indep_endog</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="nb">iter</span><span class="p">(</span><span class="n">indep_endog</span><span class="p">[</span><span class="n">eq_key</span><span class="p">])</span>
+            <span class="k">except</span><span class="p">:</span>
+<span class="c1">#                eq_key = [eq_key]</span>
+                <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">&quot;The values of the indep_exog dict must be</span><span class="se">\</span>
+<span class="s2"> iterable. Got type </span><span class="si">%s</span><span class="s2"> for converter </span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="n">del_col</span><span class="p">)))</span>
+<span class="c1">#            for del_col in indep_endog[eq_key]:</span>
+<span class="c1">#                fullexog = np.delete(fullexog,  _col_map[eq_key]+del_col, 1)</span>
+<span class="c1">#                _col_map[eq_key+1:] -= 1</span>
+
+<span class="c1"># Josef&#39;s example for deleting reoccuring &quot;rows&quot;</span>
+<span class="c1">#        fullexog = np.unique(fullexog.T.view([(&#39;&#39;,fullexog.dtype)]*\</span>
+<span class="c1">#                fullexog.shape[0])).view(fullexog.dtype).reshape(\</span>
+<span class="c1">#                fullexog.shape[0],-1)</span>
+<span class="c1"># From http://article.gmane.org/gmane.comp.python.numeric.general/32276/</span>
+<span class="c1"># Or Jouni&#39; suggetsion of taking a hash:</span>
+<span class="c1"># http://www.mail-archive.com/numpy-discussion@scipy.org/msg04209.html</span>
+<span class="c1"># not clear to me how this would work though, only if they are the *same*</span>
+<span class="c1"># elements?</span>
+<span class="c1">#        self.fullexog = fullexog</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">wexog</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">whiten</span><span class="p">(</span><span class="n">instr_endog</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="Sem2SLS.whiten"><a class="viewcode-back" href="../../../generated/statsmodels.sandbox.sysreg.Sem2SLS.whiten.html#statsmodels.sandbox.sysreg.Sem2SLS.whiten">[docs]</a>    <span class="k">def</span> <span class="nf">whiten</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">Y</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Runs the first stage of the 2SLS.</span>
+
+<span class="sd">        Returns the RHS variables that include the instruments.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">wexog</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">indep_endog</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_indep_endog</span> <span class="c1"># this has the col mapping</span>
+<span class="c1">#        fullexog = self.fullexog</span>
+        <span class="n">instruments</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">instruments</span>
+        <span class="k">for</span> <span class="n">eq</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_M</span><span class="p">):</span> <span class="c1"># need to go through all equations regardless</span>
+            <span class="n">instr_eq</span> <span class="o">=</span> <span class="n">Y</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">eq</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span> <span class="c1"># Y has the eq to ind endog array map</span>
+            <span class="n">newRHS</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">exog</span><span class="p">[</span><span class="n">eq</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+            <span class="k">if</span> <span class="n">instr_eq</span><span class="p">:</span>
+                <span class="k">for</span> <span class="n">i</span><span class="p">,</span><span class="n">LHS</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">instr_eq</span><span class="p">):</span>
+                    <span class="n">yhat</span> <span class="o">=</span> <span class="n">GLS</span><span class="p">(</span><span class="n">LHS</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">instruments</span><span class="p">)</span><span class="o">.</span><span class="n">fit</span><span class="p">()</span><span class="o">.</span><span class="n">fittedvalues</span>
+                    <span class="n">newRHS</span><span class="p">[:,</span><span class="n">indep_endog</span><span class="p">[</span><span class="n">eq</span><span class="p">][</span><span class="n">i</span><span class="p">]]</span> <span class="o">=</span> <span class="n">yhat</span>
+                <span class="c1"># this might fail if there is a one variable column (nobs,)</span>
+                <span class="c1"># in exog</span>
+            <span class="n">wexog</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">newRHS</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">wexog</span></div>
+
+<div class="viewcode-block" id="Sem2SLS.fit"><a class="viewcode-back" href="../../../generated/statsmodels.sandbox.sysreg.Sem2SLS.fit.html#statsmodels.sandbox.sysreg.Sem2SLS.fit">[docs]</a>    <span class="k">def</span> <span class="nf">fit</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">delta</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">wexog</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">wexog</span>
+        <span class="n">endog</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">endog</span>
+        <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_M</span><span class="p">):</span>
+            <span class="n">delta</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">GLS</span><span class="p">(</span><span class="n">endog</span><span class="p">[</span><span class="n">j</span><span class="p">],</span> <span class="n">wexog</span><span class="p">[</span><span class="n">j</span><span class="p">])</span><span class="o">.</span><span class="n">fit</span><span class="p">()</span><span class="o">.</span><span class="n">params</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">delta</span></div></div>
+
+<span class="k">class</span> <span class="nc">SysResults</span><span class="p">(</span><span class="n">LikelihoodModelResults</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Not implemented yet.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">normalized_cov_params</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">scale</span><span class="o">=</span><span class="mf">1.</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">SysResults</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span>
+                <span class="n">normalized_cov_params</span><span class="p">,</span> <span class="n">scale</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_get_results</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">_get_results</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">pass</span>
+</pre></div>
+
+
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <form class="search" action="../../../search.html" method="get">
+      <div><input type="text" name="q" /></div>
+      <div><input type="submit" value="Go" /></div>
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer" role="contentinfo">
+        &#169; Copyright 2009-2017, Josef Perktold, Skipper Seabold, Jonathan Taylor, statsmodels-developers.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.5.3.
+    </div>
+  </body>
+</html>

@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.genmod.cov\_struct.GlobalOddsRatio.observed\_crude\_oddsratio
+=========================================================================
+
+.. currentmodule:: statsmodels.genmod.cov_struct
+
+.. automethod:: GlobalOddsRatio.observed_crude_oddsratio

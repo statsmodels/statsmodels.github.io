@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.tsa.arima\_model.ARMA.from\_formula
+===============================================
+
+.. currentmodule:: statsmodels.tsa.arima_model
+
+.. automethod:: ARMA.from_formula

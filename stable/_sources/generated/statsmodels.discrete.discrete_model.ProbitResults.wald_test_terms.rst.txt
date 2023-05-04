@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.discrete.discrete\_model.ProbitResults.wald\_test\_terms
+====================================================================
+
+.. currentmodule:: statsmodels.discrete.discrete_model
+
+.. automethod:: ProbitResults.wald_test_terms

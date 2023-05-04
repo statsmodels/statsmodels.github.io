@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.tsa.statespace.kalman\_smoother.KalmanSmoother.loglikeobs
+=====================================================================
+
+.. currentmodule:: statsmodels.tsa.statespace.kalman_smoother
+
+.. automethod:: KalmanSmoother.loglikeobs

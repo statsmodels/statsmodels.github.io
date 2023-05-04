@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.duration.hazard\_regression.PHReg.weighted\_covariate\_averages
+===========================================================================
+
+.. currentmodule:: statsmodels.duration.hazard_regression
+
+.. automethod:: PHReg.weighted_covariate_averages

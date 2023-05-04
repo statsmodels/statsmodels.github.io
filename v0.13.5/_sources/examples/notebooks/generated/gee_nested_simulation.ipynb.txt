@@ -1,0 +1,411 @@
+{
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## GEE nested covariance structure simulation study\n",
+    "\n",
+    "This notebook is a simulation study that illustrates and evaluates the performance of the GEE nested covariance structure.\n",
+    "\n",
+    "A nested covariance structure is based on a nested sequence of groups, or \"levels\".  The top level in the hierarchy is defined by the `groups` argument to GEE.  Subsequent levels are defined by the `dep_data` argument to GEE."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 1,
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2022-11-02T17:11:21.779158Z",
+     "iopub.status.busy": "2022-11-02T17:11:21.778670Z",
+     "iopub.status.idle": "2022-11-02T17:11:22.610926Z",
+     "shell.execute_reply": "2022-11-02T17:11:22.610112Z"
+    }
+   },
+   "outputs": [],
+   "source": [
+    "import numpy as np\n",
+    "import pandas as pd\n",
+    "import statsmodels.api as sm"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Set the number of covariates."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 2,
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2022-11-02T17:11:22.614986Z",
+     "iopub.status.busy": "2022-11-02T17:11:22.614627Z",
+     "iopub.status.idle": "2022-11-02T17:11:22.619666Z",
+     "shell.execute_reply": "2022-11-02T17:11:22.618507Z"
+    }
+   },
+   "outputs": [],
+   "source": [
+    "p = 5"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "These parameters define the population variance for each level of grouping."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 3,
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2022-11-02T17:11:22.622955Z",
+     "iopub.status.busy": "2022-11-02T17:11:22.622719Z",
+     "iopub.status.idle": "2022-11-02T17:11:22.625837Z",
+     "shell.execute_reply": "2022-11-02T17:11:22.625163Z"
+    }
+   },
+   "outputs": [],
+   "source": [
+    "groups_var = 1\n",
+    "level1_var = 2\n",
+    "level2_var = 3\n",
+    "resid_var = 4"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Set the number of groups"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 4,
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2022-11-02T17:11:22.628775Z",
+     "iopub.status.busy": "2022-11-02T17:11:22.628544Z",
+     "iopub.status.idle": "2022-11-02T17:11:22.631545Z",
+     "shell.execute_reply": "2022-11-02T17:11:22.630762Z"
+    }
+   },
+   "outputs": [],
+   "source": [
+    "n_groups = 100"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Set the number of observations at each level of grouping.  Here, everything is balanced, i.e. within a level every group has the same size."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 5,
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2022-11-02T17:11:22.634765Z",
+     "iopub.status.busy": "2022-11-02T17:11:22.634535Z",
+     "iopub.status.idle": "2022-11-02T17:11:22.637549Z",
+     "shell.execute_reply": "2022-11-02T17:11:22.636842Z"
+    }
+   },
+   "outputs": [],
+   "source": [
+    "group_size = 20\n",
+    "level1_size = 10\n",
+    "level2_size = 5"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Calculate the total sample size."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 6,
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2022-11-02T17:11:22.640446Z",
+     "iopub.status.busy": "2022-11-02T17:11:22.640219Z",
+     "iopub.status.idle": "2022-11-02T17:11:22.643246Z",
+     "shell.execute_reply": "2022-11-02T17:11:22.642543Z"
+    }
+   },
+   "outputs": [],
+   "source": [
+    "n = n_groups * group_size * level1_size * level2_size"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Construct the design matrix."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 7,
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2022-11-02T17:11:22.646337Z",
+     "iopub.status.busy": "2022-11-02T17:11:22.646108Z",
+     "iopub.status.idle": "2022-11-02T17:11:22.664086Z",
+     "shell.execute_reply": "2022-11-02T17:11:22.663483Z"
+    }
+   },
+   "outputs": [],
+   "source": [
+    "xmat = np.random.normal(size=(n, p))"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Construct labels showing which group each observation belongs to at each level."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 8,
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2022-11-02T17:11:22.667086Z",
+     "iopub.status.busy": "2022-11-02T17:11:22.666857Z",
+     "iopub.status.idle": "2022-11-02T17:11:22.693757Z",
+     "shell.execute_reply": "2022-11-02T17:11:22.693106Z"
+    }
+   },
+   "outputs": [],
+   "source": [
+    "groups_ix = np.kron(np.arange(n // group_size), np.ones(group_size)).astype(int)\n",
+    "level1_ix = np.kron(np.arange(n // level1_size), np.ones(level1_size)).astype(int)\n",
+    "level2_ix = np.kron(np.arange(n // level2_size), np.ones(level2_size)).astype(int)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Simulate the random effects."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 9,
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2022-11-02T17:11:22.697228Z",
+     "iopub.status.busy": "2022-11-02T17:11:22.696997Z",
+     "iopub.status.idle": "2022-11-02T17:11:22.701786Z",
+     "shell.execute_reply": "2022-11-02T17:11:22.701080Z"
+    }
+   },
+   "outputs": [],
+   "source": [
+    "groups_re = np.sqrt(groups_var) * np.random.normal(size=n // group_size)\n",
+    "level1_re = np.sqrt(level1_var) * np.random.normal(size=n // level1_size)\n",
+    "level2_re = np.sqrt(level2_var) * np.random.normal(size=n // level2_size)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Simulate the response variable."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 10,
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2022-11-02T17:11:22.704973Z",
+     "iopub.status.busy": "2022-11-02T17:11:22.704742Z",
+     "iopub.status.idle": "2022-11-02T17:11:22.712901Z",
+     "shell.execute_reply": "2022-11-02T17:11:22.711506Z"
+    }
+   },
+   "outputs": [],
+   "source": [
+    "y = groups_re[groups_ix] + level1_re[level1_ix] + level2_re[level2_ix]\n",
+    "y += np.sqrt(resid_var) * np.random.normal(size=n)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Put everything into a dataframe."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 11,
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2022-11-02T17:11:22.716006Z",
+     "iopub.status.busy": "2022-11-02T17:11:22.715773Z",
+     "iopub.status.idle": "2022-11-02T17:11:22.724148Z",
+     "shell.execute_reply": "2022-11-02T17:11:22.723477Z"
+    }
+   },
+   "outputs": [],
+   "source": [
+    "df = pd.DataFrame(xmat, columns=[\"x%d\" % j for j in range(p)])\n",
+    "df[\"y\"] = y + xmat[:, 0] - xmat[:, 3]\n",
+    "df[\"groups_ix\"] = groups_ix\n",
+    "df[\"level1_ix\"] = level1_ix\n",
+    "df[\"level2_ix\"] = level2_ix"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Fit the model."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 12,
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2022-11-02T17:11:22.727145Z",
+     "iopub.status.busy": "2022-11-02T17:11:22.726916Z",
+     "iopub.status.idle": "2022-11-02T17:11:28.406949Z",
+     "shell.execute_reply": "2022-11-02T17:11:28.406070Z"
+    }
+   },
+   "outputs": [],
+   "source": [
+    "cs = sm.cov_struct.Nested()\n",
+    "dep_fml = \"0 + level1_ix + level2_ix\"\n",
+    "m = sm.GEE.from_formula(\n",
+    "    \"y ~ x0 + x1 + x2 + x3 + x4\",\n",
+    "    cov_struct=cs,\n",
+    "    dep_data=dep_fml,\n",
+    "    groups=\"groups_ix\",\n",
+    "    data=df,\n",
+    ")\n",
+    "r = m.fit()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "The estimated covariance parameters should be similar to `groups_var`, `level1_var`, etc. as defined above."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 13,
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2022-11-02T17:11:28.411759Z",
+     "iopub.status.busy": "2022-11-02T17:11:28.410999Z",
+     "iopub.status.idle": "2022-11-02T17:11:28.441213Z",
+     "shell.execute_reply": "2022-11-02T17:11:28.440535Z"
+    }
+   },
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<div>\n",
+       "<style scoped>\n",
+       "    .dataframe tbody tr th:only-of-type {\n",
+       "        vertical-align: middle;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe tbody tr th {\n",
+       "        vertical-align: top;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe thead th {\n",
+       "        text-align: right;\n",
+       "    }\n",
+       "</style>\n",
+       "<table border=\"1\" class=\"dataframe\">\n",
+       "  <thead>\n",
+       "    <tr style=\"text-align: right;\">\n",
+       "      <th></th>\n",
+       "      <th>Variance</th>\n",
+       "    </tr>\n",
+       "  </thead>\n",
+       "  <tbody>\n",
+       "    <tr>\n",
+       "      <th>groups_ix</th>\n",
+       "      <td>0.999334</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>level1_ix</th>\n",
+       "      <td>2.060513</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>level2_ix</th>\n",
+       "      <td>2.903926</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>Residual</th>\n",
+       "      <td>4.050792</td>\n",
+       "    </tr>\n",
+       "  </tbody>\n",
+       "</table>\n",
+       "</div>"
+      ],
+      "text/plain": [
+       "           Variance\n",
+       "groups_ix  0.999334\n",
+       "level1_ix  2.060513\n",
+       "level2_ix  2.903926\n",
+       "Residual   4.050792"
+      ]
+     },
+     "execution_count": 13,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "r.cov_struct.summary()"
+   ]
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "Python 3",
+   "language": "python",
+   "name": "python3"
+  },
+  "language_info": {
+   "codemirror_mode": {
+    "name": "ipython",
+    "version": 3
+   },
+   "file_extension": ".py",
+   "mimetype": "text/x-python",
+   "name": "python",
+   "nbconvert_exporter": "python",
+   "pygments_lexer": "ipython3",
+   "version": "3.10.8"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 4
+}

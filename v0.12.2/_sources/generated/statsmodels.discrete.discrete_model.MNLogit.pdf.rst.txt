@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.discrete.discrete\_model.MNLogit.pdf
+================================================
+
+.. currentmodule:: statsmodels.discrete.discrete_model
+
+.. automethod:: MNLogit.pdf

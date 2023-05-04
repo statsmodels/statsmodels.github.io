@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.regression.linear\_model.GLS.hessian
+================================================
+
+.. currentmodule:: statsmodels.regression.linear_model
+
+.. automethod:: GLS.hessian

@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.genmod.cov\_struct.Nested.initialize
+================================================
+
+.. currentmodule:: statsmodels.genmod.cov_struct
+
+.. automethod:: Nested.initialize

@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.regression.linear\_model.WLS.fit\_regularized
+=========================================================
+
+.. currentmodule:: statsmodels.regression.linear_model
+
+.. automethod:: WLS.fit_regularized

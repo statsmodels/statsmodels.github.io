@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.genmod.families.family.Poisson.loglike\_obs
+=======================================================
+
+.. currentmodule:: statsmodels.genmod.families.family
+
+.. automethod:: Poisson.loglike_obs

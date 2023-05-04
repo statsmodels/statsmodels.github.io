@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.discrete.discrete\_model.CountModel.cdf
+===================================================
+
+.. currentmodule:: statsmodels.discrete.discrete_model
+
+.. automethod:: CountModel.cdf

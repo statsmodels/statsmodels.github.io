@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.stats.contingency\_tables.SquareTable.symmetry
+==========================================================
+
+.. currentmodule:: statsmodels.stats.contingency_tables
+
+.. automethod:: SquareTable.symmetry

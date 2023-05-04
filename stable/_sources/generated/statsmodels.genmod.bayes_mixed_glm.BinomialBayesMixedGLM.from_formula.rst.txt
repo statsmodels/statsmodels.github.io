@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.genmod.bayes\_mixed\_glm.BinomialBayesMixedGLM.from\_formula
+========================================================================
+
+.. currentmodule:: statsmodels.genmod.bayes_mixed_glm
+
+.. automethod:: BinomialBayesMixedGLM.from_formula

@@ -1,0 +1,777 @@
+
+
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta charset="utf-8" />
+    <title>statsmodels.robust.robust_linear_model &#8212; statsmodels v0.10.2 documentation</title>
+    <link rel="stylesheet" href="../../../_static/nature.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css" />
+    <script type="text/javascript" id="documentation_options" data-url_root="../../../" src="../../../_static/documentation_options.js"></script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <script type="text/javascript" src="../../../_static/language_data.js"></script>
+    <script async="async" type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/latest.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <link rel="shortcut icon" href="../../../_static/statsmodels_hybi_favico.ico"/>
+    <link rel="author" title="About these documents" href="../../../about.html" />
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+<link rel="stylesheet" href="../../../_static/examples.css" type="text/css" />
+<link rel="stylesheet" href="../../../_static/facebox.css" type="text/css" />
+<script type="text/javascript" src="../../../_static/scripts.js">
+</script>
+<script type="text/javascript" src="../../../_static/facebox.js">
+</script>
+<script type="text/javascript">
+$.facebox.settings.closeImage = "../../../_static/closelabel.png"
+$.facebox.settings.loadingImage = "../../../_static/loading.gif"
+</script>
+
+<script>
+$(document).ready(function() {
+  $.getJSON("../../../../versions.json", function(versions) {
+    var dropdown = document.createElement("div");
+    dropdown.className = "dropdown";
+    var button = document.createElement("button");
+    button.className = "dropbtn";
+    button.innerHTML = "Other Versions";
+    var content = document.createElement("div");
+    content.className = "dropdown-content";
+    dropdown.appendChild(button);
+    dropdown.appendChild(content);
+    $(".header").prepend(dropdown);
+    for (var i = 0; i < versions.length; i++) {
+      if (versions[i].substring(0, 1) == "v") {
+        versions[i] = [versions[i], versions[i].substring(1)];
+      } else {
+        versions[i] = [versions[i], versions[i]];
+      };
+    };
+    for (var i = 0; i < versions.length; i++) {
+      var a = document.createElement("a");
+      a.innerHTML = versions[i][1];
+      a.href = "../../../../" + versions[i][0] + "/index.html";
+      a.title = versions[i][1];
+      $(".dropdown-content").append(a);
+    };
+  });
+});
+</script>
+
+
+  </head><body>
+<div class="headerwrap">
+    <div class = "header">
+        
+        <a href = "../../../index.html">
+<img src="../../../_static/statsmodels_hybi_banner.png" alt="Logo"
+    style="padding-left: 15px"/></a>
+        
+    </div>
+</div>
+
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+<li><a href ="../../../install.html">Install</a></li> &nbsp;|&nbsp;
+<li><a href="https://groups.google.com/forum/?hl=en#!forum/pystatsmodels">Support</a></li> &nbsp;|&nbsp;
+<li><a href="https://github.com/statsmodels/statsmodels/issues">Bugs</a></li> &nbsp;|&nbsp;
+<li><a href="../../../dev/index.html">Develop</a></li> &nbsp;|&nbsp;
+<li><a href="../../../examples/index.html">Examples</a></li> &nbsp;|&nbsp;
+<li><a href="../../../faq.html">FAQ</a></li> &nbsp;|&nbsp;
+
+          <li class="nav-item nav-item-1"><a href="../../index.html" accesskey="U">Module code</a> |</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+
+
+
+
+  <h1>Source code for statsmodels.robust.robust_linear_model</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Robust linear models with support for the M-estimators  listed under</span>
+<span class="sd">:ref:`norms &lt;norms&gt;`.</span>
+
+<span class="sd">References</span>
+<span class="sd">----------</span>
+<span class="sd">PJ Huber.  &#39;Robust Statistics&#39; John Wiley and Sons, Inc., New York.  1981.</span>
+
+<span class="sd">PJ Huber.  1973,  &#39;The 1972 Wald Memorial Lectures: Robust Regression:</span>
+<span class="sd">    Asymptotics, Conjectures, and Monte Carlo.&#39;  The Annals of Statistics,</span>
+<span class="sd">    1.5, 799-821.</span>
+
+<span class="sd">R Venables, B Ripley. &#39;Modern Applied Statistics in S&#39;  Springer, New York,</span>
+<span class="sd">    2002.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+<span class="kn">import</span> <span class="nn">scipy.stats</span> <span class="k">as</span> <span class="nn">stats</span>
+
+<span class="kn">from</span> <span class="nn">statsmodels.tools.decorators</span> <span class="k">import</span> <span class="n">cache_readonly</span>
+<span class="kn">import</span> <span class="nn">statsmodels.regression.linear_model</span> <span class="k">as</span> <span class="nn">lm</span>
+<span class="kn">import</span> <span class="nn">statsmodels.regression._tools</span> <span class="k">as</span> <span class="nn">reg_tools</span>
+<span class="kn">import</span> <span class="nn">statsmodels.robust.norms</span> <span class="k">as</span> <span class="nn">norms</span>
+<span class="kn">import</span> <span class="nn">statsmodels.robust.scale</span> <span class="k">as</span> <span class="nn">scale</span>
+<span class="kn">import</span> <span class="nn">statsmodels.base.model</span> <span class="k">as</span> <span class="nn">base</span>
+<span class="kn">import</span> <span class="nn">statsmodels.base.wrapper</span> <span class="k">as</span> <span class="nn">wrap</span>
+
+<span class="n">__all__</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;RLM&#39;</span><span class="p">]</span>
+
+
+<span class="k">def</span> <span class="nf">_check_convergence</span><span class="p">(</span><span class="n">criterion</span><span class="p">,</span> <span class="n">iteration</span><span class="p">,</span> <span class="n">tol</span><span class="p">,</span> <span class="n">maxiter</span><span class="p">):</span>
+    <span class="k">return</span> <span class="ow">not</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">fabs</span><span class="p">(</span><span class="n">criterion</span><span class="p">[</span><span class="n">iteration</span><span class="p">]</span> <span class="o">-</span>
+                <span class="n">criterion</span><span class="p">[</span><span class="n">iteration</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span> <span class="o">&gt;</span> <span class="n">tol</span><span class="p">)</span> <span class="ow">and</span> <span class="n">iteration</span> <span class="o">&lt;</span> <span class="n">maxiter</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="RLM"><a class="viewcode-back" href="../../../generated/statsmodels.robust.robust_linear_model.RLM.html#statsmodels.robust.robust_linear_model.RLM">[docs]</a><span class="k">class</span> <span class="nc">RLM</span><span class="p">(</span><span class="n">base</span><span class="o">.</span><span class="n">LikelihoodModel</span><span class="p">):</span>
+    <span class="vm">__doc__</span> <span class="o">=</span> <span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">    Robust Linear Models</span>
+
+<span class="s2">    Estimate a robust linear model via iteratively reweighted least squares</span>
+<span class="s2">    given a robust criterion estimator.</span>
+
+<span class="s2">    </span><span class="si">%(params)s</span><span class="s2"></span>
+<span class="s2">    M : statsmodels.robust.norms.RobustNorm, optional</span>
+<span class="s2">        The robust criterion function for downweighting outliers.</span>
+<span class="s2">        The current options are LeastSquares, HuberT, RamsayE, AndrewWave,</span>
+<span class="s2">        TrimmedMean, Hampel, and TukeyBiweight.  The default is HuberT().</span>
+<span class="s2">        See statsmodels.robust.norms for more information.</span>
+<span class="s2">    </span><span class="si">%(extra_params)s</span><span class="s2"></span>
+
+<span class="s2">    Attributes</span>
+<span class="s2">    ----------</span>
+
+<span class="s2">    df_model : float</span>
+<span class="s2">        The degrees of freedom of the model.  The number of regressors p less</span>
+<span class="s2">        one for the intercept.  Note that the reported model degrees</span>
+<span class="s2">        of freedom does not count the intercept as a regressor, though</span>
+<span class="s2">        the model is assumed to have an intercept.</span>
+<span class="s2">    df_resid : float</span>
+<span class="s2">        The residual degrees of freedom.  The number of observations n</span>
+<span class="s2">        less the number of regressors p.  Note that here p does include</span>
+<span class="s2">        the intercept as using a degree of freedom.</span>
+<span class="s2">    endog : array</span>
+<span class="s2">        See above.  Note that endog is a reference to the data so that if</span>
+<span class="s2">        data is already an array and it is changed, then `endog` changes</span>
+<span class="s2">        as well.</span>
+<span class="s2">    exog : array</span>
+<span class="s2">        See above.  Note that endog is a reference to the data so that if</span>
+<span class="s2">        data is already an array and it is changed, then `endog` changes</span>
+<span class="s2">        as well.</span>
+<span class="s2">    M : statsmodels.robust.norms.RobustNorm</span>
+<span class="s2">         See above.  Robust estimator instance instantiated.</span>
+<span class="s2">    nobs : float</span>
+<span class="s2">        The number of observations n</span>
+<span class="s2">    pinv_wexog : array</span>
+<span class="s2">        The pseudoinverse of the design / exogenous data array.  Note that</span>
+<span class="s2">        RLM has no whiten method, so this is just the pseudo inverse of the</span>
+<span class="s2">        design.</span>
+<span class="s2">    normalized_cov_params : array</span>
+<span class="s2">        The p x p normalized covariance of the design / exogenous data.</span>
+<span class="s2">        This is approximately equal to (X.T X)^(-1)</span>
+
+
+<span class="s2">    Examples</span>
+<span class="s2">    --------</span>
+<span class="s2">    &gt;&gt;&gt; import statsmodels.api as sm</span>
+<span class="s2">    &gt;&gt;&gt; data = sm.datasets.stackloss.load(as_pandas=False)</span>
+<span class="s2">    &gt;&gt;&gt; data.exog = sm.add_constant(data.exog)</span>
+<span class="s2">    &gt;&gt;&gt; rlm_model = sm.RLM(data.endog, data.exog, </span><span class="se">\</span>
+<span class="s2">                           M=sm.robust.norms.HuberT())</span>
+
+<span class="s2">    &gt;&gt;&gt; rlm_results = rlm_model.fit()</span>
+<span class="s2">    &gt;&gt;&gt; rlm_results.params</span>
+<span class="s2">    array([  0.82938433,   0.92606597,  -0.12784672, -41.02649835])</span>
+<span class="s2">    &gt;&gt;&gt; rlm_results.bse</span>
+<span class="s2">    array([ 0.11100521,  0.30293016,  0.12864961,  9.79189854])</span>
+<span class="s2">    &gt;&gt;&gt; rlm_results_HC2 = rlm_model.fit(cov=&quot;H2&quot;)</span>
+<span class="s2">    &gt;&gt;&gt; rlm_results_HC2.params</span>
+<span class="s2">    array([  0.82938433,   0.92606597,  -0.12784672, -41.02649835])</span>
+<span class="s2">    &gt;&gt;&gt; rlm_results_HC2.bse</span>
+<span class="s2">    array([ 0.11945975,  0.32235497,  0.11796313,  9.08950419])</span>
+<span class="s2">    &gt;&gt;&gt; mod = sm.RLM(data.endog, data.exog, M=sm.robust.norms.Hampel())</span>
+<span class="s2">    &gt;&gt;&gt; rlm_hamp_hub = mod.fit(scale_est=sm.robust.scale.HuberScale())</span>
+<span class="s2">    &gt;&gt;&gt; rlm_hamp_hub.params</span>
+<span class="s2">    array([  0.73175452,   1.25082038,  -0.14794399, -40.27122257])</span>
+<span class="s2">    &quot;&quot;&quot;</span> <span class="o">%</span> <span class="p">{</span><span class="s1">&#39;params&#39;</span> <span class="p">:</span> <span class="n">base</span><span class="o">.</span><span class="n">_model_params_doc</span><span class="p">,</span>
+            <span class="s1">&#39;extra_params&#39;</span> <span class="p">:</span> <span class="n">base</span><span class="o">.</span><span class="n">_missing_param_doc</span><span class="p">}</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">endog</span><span class="p">,</span> <span class="n">exog</span><span class="p">,</span> <span class="n">M</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">missing</span><span class="o">=</span><span class="s1">&#39;none&#39;</span><span class="p">,</span>
+                 <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">M</span> <span class="o">=</span> <span class="n">M</span> <span class="k">if</span> <span class="n">M</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">norms</span><span class="o">.</span><span class="n">HuberT</span><span class="p">()</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">base</span><span class="o">.</span><span class="n">LikelihoodModel</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">endog</span><span class="p">,</span> <span class="n">exog</span><span class="p">,</span>
+                <span class="n">missing</span><span class="o">=</span><span class="n">missing</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_initialize</span><span class="p">()</span>
+        <span class="c1">#things to remove_data</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_data_attr</span><span class="o">.</span><span class="n">extend</span><span class="p">([</span><span class="s1">&#39;weights&#39;</span><span class="p">,</span> <span class="s1">&#39;pinv_wexog&#39;</span><span class="p">])</span>
+
+    <span class="k">def</span> <span class="nf">_initialize</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Initializes the model for the IRLS fit.</span>
+
+<span class="sd">        Resets the history and number of iterations.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">pinv_wexog</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">pinv</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">exog</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">normalized_cov_params</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">pinv_wexog</span><span class="p">,</span>
+                                        <span class="n">np</span><span class="o">.</span><span class="n">transpose</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">pinv_wexog</span><span class="p">))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">df_resid</span> <span class="o">=</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">float</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">exog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">-</span>
+                         <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">matrix_rank</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">exog</span><span class="p">)))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">df_model</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">matrix_rank</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">exog</span><span class="p">)</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">endog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+
+<div class="viewcode-block" id="RLM.score"><a class="viewcode-back" href="../../../generated/statsmodels.robust.robust_linear_model.RLM.score.html#statsmodels.robust.robust_linear_model.RLM.score">[docs]</a>    <span class="k">def</span> <span class="nf">score</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span></div>
+
+<div class="viewcode-block" id="RLM.information"><a class="viewcode-back" href="../../../generated/statsmodels.robust.robust_linear_model.RLM.information.html#statsmodels.robust.robust_linear_model.RLM.information">[docs]</a>    <span class="k">def</span> <span class="nf">information</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span></div>
+
+<div class="viewcode-block" id="RLM.predict"><a class="viewcode-back" href="../../../generated/statsmodels.robust.robust_linear_model.RLM.predict.html#statsmodels.robust.robust_linear_model.RLM.predict">[docs]</a>    <span class="k">def</span> <span class="nf">predict</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">exog</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return linear predicted values from a design matrix.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        params : array-like, optional after fit has been called</span>
+<span class="sd">            Parameters of a linear model</span>
+<span class="sd">        exog : array-like, optional.</span>
+<span class="sd">            Design / exogenous data. Model exog is used if None.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        An array of fitted values</span>
+
+<span class="sd">        Notes</span>
+<span class="sd">        -----</span>
+<span class="sd">        If the model as not yet been fit, params is not optional.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1">#copied from linear_model</span>
+        <span class="k">if</span> <span class="n">exog</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">exog</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">exog</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">exog</span><span class="p">,</span> <span class="n">params</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="RLM.loglike"><a class="viewcode-back" href="../../../generated/statsmodels.robust.robust_linear_model.RLM.loglike.html#statsmodels.robust.robust_linear_model.RLM.loglike">[docs]</a>    <span class="k">def</span> <span class="nf">loglike</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span></div>
+
+<div class="viewcode-block" id="RLM.deviance"><a class="viewcode-back" href="../../../generated/statsmodels.robust.robust_linear_model.RLM.deviance.html#statsmodels.robust.robust_linear_model.RLM.deviance">[docs]</a>    <span class="k">def</span> <span class="nf">deviance</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tmp_results</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Returns the (unnormalized) log-likelihood from the M estimator.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">M</span><span class="p">((</span><span class="bp">self</span><span class="o">.</span><span class="n">endog</span> <span class="o">-</span> <span class="n">tmp_results</span><span class="o">.</span><span class="n">fittedvalues</span><span class="p">)</span> <span class="o">/</span>
+                          <span class="n">tmp_results</span><span class="o">.</span><span class="n">scale</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span></div>
+
+    <span class="k">def</span> <span class="nf">_update_history</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tmp_results</span><span class="p">,</span> <span class="n">history</span><span class="p">,</span> <span class="n">conv</span><span class="p">):</span>
+        <span class="n">history</span><span class="p">[</span><span class="s1">&#39;params&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">tmp_results</span><span class="o">.</span><span class="n">params</span><span class="p">)</span>
+        <span class="n">history</span><span class="p">[</span><span class="s1">&#39;scale&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">tmp_results</span><span class="o">.</span><span class="n">scale</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">conv</span> <span class="o">==</span> <span class="s1">&#39;dev&#39;</span><span class="p">:</span>
+            <span class="n">history</span><span class="p">[</span><span class="s1">&#39;deviance&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">deviance</span><span class="p">(</span><span class="n">tmp_results</span><span class="p">))</span>
+        <span class="k">elif</span> <span class="n">conv</span> <span class="o">==</span> <span class="s1">&#39;sresid&#39;</span><span class="p">:</span>
+            <span class="n">history</span><span class="p">[</span><span class="s1">&#39;sresid&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">tmp_results</span><span class="o">.</span><span class="n">resid</span><span class="o">/</span><span class="n">tmp_results</span><span class="o">.</span><span class="n">scale</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">conv</span> <span class="o">==</span> <span class="s1">&#39;weights&#39;</span><span class="p">:</span>
+            <span class="n">history</span><span class="p">[</span><span class="s1">&#39;weights&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">tmp_results</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">weights</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">history</span>
+
+    <span class="k">def</span> <span class="nf">_estimate_scale</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">resid</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Estimates the scale based on the option provided to the fit method.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">scale_est</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">scale_est</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="s1">&#39;mad&#39;</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">scale</span><span class="o">.</span><span class="n">mad</span><span class="p">(</span><span class="n">resid</span><span class="p">,</span> <span class="n">center</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Option </span><span class="si">%s</span><span class="s2"> for scale_est not understood&quot;</span> <span class="o">%</span>
+                                 <span class="bp">self</span><span class="o">.</span><span class="n">scale_est</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">scale_est</span><span class="p">,</span> <span class="n">scale</span><span class="o">.</span><span class="n">HuberScale</span><span class="p">):</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">scale_est</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">df_resid</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span><span class="p">,</span> <span class="n">resid</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">scale</span><span class="o">.</span><span class="n">scale_est</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">resid</span><span class="p">)</span><span class="o">**</span><span class="mi">2</span>
+
+<div class="viewcode-block" id="RLM.fit"><a class="viewcode-back" href="../../../generated/statsmodels.robust.robust_linear_model.RLM.fit.html#statsmodels.robust.robust_linear_model.RLM.fit">[docs]</a>    <span class="k">def</span> <span class="nf">fit</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">maxiter</span><span class="o">=</span><span class="mi">50</span><span class="p">,</span> <span class="n">tol</span><span class="o">=</span><span class="mf">1e-8</span><span class="p">,</span> <span class="n">scale_est</span><span class="o">=</span><span class="s1">&#39;mad&#39;</span><span class="p">,</span> <span class="n">init</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">cov</span><span class="o">=</span><span class="s1">&#39;H1&#39;</span><span class="p">,</span>
+            <span class="n">update_scale</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">conv</span><span class="o">=</span><span class="s1">&#39;dev&#39;</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Fits the model using iteratively reweighted least squares.</span>
+
+<span class="sd">        The IRLS routine runs until the specified objective converges to `tol`</span>
+<span class="sd">        or `maxiter` has been reached.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        conv : string</span>
+<span class="sd">            Indicates the convergence criteria.</span>
+<span class="sd">            Available options are &quot;coefs&quot; (the coefficients), &quot;weights&quot; (the</span>
+<span class="sd">            weights in the iteration), &quot;sresid&quot; (the standardized residuals),</span>
+<span class="sd">            and &quot;dev&quot; (the un-normalized log-likelihood for the M</span>
+<span class="sd">            estimator).  The default is &quot;dev&quot;.</span>
+<span class="sd">        cov : string, optional</span>
+<span class="sd">            &#39;H1&#39;, &#39;H2&#39;, or &#39;H3&#39;</span>
+<span class="sd">            Indicates how the covariance matrix is estimated.  Default is &#39;H1&#39;.</span>
+<span class="sd">            See rlm.RLMResults for more information.</span>
+<span class="sd">        init : string</span>
+<span class="sd">            Specifies method for the initial estimates of the parameters.</span>
+<span class="sd">            Default is None, which means that the least squares estimate</span>
+<span class="sd">            is used.  Currently it is the only available choice.</span>
+<span class="sd">        maxiter : int</span>
+<span class="sd">            The maximum number of iterations to try. Default is 50.</span>
+<span class="sd">        scale_est : string or HuberScale()</span>
+<span class="sd">            &#39;mad&#39; or HuberScale()</span>
+<span class="sd">            Indicates the estimate to use for scaling the weights in the IRLS.</span>
+<span class="sd">            The default is &#39;mad&#39; (median absolute deviation.  Other options are</span>
+<span class="sd">            &#39;HuberScale&#39; for Huber&#39;s proposal 2. Huber&#39;s proposal 2 has</span>
+<span class="sd">            optional keyword arguments d, tol, and maxiter for specifying the</span>
+<span class="sd">            tuning constant, the convergence tolerance, and the maximum number</span>
+<span class="sd">            of iterations. See statsmodels.robust.scale for more information.</span>
+<span class="sd">        tol : float</span>
+<span class="sd">            The convergence tolerance of the estimate.  Default is 1e-8.</span>
+<span class="sd">        update_scale : Bool</span>
+<span class="sd">            If `update_scale` is False then the scale estimate for the</span>
+<span class="sd">            weights is held constant over the iteration.  Otherwise, it</span>
+<span class="sd">            is updated for each fit in the iteration.  Default is True.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        results : object</span>
+<span class="sd">            statsmodels.rlm.RLMresults</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">cov</span><span class="o">.</span><span class="n">upper</span><span class="p">()</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">&quot;H1&quot;</span><span class="p">,</span><span class="s2">&quot;H2&quot;</span><span class="p">,</span><span class="s2">&quot;H3&quot;</span><span class="p">]:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Covariance matrix </span><span class="si">%s</span><span class="s2"> not understood&quot;</span> <span class="o">%</span> <span class="n">cov</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">cov</span> <span class="o">=</span> <span class="n">cov</span><span class="o">.</span><span class="n">upper</span><span class="p">()</span>
+        <span class="n">conv</span> <span class="o">=</span> <span class="n">conv</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">conv</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">&quot;weights&quot;</span><span class="p">,</span><span class="s2">&quot;coefs&quot;</span><span class="p">,</span><span class="s2">&quot;dev&quot;</span><span class="p">,</span><span class="s2">&quot;sresid&quot;</span><span class="p">]:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Convergence argument </span><span class="si">%s</span><span class="s2"> not understood&quot;</span> \
+                <span class="o">%</span> <span class="n">conv</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">scale_est</span> <span class="o">=</span> <span class="n">scale_est</span>
+
+        <span class="n">wls_results</span> <span class="o">=</span> <span class="n">lm</span><span class="o">.</span><span class="n">WLS</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">endog</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">exog</span><span class="p">)</span><span class="o">.</span><span class="n">fit</span><span class="p">()</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">init</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">scale</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_estimate_scale</span><span class="p">(</span><span class="n">wls_results</span><span class="o">.</span><span class="n">resid</span><span class="p">)</span>
+
+        <span class="n">history</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">params</span> <span class="o">=</span> <span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">],</span> <span class="n">scale</span> <span class="o">=</span> <span class="p">[])</span>
+        <span class="k">if</span> <span class="n">conv</span> <span class="o">==</span> <span class="s1">&#39;coefs&#39;</span><span class="p">:</span>
+            <span class="n">criterion</span> <span class="o">=</span> <span class="n">history</span><span class="p">[</span><span class="s1">&#39;params&#39;</span><span class="p">]</span>
+        <span class="k">elif</span> <span class="n">conv</span> <span class="o">==</span> <span class="s1">&#39;dev&#39;</span><span class="p">:</span>
+            <span class="n">history</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="nb">dict</span><span class="p">(</span><span class="n">deviance</span> <span class="o">=</span> <span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">]))</span>
+            <span class="n">criterion</span> <span class="o">=</span> <span class="n">history</span><span class="p">[</span><span class="s1">&#39;deviance&#39;</span><span class="p">]</span>
+        <span class="k">elif</span> <span class="n">conv</span> <span class="o">==</span> <span class="s1">&#39;sresid&#39;</span><span class="p">:</span>
+            <span class="n">history</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="nb">dict</span><span class="p">(</span><span class="n">sresid</span> <span class="o">=</span> <span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">]))</span>
+            <span class="n">criterion</span> <span class="o">=</span> <span class="n">history</span><span class="p">[</span><span class="s1">&#39;sresid&#39;</span><span class="p">]</span>
+        <span class="k">elif</span> <span class="n">conv</span> <span class="o">==</span> <span class="s1">&#39;weights&#39;</span><span class="p">:</span>
+            <span class="n">history</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="nb">dict</span><span class="p">(</span><span class="n">weights</span> <span class="o">=</span> <span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">]))</span>
+            <span class="n">criterion</span> <span class="o">=</span> <span class="n">history</span><span class="p">[</span><span class="s1">&#39;weights&#39;</span><span class="p">]</span>
+
+        <span class="c1"># done one iteration so update</span>
+        <span class="n">history</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_update_history</span><span class="p">(</span><span class="n">wls_results</span><span class="p">,</span> <span class="n">history</span><span class="p">,</span> <span class="n">conv</span><span class="p">)</span>
+        <span class="n">iteration</span> <span class="o">=</span> <span class="mi">1</span>
+        <span class="n">converged</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">while</span> <span class="ow">not</span> <span class="n">converged</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">weights</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">M</span><span class="o">.</span><span class="n">weights</span><span class="p">(</span><span class="n">wls_results</span><span class="o">.</span><span class="n">resid</span><span class="o">/</span><span class="bp">self</span><span class="o">.</span><span class="n">scale</span><span class="p">)</span>
+            <span class="n">wls_results</span> <span class="o">=</span> <span class="n">reg_tools</span><span class="o">.</span><span class="n">_MinimalWLS</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">endog</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">exog</span><span class="p">,</span>
+                                                <span class="n">weights</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">weights</span><span class="p">,</span>
+                                                <span class="n">check_weights</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="o">.</span><span class="n">fit</span><span class="p">()</span>
+            <span class="k">if</span> <span class="n">update_scale</span> <span class="ow">is</span> <span class="kc">True</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">scale</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_estimate_scale</span><span class="p">(</span><span class="n">wls_results</span><span class="o">.</span><span class="n">resid</span><span class="p">)</span>
+            <span class="n">history</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_update_history</span><span class="p">(</span><span class="n">wls_results</span><span class="p">,</span> <span class="n">history</span><span class="p">,</span> <span class="n">conv</span><span class="p">)</span>
+            <span class="n">iteration</span> <span class="o">+=</span> <span class="mi">1</span>
+            <span class="n">converged</span> <span class="o">=</span> <span class="n">_check_convergence</span><span class="p">(</span><span class="n">criterion</span><span class="p">,</span> <span class="n">iteration</span><span class="p">,</span> <span class="n">tol</span><span class="p">,</span> <span class="n">maxiter</span><span class="p">)</span>
+        <span class="n">results</span> <span class="o">=</span> <span class="n">RLMResults</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">wls_results</span><span class="o">.</span><span class="n">params</span><span class="p">,</span>
+                            <span class="bp">self</span><span class="o">.</span><span class="n">normalized_cov_params</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">scale</span><span class="p">)</span>
+
+        <span class="n">history</span><span class="p">[</span><span class="s1">&#39;iteration&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">iteration</span>
+        <span class="n">results</span><span class="o">.</span><span class="n">fit_history</span> <span class="o">=</span> <span class="n">history</span>
+        <span class="n">results</span><span class="o">.</span><span class="n">fit_options</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">cov</span><span class="o">=</span><span class="n">cov</span><span class="o">.</span><span class="n">upper</span><span class="p">(),</span> <span class="n">scale_est</span><span class="o">=</span><span class="n">scale_est</span><span class="p">,</span>
+                                   <span class="n">norm</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">M</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span> <span class="n">conv</span><span class="o">=</span><span class="n">conv</span><span class="p">)</span>
+        <span class="c1">#norm is not changed in fit, no old state</span>
+
+        <span class="c1">#doing the next causes exception</span>
+        <span class="c1">#self.cov = self.scale_est = None #reset for additional fits</span>
+        <span class="c1">#iteration and history could contain wrong state with repeated fit</span>
+        <span class="k">return</span> <span class="n">RLMResultsWrapper</span><span class="p">(</span><span class="n">results</span><span class="p">)</span></div></div>
+
+<div class="viewcode-block" id="RLMResults"><a class="viewcode-back" href="../../../generated/statsmodels.robust.robust_linear_model.RLMResults.html#statsmodels.robust.robust_linear_model.RLMResults">[docs]</a><span class="k">class</span> <span class="nc">RLMResults</span><span class="p">(</span><span class="n">base</span><span class="o">.</span><span class="n">LikelihoodModelResults</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Class to contain RLM results</span>
+
+<span class="sd">    Attributes</span>
+<span class="sd">    ----------</span>
+
+<span class="sd">    bcov_scaled : array</span>
+<span class="sd">        p x p scaled covariance matrix specified in the model fit method.</span>
+<span class="sd">        The default is H1. H1 is defined as</span>
+<span class="sd">        ``k**2 * (1/df_resid*sum(M.psi(sresid)**2)*scale**2)/</span>
+<span class="sd">        ((1/nobs*sum(M.psi_deriv(sresid)))**2) * (X.T X)^(-1)``</span>
+
+<span class="sd">        where ``k = 1 + (df_model +1)/nobs * var_psiprime/m**2``</span>
+<span class="sd">        where ``m = mean(M.psi_deriv(sresid))`` and</span>
+<span class="sd">        ``var_psiprime = var(M.psi_deriv(sresid))``</span>
+
+<span class="sd">        H2 is defined as</span>
+<span class="sd">        ``k * (1/df_resid) * sum(M.psi(sresid)**2) *scale**2/</span>
+<span class="sd">        ((1/nobs)*sum(M.psi_deriv(sresid)))*W_inv``</span>
+
+<span class="sd">        H3 is defined as</span>
+<span class="sd">        ``1/k * (1/df_resid * sum(M.psi(sresid)**2)*scale**2 *</span>
+<span class="sd">        (W_inv X.T X W_inv))``</span>
+
+<span class="sd">        where `k` is defined as above and</span>
+<span class="sd">        ``W_inv = (M.psi_deriv(sresid) exog.T exog)^(-1)``</span>
+
+<span class="sd">        See the technical documentation for cleaner formulae.</span>
+<span class="sd">    bcov_unscaled : array</span>
+<span class="sd">        The usual p x p covariance matrix with scale set equal to 1.  It</span>
+<span class="sd">        is then just equivalent to normalized_cov_params.</span>
+<span class="sd">    bse : array</span>
+<span class="sd">        An array of the standard errors of the parameters.  The standard</span>
+<span class="sd">        errors are taken from the robust covariance matrix specified in the</span>
+<span class="sd">        argument to fit.</span>
+<span class="sd">    chisq : array</span>
+<span class="sd">        An array of the chi-squared values of the paramter estimates.</span>
+<span class="sd">    df_model</span>
+<span class="sd">        See RLM.df_model</span>
+<span class="sd">    df_resid</span>
+<span class="sd">        See RLM.df_resid</span>
+<span class="sd">    fit_history : dict</span>
+<span class="sd">        Contains information about the iterations. Its keys are `deviance`,</span>
+<span class="sd">        `params`, `iteration` and the convergence criteria specified in</span>
+<span class="sd">        `RLM.fit`, if different from `deviance` or `params`.</span>
+<span class="sd">    fit_options : dict</span>
+<span class="sd">        Contains the options given to fit.</span>
+<span class="sd">    fittedvalues : array</span>
+<span class="sd">        The linear predicted values.  dot(exog, params)</span>
+<span class="sd">    model : statsmodels.rlm.RLM</span>
+<span class="sd">        A reference to the model instance</span>
+<span class="sd">    nobs : float</span>
+<span class="sd">        The number of observations n</span>
+<span class="sd">    normalized_cov_params : array</span>
+<span class="sd">        See RLM.normalized_cov_params</span>
+<span class="sd">    params : array</span>
+<span class="sd">        The coefficients of the fitted model</span>
+<span class="sd">    pinv_wexog : array</span>
+<span class="sd">        See RLM.pinv_wexog</span>
+<span class="sd">    pvalues : array</span>
+<span class="sd">        The p values associated with `tvalues`. Note that `tvalues` are assumed to be distributed</span>
+<span class="sd">        standard normal rather than Student&#39;s t.</span>
+<span class="sd">    resid : array</span>
+<span class="sd">        The residuals of the fitted model.  endog - fittedvalues</span>
+<span class="sd">    scale : float</span>
+<span class="sd">        The type of scale is determined in the arguments to the fit method in</span>
+<span class="sd">        RLM.  The reported scale is taken from the residuals of the weighted</span>
+<span class="sd">        least squares in the last IRLS iteration if update_scale is True.  If</span>
+<span class="sd">        update_scale is False, then it is the scale given by the first OLS</span>
+<span class="sd">        fit before the IRLS iterations.</span>
+<span class="sd">    sresid : array</span>
+<span class="sd">        The scaled residuals.</span>
+<span class="sd">    tvalues : array</span>
+<span class="sd">        The &quot;t-statistics&quot; of params. These are defined as params/bse where bse are taken</span>
+<span class="sd">        from the robust covariance matrix specified in the argument to fit.</span>
+<span class="sd">    weights : array</span>
+<span class="sd">        The reported weights are determined by passing the scaled residuals</span>
+<span class="sd">        from the last weighted least squares fit in the IRLS algortihm.</span>
+
+<span class="sd">    See Also</span>
+<span class="sd">    --------</span>
+<span class="sd">    statsmodels.base.model.LikelihoodModelResults</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">normalized_cov_params</span><span class="p">,</span> <span class="n">scale</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">RLMResults</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span>
+                <span class="n">normalized_cov_params</span><span class="p">,</span> <span class="n">scale</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">model</span> <span class="o">=</span> <span class="n">model</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">df_model</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">df_model</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">df_resid</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">df_resid</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">nobs</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_cache</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="c1">#for remove_data</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">data_in_cache</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;sresid&#39;</span><span class="p">]</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">cov_params_default</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">bcov_scaled</span>
+        <span class="c1">#TODO: &quot;pvals&quot; should come from chisq on bse?</span>
+
+<div class="viewcode-block" id="RLMResults.fittedvalues"><a class="viewcode-back" href="../../../generated/statsmodels.robust.robust_linear_model.RLMResults.fittedvalues.html#statsmodels.robust.robust_linear_model.RLMResults.fittedvalues">[docs]</a>    <span class="nd">@cache_readonly</span>
+    <span class="k">def</span> <span class="nf">fittedvalues</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">exog</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">params</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="RLMResults.resid"><a class="viewcode-back" href="../../../generated/statsmodels.robust.robust_linear_model.RLMResults.resid.html#statsmodels.robust.robust_linear_model.RLMResults.resid">[docs]</a>    <span class="nd">@cache_readonly</span>
+    <span class="k">def</span> <span class="nf">resid</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">endog</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">fittedvalues</span>   <span class="c1"># before bcov</span></div>
+
+<div class="viewcode-block" id="RLMResults.sresid"><a class="viewcode-back" href="../../../generated/statsmodels.robust.robust_linear_model.RLMResults.sresid.html#statsmodels.robust.robust_linear_model.RLMResults.sresid">[docs]</a>    <span class="nd">@cache_readonly</span>
+    <span class="k">def</span> <span class="nf">sresid</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">resid</span><span class="o">/</span><span class="bp">self</span><span class="o">.</span><span class="n">scale</span></div>
+
+<div class="viewcode-block" id="RLMResults.bcov_unscaled"><a class="viewcode-back" href="../../../generated/statsmodels.robust.robust_linear_model.RLMResults.bcov_unscaled.html#statsmodels.robust.robust_linear_model.RLMResults.bcov_unscaled">[docs]</a>    <span class="nd">@cache_readonly</span>
+    <span class="k">def</span> <span class="nf">bcov_unscaled</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">normalized_cov_params</span></div>
+
+<div class="viewcode-block" id="RLMResults.weights"><a class="viewcode-back" href="../../../generated/statsmodels.robust.robust_linear_model.RLMResults.weights.html#statsmodels.robust.robust_linear_model.RLMResults.weights">[docs]</a>    <span class="nd">@cache_readonly</span>
+    <span class="k">def</span> <span class="nf">weights</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">weights</span></div>
+
+<div class="viewcode-block" id="RLMResults.bcov_scaled"><a class="viewcode-back" href="../../../generated/statsmodels.robust.robust_linear_model.RLMResults.bcov_scaled.html#statsmodels.robust.robust_linear_model.RLMResults.bcov_scaled">[docs]</a>    <span class="nd">@cache_readonly</span>
+    <span class="k">def</span> <span class="nf">bcov_scaled</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">model</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span>
+        <span class="n">m</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">M</span><span class="o">.</span><span class="n">psi_deriv</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">sresid</span><span class="p">))</span>
+        <span class="n">var_psiprime</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">var</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">M</span><span class="o">.</span><span class="n">psi_deriv</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">sresid</span><span class="p">))</span>
+        <span class="n">k</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">+</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">df_model</span><span class="o">+</span><span class="mi">1</span><span class="p">)</span><span class="o">/</span><span class="bp">self</span><span class="o">.</span><span class="n">nobs</span> <span class="o">*</span> <span class="n">var_psiprime</span><span class="o">/</span><span class="n">m</span><span class="o">**</span><span class="mi">2</span>
+
+        <span class="k">if</span> <span class="n">model</span><span class="o">.</span><span class="n">cov</span> <span class="o">==</span> <span class="s2">&quot;H1&quot;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">k</span><span class="o">**</span><span class="mi">2</span> <span class="o">*</span> <span class="p">(</span><span class="mi">1</span><span class="o">/</span><span class="bp">self</span><span class="o">.</span><span class="n">df_resid</span><span class="o">*</span>\
+                <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">M</span><span class="o">.</span><span class="n">psi</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">sresid</span><span class="p">)</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span><span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">scale</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span>\
+                <span class="o">/</span><span class="p">((</span><span class="mi">1</span><span class="o">/</span><span class="bp">self</span><span class="o">.</span><span class="n">nobs</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">M</span><span class="o">.</span><span class="n">psi_deriv</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">sresid</span><span class="p">)))</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span>\
+                <span class="o">*</span><span class="n">model</span><span class="o">.</span><span class="n">normalized_cov_params</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">W</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">M</span><span class="o">.</span><span class="n">psi_deriv</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">sresid</span><span class="p">)</span><span class="o">*</span><span class="n">model</span><span class="o">.</span><span class="n">exog</span><span class="o">.</span><span class="n">T</span><span class="p">,</span>
+                    <span class="n">model</span><span class="o">.</span><span class="n">exog</span><span class="p">)</span>
+            <span class="n">W_inv</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">inv</span><span class="p">(</span><span class="n">W</span><span class="p">)</span>
+            <span class="c1"># [W_jk]^-1 = [SUM(psi_deriv(Sr_i)*x_ij*x_jk)]^-1</span>
+            <span class="c1"># where Sr are the standardized residuals</span>
+            <span class="k">if</span> <span class="n">model</span><span class="o">.</span><span class="n">cov</span> <span class="o">==</span> <span class="s2">&quot;H2&quot;</span><span class="p">:</span>
+            <span class="c1"># These are correct, based on Huber (1973) 8.13</span>
+                <span class="k">return</span> <span class="n">k</span><span class="o">*</span><span class="p">(</span><span class="mi">1</span><span class="o">/</span><span class="bp">self</span><span class="o">.</span><span class="n">df_resid</span><span class="p">)</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span>\
+                    <span class="n">model</span><span class="o">.</span><span class="n">M</span><span class="o">.</span><span class="n">psi</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">sresid</span><span class="p">)</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span><span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">scale</span><span class="o">**</span><span class="mi">2</span>\
+                    <span class="o">/</span><span class="p">((</span><span class="mi">1</span><span class="o">/</span><span class="bp">self</span><span class="o">.</span><span class="n">nobs</span><span class="p">)</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span>\
+                    <span class="n">model</span><span class="o">.</span><span class="n">M</span><span class="o">.</span><span class="n">psi_deriv</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">sresid</span><span class="p">)))</span><span class="o">*</span><span class="n">W_inv</span>
+            <span class="k">elif</span> <span class="n">model</span><span class="o">.</span><span class="n">cov</span> <span class="o">==</span> <span class="s2">&quot;H3&quot;</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">k</span><span class="o">**-</span><span class="mi">1</span><span class="o">*</span><span class="mi">1</span><span class="o">/</span><span class="bp">self</span><span class="o">.</span><span class="n">df_resid</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span>\
+                    <span class="n">model</span><span class="o">.</span><span class="n">M</span><span class="o">.</span><span class="n">psi</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">sresid</span><span class="p">)</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span><span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">scale</span><span class="o">**</span><span class="mi">2</span>\
+                    <span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">W_inv</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">exog</span><span class="o">.</span><span class="n">T</span><span class="p">,</span><span class="n">model</span><span class="o">.</span><span class="n">exog</span><span class="p">)),</span>\
+                    <span class="n">W_inv</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="RLMResults.pvalues"><a class="viewcode-back" href="../../../generated/statsmodels.robust.robust_linear_model.RLMResults.pvalues.html#statsmodels.robust.robust_linear_model.RLMResults.pvalues">[docs]</a>    <span class="nd">@cache_readonly</span>
+    <span class="k">def</span> <span class="nf">pvalues</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">stats</span><span class="o">.</span><span class="n">norm</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">tvalues</span><span class="p">))</span><span class="o">*</span><span class="mi">2</span></div>
+
+<div class="viewcode-block" id="RLMResults.bse"><a class="viewcode-back" href="../../../generated/statsmodels.robust.robust_linear_model.RLMResults.bse.html#statsmodels.robust.robust_linear_model.RLMResults.bse">[docs]</a>    <span class="nd">@cache_readonly</span>
+    <span class="k">def</span> <span class="nf">bse</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">diag</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">bcov_scaled</span><span class="p">))</span></div>
+
+<div class="viewcode-block" id="RLMResults.chisq"><a class="viewcode-back" href="../../../generated/statsmodels.robust.robust_linear_model.RLMResults.chisq.html#statsmodels.robust.robust_linear_model.RLMResults.chisq">[docs]</a>    <span class="nd">@cache_readonly</span>
+    <span class="k">def</span> <span class="nf">chisq</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">params</span><span class="o">/</span><span class="bp">self</span><span class="o">.</span><span class="n">bse</span><span class="p">)</span><span class="o">**</span><span class="mi">2</span></div>
+
+<div class="viewcode-block" id="RLMResults.summary"><a class="viewcode-back" href="../../../generated/statsmodels.robust.robust_linear_model.RLMResults.summary.html#statsmodels.robust.robust_linear_model.RLMResults.summary">[docs]</a>    <span class="k">def</span> <span class="nf">summary</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">yname</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">xname</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">title</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=.</span><span class="mi">05</span><span class="p">,</span>
+                <span class="n">return_fmt</span><span class="o">=</span><span class="s1">&#39;text&#39;</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        This is for testing the new summary setup</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">top_left</span> <span class="o">=</span> <span class="p">[(</span><span class="s1">&#39;Dep. Variable:&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">),</span>
+                    <span class="p">(</span><span class="s1">&#39;Model:&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">),</span>
+                    <span class="p">(</span><span class="s1">&#39;Method:&#39;</span><span class="p">,</span> <span class="p">[</span><span class="s1">&#39;IRLS&#39;</span><span class="p">]),</span>
+                    <span class="p">(</span><span class="s1">&#39;Norm:&#39;</span><span class="p">,</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">fit_options</span><span class="p">[</span><span class="s1">&#39;norm&#39;</span><span class="p">]]),</span>
+                    <span class="p">(</span><span class="s1">&#39;Scale Est.:&#39;</span><span class="p">,</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">fit_options</span><span class="p">[</span><span class="s1">&#39;scale_est&#39;</span><span class="p">]]),</span>
+                    <span class="p">(</span><span class="s1">&#39;Cov Type:&#39;</span><span class="p">,</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">fit_options</span><span class="p">[</span><span class="s1">&#39;cov&#39;</span><span class="p">]]),</span>
+                    <span class="p">(</span><span class="s1">&#39;Date:&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">),</span>
+                    <span class="p">(</span><span class="s1">&#39;Time:&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">),</span>
+                    <span class="p">(</span><span class="s1">&#39;No. Iterations:&#39;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;</span><span class="si">%d</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">fit_history</span><span class="p">[</span><span class="s1">&#39;iteration&#39;</span><span class="p">]])</span>
+                    <span class="p">]</span>
+        <span class="n">top_right</span> <span class="o">=</span> <span class="p">[(</span><span class="s1">&#39;No. Observations:&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">),</span>
+                     <span class="p">(</span><span class="s1">&#39;Df Residuals:&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">),</span>
+                     <span class="p">(</span><span class="s1">&#39;Df Model:&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+                     <span class="p">]</span>
+
+        <span class="k">if</span> <span class="n">title</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">title</span> <span class="o">=</span> <span class="s2">&quot;Robust linear Model Regression Results&quot;</span>
+
+        <span class="c1"># boiler plate</span>
+        <span class="kn">from</span> <span class="nn">statsmodels.iolib.summary</span> <span class="k">import</span> <span class="n">Summary</span>
+        <span class="n">smry</span> <span class="o">=</span> <span class="n">Summary</span><span class="p">()</span>
+        <span class="n">smry</span><span class="o">.</span><span class="n">add_table_2cols</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">gleft</span><span class="o">=</span><span class="n">top_left</span><span class="p">,</span> <span class="n">gright</span><span class="o">=</span><span class="n">top_right</span><span class="p">,</span>
+                             <span class="n">yname</span><span class="o">=</span><span class="n">yname</span><span class="p">,</span> <span class="n">xname</span><span class="o">=</span><span class="n">xname</span><span class="p">,</span> <span class="n">title</span><span class="o">=</span><span class="n">title</span><span class="p">)</span>
+        <span class="n">smry</span><span class="o">.</span><span class="n">add_table_params</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">yname</span><span class="o">=</span><span class="n">yname</span><span class="p">,</span> <span class="n">xname</span><span class="o">=</span><span class="n">xname</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="n">alpha</span><span class="p">,</span>
+                              <span class="n">use_t</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">use_t</span><span class="p">)</span>
+
+        <span class="c1"># add warnings/notes, added to text format only</span>
+        <span class="n">etext</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">wstr</span> <span class="o">=</span> <span class="p">(</span><span class="s2">&quot;If the model instance has been used for another fit &quot;</span>
+                <span class="s2">&quot;with different fit</span><span class="se">\n</span><span class="s2">&quot;</span>
+               <span class="s2">&quot;parameters, then the fit options might not be the correct &quot;</span>
+               <span class="s2">&quot;ones anymore .&quot;</span><span class="p">)</span>
+        <span class="n">etext</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">wstr</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">etext</span><span class="p">:</span>
+            <span class="n">smry</span><span class="o">.</span><span class="n">add_extra_txt</span><span class="p">(</span><span class="n">etext</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">smry</span></div>
+
+<div class="viewcode-block" id="RLMResults.summary2"><a class="viewcode-back" href="../../../generated/statsmodels.robust.robust_linear_model.RLMResults.summary2.html#statsmodels.robust.robust_linear_model.RLMResults.summary2">[docs]</a>    <span class="k">def</span> <span class="nf">summary2</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">xname</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">yname</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">title</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=.</span><span class="mi">05</span><span class="p">,</span>
+                 <span class="n">float_format</span><span class="o">=</span><span class="s2">&quot;</span><span class="si">%.4f</span><span class="s2">&quot;</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Experimental summary function for regression results</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        xname : List of strings of length equal to the number of parameters</span>
+<span class="sd">            Names of the independent variables (optional)</span>
+<span class="sd">        yname : string</span>
+<span class="sd">            Name of the dependent variable (optional)</span>
+<span class="sd">        title : string, optional</span>
+<span class="sd">            Title for the top table. If not None, then this replaces the</span>
+<span class="sd">            default title</span>
+<span class="sd">        alpha : float</span>
+<span class="sd">            significance level for the confidence intervals</span>
+<span class="sd">        float_format: string</span>
+<span class="sd">            print format for floats in parameters summary</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        smry : Summary instance</span>
+<span class="sd">            this holds the summary tables and text, which can be printed or</span>
+<span class="sd">            converted to various output formats.</span>
+
+<span class="sd">        See Also</span>
+<span class="sd">        --------</span>
+<span class="sd">        statsmodels.iolib.summary2.Summary : class to hold summary results</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="kn">from</span> <span class="nn">statsmodels.iolib</span> <span class="k">import</span> <span class="n">summary2</span>
+        <span class="n">smry</span> <span class="o">=</span> <span class="n">summary2</span><span class="o">.</span><span class="n">Summary</span><span class="p">()</span>
+        <span class="n">smry</span><span class="o">.</span><span class="n">add_base</span><span class="p">(</span><span class="n">results</span><span class="o">=</span><span class="bp">self</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="n">alpha</span><span class="p">,</span> <span class="n">float_format</span><span class="o">=</span><span class="n">float_format</span><span class="p">,</span>
+                      <span class="n">xname</span><span class="o">=</span><span class="n">xname</span><span class="p">,</span> <span class="n">yname</span><span class="o">=</span><span class="n">yname</span><span class="p">,</span> <span class="n">title</span><span class="o">=</span><span class="n">title</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">smry</span></div></div>
+
+
+<span class="k">class</span> <span class="nc">RLMResultsWrapper</span><span class="p">(</span><span class="n">lm</span><span class="o">.</span><span class="n">RegressionResultsWrapper</span><span class="p">):</span>
+    <span class="k">pass</span>
+<span class="n">wrap</span><span class="o">.</span><span class="n">populate_wrapper</span><span class="p">(</span><span class="n">RLMResultsWrapper</span><span class="p">,</span> <span class="n">RLMResults</span><span class="p">)</span>  <span class="c1"># noqa:E305</span>
+
+
+<span class="k">if</span> <span class="vm">__name__</span><span class="o">==</span><span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+<span class="c1">#NOTE: This is to be removed</span>
+<span class="c1">#Delivery Time Data is taken from Montgomery and Peck</span>
+    <span class="kn">import</span> <span class="nn">statsmodels.api</span> <span class="k">as</span> <span class="nn">sm</span>
+
+<span class="c1">#delivery time(minutes)</span>
+    <span class="n">endog</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">16.68</span><span class="p">,</span> <span class="mf">11.50</span><span class="p">,</span> <span class="mf">12.03</span><span class="p">,</span> <span class="mf">14.88</span><span class="p">,</span> <span class="mf">13.75</span><span class="p">,</span> <span class="mf">18.11</span><span class="p">,</span> <span class="mf">8.00</span><span class="p">,</span> <span class="mf">17.83</span><span class="p">,</span>
+    <span class="mf">79.24</span><span class="p">,</span> <span class="mf">21.50</span><span class="p">,</span> <span class="mf">40.33</span><span class="p">,</span> <span class="mf">21.00</span><span class="p">,</span> <span class="mf">13.50</span><span class="p">,</span> <span class="mf">19.75</span><span class="p">,</span> <span class="mf">24.00</span><span class="p">,</span> <span class="mf">29.00</span><span class="p">,</span> <span class="mf">15.35</span><span class="p">,</span> <span class="mf">19.00</span><span class="p">,</span>
+    <span class="mf">9.50</span><span class="p">,</span> <span class="mf">35.10</span><span class="p">,</span> <span class="mf">17.90</span><span class="p">,</span> <span class="mf">52.32</span><span class="p">,</span> <span class="mf">18.75</span><span class="p">,</span> <span class="mf">19.83</span><span class="p">,</span> <span class="mf">10.75</span><span class="p">])</span>
+
+<span class="c1">#number of cases, distance (Feet)</span>
+    <span class="n">exog</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="mi">7</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">6</span><span class="p">,</span> <span class="mi">7</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">7</span><span class="p">,</span> <span class="mi">30</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">16</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">6</span><span class="p">,</span> <span class="mi">9</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">6</span><span class="p">,</span>
+    <span class="mi">7</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">17</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">26</span><span class="p">,</span> <span class="mi">9</span><span class="p">,</span> <span class="mi">8</span><span class="p">,</span> <span class="mi">4</span><span class="p">],</span> <span class="p">[</span><span class="mi">560</span><span class="p">,</span> <span class="mi">220</span><span class="p">,</span> <span class="mi">340</span><span class="p">,</span> <span class="mi">80</span><span class="p">,</span> <span class="mi">150</span><span class="p">,</span> <span class="mi">330</span><span class="p">,</span> <span class="mi">110</span><span class="p">,</span> <span class="mi">210</span><span class="p">,</span> <span class="mi">1460</span><span class="p">,</span>
+    <span class="mi">605</span><span class="p">,</span> <span class="mi">688</span><span class="p">,</span> <span class="mi">215</span><span class="p">,</span> <span class="mi">255</span><span class="p">,</span> <span class="mi">462</span><span class="p">,</span> <span class="mi">448</span><span class="p">,</span> <span class="mi">776</span><span class="p">,</span> <span class="mi">200</span><span class="p">,</span> <span class="mi">132</span><span class="p">,</span> <span class="mi">36</span><span class="p">,</span> <span class="mi">770</span><span class="p">,</span> <span class="mi">140</span><span class="p">,</span> <span class="mi">810</span><span class="p">,</span> <span class="mi">450</span><span class="p">,</span> <span class="mi">635</span><span class="p">,</span>
+    <span class="mi">150</span><span class="p">]])</span>
+    <span class="n">exog</span> <span class="o">=</span> <span class="n">exog</span><span class="o">.</span><span class="n">T</span>
+    <span class="n">exog</span> <span class="o">=</span> <span class="n">sm</span><span class="o">.</span><span class="n">add_constant</span><span class="p">(</span><span class="n">exog</span><span class="p">)</span>
+
+<span class="c1">#    model_ols = models.regression.OLS(endog, exog)</span>
+<span class="c1">#    results_ols = model_ols.fit()</span>
+
+<span class="c1">#    model_ramsaysE = RLM(endog, exog, M=norms.RamsayE())</span>
+<span class="c1">#    results_ramsaysE = model_ramsaysE.fit(update_scale=False)</span>
+
+<span class="c1">#    model_andrewWave = RLM(endog, exog, M=norms.AndrewWave())</span>
+<span class="c1">#    results_andrewWave = model_andrewWave.fit(update_scale=False)</span>
+
+<span class="c1">#    model_hampel = RLM(endog, exog, M=norms.Hampel(a=1.7,b=3.4,c=8.5)) # convergence problems with scale changed, not with 2,4,8 though?</span>
+<span class="c1">#    results_hampel = model_hampel.fit(update_scale=False)</span>
+
+<span class="c1">#######################</span>
+<span class="c1">### Stack Loss Data ###</span>
+<span class="c1">#######################</span>
+    <span class="kn">from</span> <span class="nn">statsmodels.datasets.stackloss</span> <span class="k">import</span> <span class="n">load</span>
+    <span class="n">data</span> <span class="o">=</span> <span class="n">load</span><span class="p">(</span><span class="n">as_pandas</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+    <span class="n">data</span><span class="o">.</span><span class="n">exog</span> <span class="o">=</span> <span class="n">sm</span><span class="o">.</span><span class="n">add_constant</span><span class="p">(</span><span class="n">data</span><span class="o">.</span><span class="n">exog</span><span class="p">)</span>
+<span class="c1">#############</span>
+<span class="c1">### Huber ###</span>
+<span class="c1">#############</span>
+<span class="c1">#    m1_Huber = RLM(data.endog, data.exog, M=norms.HuberT())</span>
+<span class="c1">#    results_Huber1 = m1_Huber.fit()</span>
+<span class="c1">#    m2_Huber = RLM(data.endog, data.exog, M=norms.HuberT())</span>
+<span class="c1">#    results_Huber2 = m2_Huber.fit(cov=&quot;H2&quot;)</span>
+<span class="c1">#    m3_Huber = RLM(data.endog, data.exog, M=norms.HuberT())</span>
+<span class="c1">#    results_Huber3 = m3_Huber.fit(cov=&quot;H3&quot;)</span>
+<span class="c1">##############</span>
+<span class="c1">### Hampel ###</span>
+<span class="c1">##############</span>
+<span class="c1">#    m1_Hampel = RLM(data.endog, data.exog, M=norms.Hampel())</span>
+<span class="c1">#    results_Hampel1 = m1_Hampel.fit()</span>
+<span class="c1">#    m2_Hampel = RLM(data.endog, data.exog, M=norms.Hampel())</span>
+<span class="c1">#    results_Hampel2 = m2_Hampel.fit(cov=&quot;H2&quot;)</span>
+<span class="c1">#    m3_Hampel = RLM(data.endog, data.exog, M=norms.Hampel())</span>
+<span class="c1">#    results_Hampel3 = m3_Hampel.fit(cov=&quot;H3&quot;)</span>
+<span class="c1">################</span>
+<span class="c1">### Bisquare ###</span>
+<span class="c1">################</span>
+<span class="c1">#    m1_Bisquare = RLM(data.endog, data.exog, M=norms.TukeyBiweight())</span>
+<span class="c1">#    results_Bisquare1 = m1_Bisquare.fit()</span>
+<span class="c1">#    m2_Bisquare = RLM(data.endog, data.exog, M=norms.TukeyBiweight())</span>
+<span class="c1">#    results_Bisquare2 = m2_Bisquare.fit(cov=&quot;H2&quot;)</span>
+<span class="c1">#    m3_Bisquare = RLM(data.endog, data.exog, M=norms.TukeyBiweight())</span>
+<span class="c1">#    results_Bisquare3 = m3_Bisquare.fit(cov=&quot;H3&quot;)</span>
+
+
+<span class="c1">##############################################</span>
+<span class="c1"># Huber&#39;s Proposal 2 scaling                 #</span>
+<span class="c1">##############################################</span>
+
+<span class="c1">################</span>
+<span class="c1">### Huber&#39;sT ###</span>
+<span class="c1">################</span>
+    <span class="n">m1_Huber_H</span> <span class="o">=</span> <span class="n">RLM</span><span class="p">(</span><span class="n">data</span><span class="o">.</span><span class="n">endog</span><span class="p">,</span> <span class="n">data</span><span class="o">.</span><span class="n">exog</span><span class="p">,</span> <span class="n">M</span><span class="o">=</span><span class="n">norms</span><span class="o">.</span><span class="n">HuberT</span><span class="p">())</span>
+    <span class="n">results_Huber1_H</span> <span class="o">=</span> <span class="n">m1_Huber_H</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">scale_est</span><span class="o">=</span><span class="n">scale</span><span class="o">.</span><span class="n">HuberScale</span><span class="p">())</span>
+<span class="c1">#    m2_Huber_H</span>
+<span class="c1">#    m3_Huber_H</span>
+<span class="c1">#    m4 = RLM(data.endog, data.exog, M=norms.HuberT())</span>
+<span class="c1">#    results4 = m1.fit(scale_est=&quot;Huber&quot;)</span>
+<span class="c1">#    m5 = RLM(data.endog, data.exog, M=norms.Hampel())</span>
+<span class="c1">#    results5 = m2.fit(scale_est=&quot;Huber&quot;)</span>
+<span class="c1">#    m6 = RLM(data.endog, data.exog, M=norms.TukeyBiweight())</span>
+<span class="c1">#    results6 = m3.fit(scale_est=&quot;Huber&quot;)</span>
+
+
+
+
+<span class="c1">#    print &quot;&quot;&quot;Least squares fit</span>
+<span class="c1">#%s</span>
+<span class="c1">#Huber Params, t = 2.</span>
+<span class="c1">#%s</span>
+<span class="c1">#Ramsay&#39;s E Params</span>
+<span class="c1">#%s</span>
+<span class="c1">#Andrew&#39;s Wave Params</span>
+<span class="c1">#%s</span>
+<span class="c1">#Hampel&#39;s 17A Function</span>
+<span class="c1">#%s</span>
+<span class="c1">#&quot;&quot;&quot; % (results_ols.params, results_huber.params, results_ramsaysE.params,</span>
+<span class="c1">#            results_andrewWave.params, results_hampel.params)</span>
+</pre></div>
+
+
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../../../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" />
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer" role="contentinfo">
+        &#169; Copyright 2009-2018, Josef Perktold, Skipper Seabold, Jonathan Taylor, statsmodels-developers.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 2.2.1.
+    </div>
+  </body>
+</html>

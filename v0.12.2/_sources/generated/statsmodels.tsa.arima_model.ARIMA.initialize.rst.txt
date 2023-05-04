@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.tsa.arima\_model.ARIMA.initialize
+=============================================
+
+.. currentmodule:: statsmodels.tsa.arima_model
+
+.. automethod:: ARIMA.initialize

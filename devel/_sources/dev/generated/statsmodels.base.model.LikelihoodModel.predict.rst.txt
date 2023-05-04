@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.base.model.LikelihoodModel.predict
+==============================================
+
+.. currentmodule:: statsmodels.base.model
+
+.. automethod:: LikelihoodModel.predict

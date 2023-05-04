@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.miscmodels.count.PoissonOffsetGMLE.hessian
+======================================================
+
+.. currentmodule:: statsmodels.miscmodels.count
+
+.. automethod:: PoissonOffsetGMLE.hessian

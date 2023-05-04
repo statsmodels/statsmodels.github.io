@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.genmod.families.links.cauchy.inverse
+================================================
+
+.. currentmodule:: statsmodels.genmod.families.links
+
+.. automethod:: cauchy.inverse

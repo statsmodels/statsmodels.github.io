@@ -1,0 +1,474 @@
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>statsmodels.stats._lilliefors &#8212; statsmodels 0.8.0 documentation</title>
+    
+    <link rel="stylesheet" href="../../../_static/nature.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../../',
+        VERSION:     '0.8.0',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true,
+        SOURCELINK_SUFFIX: '.txt'
+      };
+    </script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <link rel="shortcut icon" href="../../../_static/statsmodels_hybi_favico.ico"/>
+    <link rel="author" title="About these documents" href="../../../about.html" />
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+<link rel="stylesheet" href="../../../_static/examples.css" type="text/css" />
+<link rel="stylesheet" href="../../../_static/facebox.css" type="text/css" />
+<script type="text/javascript" src="../../../_static/scripts.js">
+</script>
+<script type="text/javascript" src="../../../_static/facebox.js">
+</script>
+
+  </head>
+  <body role="document">
+<div class="headerwrap">
+    <div class = "header">
+        
+        <a href = "../../../index.html">
+<img src="../../../_static/statsmodels_hybi_banner.png" alt="Logo"
+    style="padding-left: 15px"/></a>
+        
+    </div>
+</div>
+
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+<li><a href ="../../../install.html">Install</a></li> &nbsp;|&nbsp;
+<li><a href="https://groups.google.com/group/pystatsmodels?hl=en">Support</a></li> &nbsp;|&nbsp;
+<li><a href="https://github.com/statsmodels/statsmodels/issues">Bugs</a></li> &nbsp;|&nbsp;
+<li><a href="../../../dev/index.html">Develop</a></li> &nbsp;|&nbsp;
+<li><a href="../../../examples/index.html">Examples</a></li> &nbsp;|&nbsp;
+<li><a href="../../../faq.html">FAQ</a></li> &nbsp;|&nbsp;
+
+          <li class="nav-item nav-item-1"><a href="../../index.html" accesskey="U">Module code</a> |</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+
+
+
+
+  <h1>Source code for statsmodels.stats._lilliefors</h1><div class="highlight"><pre>
+<span></span><span class="c1"># -*- coding: utf-8 -*-</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Created on Sat Oct 01 13:16:49 2011</span>
+
+<span class="sd">Author: Josef Perktold</span>
+<span class="sd">License: BSD-3</span>
+
+<span class="sd">pvalues for Lilliefors test are based on formula and table in</span>
+
+<span class="sd">An Analytic Approximation to the Distribution of Lilliefors&#39;s Test Statistic for Normality</span>
+<span class="sd">Author(s): Gerard E. Dallal and Leland WilkinsonSource: The American Statistician, Vol. 40, No. 4 (Nov., 1986), pp. 294-296Published by: American Statistical AssociationStable URL: http://www.jstor.org/stable/2684607 .</span>
+
+<span class="sd">On the Kolmogorov-Smirnov Test for Normality with Mean and Variance</span>
+<span class="sd">Unknown</span>
+<span class="sd">Hubert W. Lilliefors</span>
+<span class="sd">Journal of the American Statistical Association, Vol. 62, No. 318. (Jun., 1967), pp. 399-402.</span>
+
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="kn">from</span> <span class="nn">statsmodels.compat.python</span> <span class="k">import</span> <span class="n">string_types</span>
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+<span class="kn">from</span> <span class="nn">scipy.interpolate</span> <span class="k">import</span> <span class="n">interp1d</span>
+<span class="kn">from</span> <span class="nn">scipy</span> <span class="k">import</span> <span class="n">stats</span>
+
+<span class="k">def</span> <span class="nf">ksstat</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">cdf</span><span class="p">,</span> <span class="n">alternative</span><span class="o">=</span><span class="s1">&#39;two_sided&#39;</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="p">()):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Calculate statistic for the Kolmogorov-Smirnov test for goodness of fit</span>
+
+<span class="sd">    This calculates the test statistic for a test of the distribution G(x) of an observed</span>
+<span class="sd">    variable against a given distribution F(x). Under the null</span>
+<span class="sd">    hypothesis the two distributions are identical, G(x)=F(x). The</span>
+<span class="sd">    alternative hypothesis can be either &#39;two_sided&#39; (default), &#39;less&#39;</span>
+<span class="sd">    or &#39;greater&#39;. The KS test is only valid for continuous distributions.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    x : array_like, 1d</span>
+<span class="sd">        array of observations</span>
+<span class="sd">    cdf : string or callable</span>
+<span class="sd">        string: name of a distribution in scipy.stats</span>
+<span class="sd">        callable: function to evaluate cdf</span>
+<span class="sd">    alternative : &#39;two_sided&#39; (default), &#39;less&#39; or &#39;greater&#39;</span>
+<span class="sd">        defines the alternative hypothesis (see explanation)</span>
+<span class="sd">    args : tuple, sequence</span>
+<span class="sd">        distribution parameters for call to cdf</span>
+
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    D : float</span>
+<span class="sd">        KS test statistic, either D, D+ or D-</span>
+
+<span class="sd">    See Also</span>
+<span class="sd">    --------</span>
+<span class="sd">    scipy.stats.kstest</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+
+<span class="sd">    In the one-sided test, the alternative is that the empirical</span>
+<span class="sd">    cumulative distribution function of the random variable is &quot;less&quot;</span>
+<span class="sd">    or &quot;greater&quot; than the cumulative distribution function F(x) of the</span>
+<span class="sd">    hypothesis, G(x)&lt;=F(x), resp. G(x)&gt;=F(x).</span>
+
+<span class="sd">    In contrast to scipy.stats.kstest, this function only calculates the</span>
+<span class="sd">    statistic which can be used either as distance measure or to implement</span>
+<span class="sd">    case specific p-values.</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">nobs</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">x</span><span class="p">))</span>
+
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">cdf</span><span class="p">,</span> <span class="n">string_types</span><span class="p">):</span>
+        <span class="n">cdf</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">stats</span><span class="o">.</span><span class="n">distributions</span><span class="p">,</span> <span class="n">cdf</span><span class="p">)</span><span class="o">.</span><span class="n">cdf</span>
+    <span class="k">elif</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">cdf</span><span class="p">,</span> <span class="s1">&#39;cdf&#39;</span><span class="p">):</span>
+        <span class="n">cdf</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">cdf</span><span class="p">,</span> <span class="s1">&#39;cdf&#39;</span><span class="p">)</span>
+
+    <span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+    <span class="n">cdfvals</span> <span class="o">=</span> <span class="n">cdf</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">alternative</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;two_sided&#39;</span><span class="p">,</span> <span class="s1">&#39;greater&#39;</span><span class="p">]:</span>
+        <span class="n">Dplus</span> <span class="o">=</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">nobs</span><span class="o">+</span><span class="mi">1</span><span class="p">)</span><span class="o">/</span><span class="n">nobs</span> <span class="o">-</span> <span class="n">cdfvals</span><span class="p">)</span><span class="o">.</span><span class="n">max</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">alternative</span> <span class="o">==</span> <span class="s1">&#39;greater&#39;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">Dplus</span>
+
+    <span class="k">if</span> <span class="n">alternative</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;two_sided&#39;</span><span class="p">,</span> <span class="s1">&#39;less&#39;</span><span class="p">]:</span>
+        <span class="n">Dmin</span> <span class="o">=</span> <span class="p">(</span><span class="n">cdfvals</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">nobs</span><span class="p">)</span><span class="o">/</span><span class="n">nobs</span><span class="p">)</span><span class="o">.</span><span class="n">max</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">alternative</span> <span class="o">==</span> <span class="s1">&#39;less&#39;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">Dmin</span>
+
+    <span class="n">D</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">([</span><span class="n">Dplus</span><span class="p">,</span><span class="n">Dmin</span><span class="p">])</span>
+    <span class="k">return</span> <span class="n">D</span>
+
+
+<span class="c1">#new version with tabledist</span>
+<span class="c1">#--------------------------</span>
+
+<span class="k">def</span> <span class="nf">get_lilliefors_table</span><span class="p">():</span>
+    <span class="c1">#function just to keep things together</span>
+    <span class="kn">from</span> <span class="nn">.tabledist</span> <span class="k">import</span> <span class="n">TableDist</span>
+    <span class="c1">#for this test alpha is sf probability, i.e. right tail probability</span>
+
+    <span class="n">alpha</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span> <span class="mf">0.2</span>  <span class="p">,</span>  <span class="mf">0.15</span> <span class="p">,</span>  <span class="mf">0.1</span>  <span class="p">,</span>  <span class="mf">0.05</span> <span class="p">,</span>  <span class="mf">0.01</span> <span class="p">,</span>  <span class="mf">0.001</span><span class="p">])[::</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+    <span class="n">size</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span> <span class="mi">4</span><span class="p">,</span>   <span class="mi">5</span><span class="p">,</span>   <span class="mi">6</span><span class="p">,</span>   <span class="mi">7</span><span class="p">,</span>   <span class="mi">8</span><span class="p">,</span>   <span class="mi">9</span><span class="p">,</span>  <span class="mi">10</span><span class="p">,</span>  <span class="mi">11</span><span class="p">,</span>  <span class="mi">12</span><span class="p">,</span>  <span class="mi">13</span><span class="p">,</span>  <span class="mi">14</span><span class="p">,</span>  <span class="mi">15</span><span class="p">,</span>
+                     <span class="mi">16</span><span class="p">,</span>  <span class="mi">17</span><span class="p">,</span>  <span class="mi">18</span><span class="p">,</span>  <span class="mi">19</span><span class="p">,</span>  <span class="mi">20</span><span class="p">,</span>  <span class="mi">25</span><span class="p">,</span>  <span class="mi">30</span><span class="p">,</span>  <span class="mi">40</span><span class="p">,</span> <span class="mi">100</span><span class="p">,</span> <span class="mi">400</span><span class="p">,</span> <span class="mi">900</span><span class="p">],</span> <span class="nb">float</span><span class="p">)</span>
+
+    <span class="c1">#critical values, rows are by sample size, columns are by alpha</span>
+    <span class="n">crit_lf</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span>   <span class="p">[[</span><span class="mi">303</span><span class="p">,</span> <span class="mi">321</span><span class="p">,</span> <span class="mi">346</span><span class="p">,</span> <span class="mi">376</span><span class="p">,</span> <span class="mi">413</span><span class="p">,</span> <span class="mi">433</span><span class="p">],</span>
+                           <span class="p">[</span><span class="mi">289</span><span class="p">,</span> <span class="mi">303</span><span class="p">,</span> <span class="mi">319</span><span class="p">,</span> <span class="mi">343</span><span class="p">,</span> <span class="mi">397</span><span class="p">,</span> <span class="mi">439</span><span class="p">],</span>
+                           <span class="p">[</span><span class="mi">269</span><span class="p">,</span> <span class="mi">281</span><span class="p">,</span> <span class="mi">297</span><span class="p">,</span> <span class="mi">323</span><span class="p">,</span> <span class="mi">371</span><span class="p">,</span> <span class="mi">424</span><span class="p">],</span>
+                           <span class="p">[</span><span class="mi">252</span><span class="p">,</span> <span class="mi">264</span><span class="p">,</span> <span class="mi">280</span><span class="p">,</span> <span class="mi">304</span><span class="p">,</span> <span class="mi">351</span><span class="p">,</span> <span class="mi">402</span><span class="p">],</span>
+                           <span class="p">[</span><span class="mi">239</span><span class="p">,</span> <span class="mi">250</span><span class="p">,</span> <span class="mi">265</span><span class="p">,</span> <span class="mi">288</span><span class="p">,</span> <span class="mi">333</span><span class="p">,</span> <span class="mi">384</span><span class="p">],</span>
+                           <span class="p">[</span><span class="mi">227</span><span class="p">,</span> <span class="mi">238</span><span class="p">,</span> <span class="mi">252</span><span class="p">,</span> <span class="mi">274</span><span class="p">,</span> <span class="mi">317</span><span class="p">,</span> <span class="mi">365</span><span class="p">],</span>
+                           <span class="p">[</span><span class="mi">217</span><span class="p">,</span> <span class="mi">228</span><span class="p">,</span> <span class="mi">241</span><span class="p">,</span> <span class="mi">262</span><span class="p">,</span> <span class="mi">304</span><span class="p">,</span> <span class="mi">352</span><span class="p">],</span>
+                           <span class="p">[</span><span class="mi">208</span><span class="p">,</span> <span class="mi">218</span><span class="p">,</span> <span class="mi">231</span><span class="p">,</span> <span class="mi">251</span><span class="p">,</span> <span class="mi">291</span><span class="p">,</span> <span class="mi">338</span><span class="p">],</span>
+                           <span class="p">[</span><span class="mi">200</span><span class="p">,</span> <span class="mi">210</span><span class="p">,</span> <span class="mi">222</span><span class="p">,</span> <span class="mi">242</span><span class="p">,</span> <span class="mi">281</span><span class="p">,</span> <span class="mi">325</span><span class="p">],</span>
+                           <span class="p">[</span><span class="mi">193</span><span class="p">,</span> <span class="mi">202</span><span class="p">,</span> <span class="mi">215</span><span class="p">,</span> <span class="mi">234</span><span class="p">,</span> <span class="mi">271</span><span class="p">,</span> <span class="mi">314</span><span class="p">],</span>
+                           <span class="p">[</span><span class="mi">187</span><span class="p">,</span> <span class="mi">196</span><span class="p">,</span> <span class="mi">208</span><span class="p">,</span> <span class="mi">226</span><span class="p">,</span> <span class="mi">262</span><span class="p">,</span> <span class="mi">305</span><span class="p">],</span>
+                           <span class="p">[</span><span class="mi">181</span><span class="p">,</span> <span class="mi">190</span><span class="p">,</span> <span class="mi">201</span><span class="p">,</span> <span class="mi">219</span><span class="p">,</span> <span class="mi">254</span><span class="p">,</span> <span class="mi">296</span><span class="p">],</span>
+                           <span class="p">[</span><span class="mi">176</span><span class="p">,</span> <span class="mi">184</span><span class="p">,</span> <span class="mi">195</span><span class="p">,</span> <span class="mi">213</span><span class="p">,</span> <span class="mi">247</span><span class="p">,</span> <span class="mi">287</span><span class="p">],</span>
+                           <span class="p">[</span><span class="mi">171</span><span class="p">,</span> <span class="mi">179</span><span class="p">,</span> <span class="mi">190</span><span class="p">,</span> <span class="mi">207</span><span class="p">,</span> <span class="mi">240</span><span class="p">,</span> <span class="mi">279</span><span class="p">],</span>
+                           <span class="p">[</span><span class="mi">167</span><span class="p">,</span> <span class="mi">175</span><span class="p">,</span> <span class="mi">185</span><span class="p">,</span> <span class="mi">202</span><span class="p">,</span> <span class="mi">234</span><span class="p">,</span> <span class="mi">273</span><span class="p">],</span>
+                           <span class="p">[</span><span class="mi">163</span><span class="p">,</span> <span class="mi">170</span><span class="p">,</span> <span class="mi">181</span><span class="p">,</span> <span class="mi">197</span><span class="p">,</span> <span class="mi">228</span><span class="p">,</span> <span class="mi">266</span><span class="p">],</span>
+                           <span class="p">[</span><span class="mi">159</span><span class="p">,</span> <span class="mi">166</span><span class="p">,</span> <span class="mi">176</span><span class="p">,</span> <span class="mi">192</span><span class="p">,</span> <span class="mi">223</span><span class="p">,</span> <span class="mi">260</span><span class="p">],</span>
+                           <span class="p">[</span><span class="mi">143</span><span class="p">,</span> <span class="mi">150</span><span class="p">,</span> <span class="mi">159</span><span class="p">,</span> <span class="mi">173</span><span class="p">,</span> <span class="mi">201</span><span class="p">,</span> <span class="mi">236</span><span class="p">],</span>
+                           <span class="p">[</span><span class="mi">131</span><span class="p">,</span> <span class="mi">138</span><span class="p">,</span> <span class="mi">146</span><span class="p">,</span> <span class="mi">159</span><span class="p">,</span> <span class="mi">185</span><span class="p">,</span> <span class="mi">217</span><span class="p">],</span>
+                           <span class="p">[</span><span class="mi">115</span><span class="p">,</span> <span class="mi">120</span><span class="p">,</span> <span class="mi">128</span><span class="p">,</span> <span class="mi">139</span><span class="p">,</span> <span class="mi">162</span><span class="p">,</span> <span class="mi">189</span><span class="p">],</span>
+                           <span class="p">[</span> <span class="mi">74</span><span class="p">,</span>  <span class="mi">77</span><span class="p">,</span>  <span class="mi">82</span><span class="p">,</span>  <span class="mi">89</span><span class="p">,</span> <span class="mi">104</span><span class="p">,</span> <span class="mi">122</span><span class="p">],</span>
+                           <span class="p">[</span> <span class="mi">37</span><span class="p">,</span>  <span class="mi">39</span><span class="p">,</span>  <span class="mi">41</span><span class="p">,</span>  <span class="mi">45</span><span class="p">,</span>  <span class="mi">52</span><span class="p">,</span>  <span class="mi">61</span><span class="p">],</span>
+                           <span class="p">[</span> <span class="mi">25</span><span class="p">,</span>  <span class="mi">26</span><span class="p">,</span>  <span class="mi">28</span><span class="p">,</span>  <span class="mi">30</span><span class="p">,</span>  <span class="mi">35</span><span class="p">,</span>  <span class="mi">42</span><span class="p">]])[:,::</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">/</span> <span class="mf">1000.</span>
+
+
+    <span class="n">lf</span> <span class="o">=</span> <span class="n">TableDist</span><span class="p">(</span><span class="n">alpha</span><span class="p">,</span> <span class="n">size</span><span class="p">,</span> <span class="n">crit_lf</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">lf</span>
+
+<span class="n">lilliefors_table</span> <span class="o">=</span> <span class="n">get_lilliefors_table</span><span class="p">()</span>
+
+<span class="k">def</span> <span class="nf">pval_lf</span><span class="p">(</span><span class="n">Dmax</span><span class="p">,</span> <span class="n">n</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;approximate pvalues for Lilliefors test of normality</span>
+
+<span class="sd">    This is only valid for pvalues smaller than 0.1 which is not checked in</span>
+<span class="sd">    this function.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    Dmax : array_like</span>
+<span class="sd">        two-sided Kolmogorov-Smirnov test statistic</span>
+<span class="sd">    n : int or float</span>
+<span class="sd">        sample size</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    p-value : float or ndarray</span>
+<span class="sd">        pvalue according to approximation formula of Dallal and Wilkinson.</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    This is mainly a helper function where the calling code should dispatch</span>
+<span class="sd">    on bound violations. Therefore it doesn&#39;t check whether the pvalue is in</span>
+<span class="sd">    the valid range.</span>
+
+<span class="sd">    Precision for the pvalues is around 2 to 3 decimals. This approximation is</span>
+<span class="sd">    also used by other statistical packages (e.g. R:fBasics) but might not be</span>
+<span class="sd">    the most precise available.</span>
+
+<span class="sd">    References</span>
+<span class="sd">    ----------</span>
+<span class="sd">    DallalWilkinson1986</span>
+
+<span class="sd">    &#39;&#39;&#39;</span>
+
+    <span class="c1">#todo: check boundaries, valid range for n and Dmax</span>
+    <span class="k">if</span> <span class="n">n</span><span class="o">&gt;</span><span class="mi">100</span><span class="p">:</span>
+        <span class="n">Dmax</span> <span class="o">*=</span> <span class="p">(</span><span class="n">n</span><span class="o">/</span><span class="mf">100.</span><span class="p">)</span><span class="o">**</span><span class="mf">0.49</span>
+        <span class="n">n</span> <span class="o">=</span> <span class="mi">100</span>
+    <span class="n">pval</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="o">-</span><span class="mf">7.01256</span><span class="o">*</span><span class="n">Dmax</span><span class="o">**</span><span class="mi">2</span> <span class="o">*</span><span class="p">(</span><span class="n">n</span> <span class="o">+</span> <span class="mf">2.78019</span><span class="p">)</span>
+                <span class="o">+</span> <span class="mf">2.99587</span> <span class="o">*</span> <span class="n">Dmax</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">n</span> <span class="o">+</span> <span class="mf">2.78019</span><span class="p">)</span> <span class="o">-</span> <span class="mf">0.122119</span>
+                <span class="o">+</span> <span class="mf">0.974598</span><span class="o">/</span><span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">n</span><span class="p">)</span> <span class="o">+</span> <span class="mf">1.67997</span><span class="o">/</span><span class="n">n</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">pval</span>
+
+
+<div class="viewcode-block" id="kstest_normal"><a class="viewcode-back" href="../../../generated/statsmodels.stats.diagnostic.kstest_normal.html#statsmodels.stats.diagnostic.kstest_normal">[docs]</a><span class="k">def</span> <span class="nf">kstest_normal</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">pvalmethod</span><span class="o">=</span><span class="s1">&#39;approx&#39;</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;lilliefors test for normality,</span>
+
+<span class="sd">    Kolmogorov Smirnov test with estimated mean and variance</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    x : array_like, 1d</span>
+<span class="sd">        data series, sample</span>
+<span class="sd">    pvalmethod : &#39;approx&#39;, &#39;table&#39;</span>
+<span class="sd">        &#39;approx&#39; uses the approximation formula of Dalal and Wilkinson,</span>
+<span class="sd">        valid for pvalues &lt; 0.1. If the pvalue is larger than 0.1, then the</span>
+<span class="sd">        result of `table` is returned</span>
+<span class="sd">        &#39;table&#39; uses the table from Dalal and Wilkinson, which is available</span>
+<span class="sd">        for pvalues between 0.001 and 0.2, and the formula of Lilliefors for</span>
+<span class="sd">        large n (n&gt;900). Values in the table are linearly interpolated.</span>
+<span class="sd">        Values outside the range will be returned as bounds, 0.2 for large and</span>
+<span class="sd">        0.001 for small pvalues.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    ksstat : float</span>
+<span class="sd">        Kolmogorov-Smirnov test statistic with estimated mean and variance.</span>
+<span class="sd">    pvalue : float</span>
+<span class="sd">        If the pvalue is lower than some threshold, e.g. 0.05, then we can</span>
+<span class="sd">        reject the Null hypothesis that the sample comes from a normal</span>
+<span class="sd">        distribution</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    Reported power to distinguish normal from some other distributions is lower</span>
+<span class="sd">    than with the Anderson-Darling test.</span>
+
+<span class="sd">    could be vectorized</span>
+
+<span class="sd">    &#39;&#39;&#39;</span>
+
+    <span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+    <span class="n">z</span> <span class="o">=</span> <span class="p">(</span><span class="n">x</span><span class="o">-</span><span class="n">x</span><span class="o">.</span><span class="n">mean</span><span class="p">())</span><span class="o">/</span><span class="n">x</span><span class="o">.</span><span class="n">std</span><span class="p">(</span><span class="n">ddof</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+    <span class="n">nobs</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">z</span><span class="p">)</span>
+
+    <span class="n">d_ks</span> <span class="o">=</span> <span class="n">ksstat</span><span class="p">(</span><span class="n">z</span><span class="p">,</span> <span class="n">stats</span><span class="o">.</span><span class="n">norm</span><span class="o">.</span><span class="n">cdf</span><span class="p">,</span> <span class="n">alternative</span><span class="o">=</span><span class="s1">&#39;two_sided&#39;</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">pvalmethod</span> <span class="o">==</span> <span class="s1">&#39;approx&#39;</span><span class="p">:</span>
+        <span class="n">pval</span> <span class="o">=</span> <span class="n">pval_lf</span><span class="p">(</span><span class="n">d_ks</span><span class="p">,</span> <span class="n">nobs</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">pvalmethod</span> <span class="o">==</span> <span class="s1">&#39;table&#39;</span><span class="p">:</span>
+        <span class="c1">#pval = pval_lftable(d_ks, nobs)</span>
+        <span class="n">pval</span> <span class="o">=</span> <span class="n">lilliefors_table</span><span class="o">.</span><span class="n">prob</span><span class="p">(</span><span class="n">d_ks</span><span class="p">,</span> <span class="n">nobs</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">d_ks</span><span class="p">,</span> <span class="n">pval</span></div>
+
+
+<span class="n">lilliefors</span> <span class="o">=</span> <span class="n">kstest_normal</span>
+
+<span class="n">lillifors</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">deprecate</span><span class="p">(</span><span class="n">lilliefors</span><span class="p">,</span> <span class="s1">&#39;lillifors&#39;</span><span class="p">,</span> <span class="s1">&#39;lilliefors&#39;</span><span class="p">,</span>
+                               <span class="s2">&quot;Use lilliefors, lillifors will be &quot;</span>
+                               <span class="s2">&quot;removed in 0.9 </span><span class="se">\n</span><span class="s2">(Note: misspelling missing &#39;e&#39;)&quot;</span><span class="p">)</span>
+
+
+<span class="c1">#old version:</span>
+<span class="c1">#------------</span>
+
+<span class="n">tble</span> <span class="o">=</span> <span class="s1">&#39;&#39;&#39;</span><span class="se">\</span>
+<span class="s1">00 20 15 10 05 01 .1</span>
+<span class="s1">4 .303 .321 .346 .376 .413 .433</span>
+<span class="s1">5 .289 .303 .319 .343 .397 .439</span>
+<span class="s1">6 .269 .281 .297 .323 .371 .424</span>
+<span class="s1">7 .252 .264 .280 .304 .351 .402</span>
+<span class="s1">8 .239 .250 .265 .288 .333 .384</span>
+<span class="s1">9 .227 .238 .252 .274 .317 .365</span>
+<span class="s1">10 .217 .228 .241 .262 .304 .352</span>
+<span class="s1">11 .208 .218 .231 .251 .291 .338</span>
+<span class="s1">12 .200 .210 .222 .242 .281 .325</span>
+<span class="s1">13 .193 .202 .215 .234 .271 .314</span>
+<span class="s1">14 .187 .196 .208 .226 .262 .305</span>
+<span class="s1">15 .181 .190 .201 .219 .254 .296</span>
+<span class="s1">16 .176 .184 .195 .213 .247 .287</span>
+<span class="s1">17 .171 .179 .190 .207 .240 .279</span>
+<span class="s1">18 .167 .175 .185 .202 .234 .273</span>
+<span class="s1">19 .163 .170 .181 .197 .228 .266</span>
+<span class="s1">20 .159 .166 .176 .192 .223 .260</span>
+<span class="s1">25 .143 .150 .159 .173 .201 .236</span>
+<span class="s1">30 .131 .138 .146 .159 .185 .217</span>
+<span class="s1">40 .115 .120 .128 .139 .162 .189</span>
+<span class="s1">100 .074 .077 .082 .089 .104 .122</span>
+<span class="s1">400 .037 .039 .041 .045 .052 .061</span>
+<span class="s1">900 .025 .026 .028 .030 .035 .042&#39;&#39;&#39;</span>
+
+<span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">parr = np.array([line.split() for line in tble.split(&#39;\n&#39;)],float)</span>
+<span class="sd">size = parr[1:,0]</span>
+<span class="sd">alpha = parr[0,1:] / 100.</span>
+<span class="sd">crit = parr[1:, 1:]</span>
+
+<span class="sd">alpha = np.array([ 0.2  ,  0.15 ,  0.1  ,  0.05 ,  0.01 ,  0.001])</span>
+<span class="sd">size = np.array([ 4,   5,   6,   7,   8,   9,  10,  11,  12,  13,  14,  15,</span>
+<span class="sd">                 16,  17,  18,  19,  20,  25,  30,  40, 100, 400, 900], float)</span>
+
+<span class="sd">#critical values, rows are by sample size, columns are by alpha</span>
+<span class="sd">crit_lf = np.array(   [[303, 321, 346, 376, 413, 433],</span>
+<span class="sd">                       [289, 303, 319, 343, 397, 439],</span>
+<span class="sd">                       [269, 281, 297, 323, 371, 424],</span>
+<span class="sd">                       [252, 264, 280, 304, 351, 402],</span>
+<span class="sd">                       [239, 250, 265, 288, 333, 384],</span>
+<span class="sd">                       [227, 238, 252, 274, 317, 365],</span>
+<span class="sd">                       [217, 228, 241, 262, 304, 352],</span>
+<span class="sd">                       [208, 218, 231, 251, 291, 338],</span>
+<span class="sd">                       [200, 210, 222, 242, 281, 325],</span>
+<span class="sd">                       [193, 202, 215, 234, 271, 314],</span>
+<span class="sd">                       [187, 196, 208, 226, 262, 305],</span>
+<span class="sd">                       [181, 190, 201, 219, 254, 296],</span>
+<span class="sd">                       [176, 184, 195, 213, 247, 287],</span>
+<span class="sd">                       [171, 179, 190, 207, 240, 279],</span>
+<span class="sd">                       [167, 175, 185, 202, 234, 273],</span>
+<span class="sd">                       [163, 170, 181, 197, 228, 266],</span>
+<span class="sd">                       [159, 166, 176, 192, 223, 260],</span>
+<span class="sd">                       [143, 150, 159, 173, 201, 236],</span>
+<span class="sd">                       [131, 138, 146, 159, 185, 217],</span>
+<span class="sd">                       [115, 120, 128, 139, 162, 189],</span>
+<span class="sd">                       [ 74,  77,  82,  89, 104, 122],</span>
+<span class="sd">                       [ 37,  39,  41,  45,  52,  61],</span>
+<span class="sd">                       [ 25,  26,  28,  30,  35,  42]]) / 1000.</span>
+
+<span class="sd">#original Lilliefors paper</span>
+<span class="sd">crit_greater30 = lambda n: np.array([0.736, 0.768, 0.805, 0.886, 1.031])/np.sqrt(n)</span>
+<span class="sd">alpha_greater30 = np.array([ 0.2  ,  0.15 ,  0.1  ,  0.05 ,  0.01 ,  0.001])</span>
+
+
+<span class="sd">n_alpha = 6</span>
+<span class="sd">polyn = [interp1d(size, crit[:,i]) for i in range(n_alpha)]</span>
+
+<span class="sd">def critpolys(n):</span>
+<span class="sd">    return np.array([p(n) for p in polyn])</span>
+
+<span class="sd">def pval_lftable(x, n):</span>
+<span class="sd">    #returns extrem probabilities, 0.001 and 0.2, for out of range</span>
+<span class="sd">    critvals = critpolys(n)</span>
+<span class="sd">    if x &lt; critvals[0]:</span>
+<span class="sd">        return alpha[0]</span>
+<span class="sd">    elif x &gt; critvals[-1]:</span>
+<span class="sd">        return alpha[-1]</span>
+<span class="sd">    else:</span>
+<span class="sd">        return interp1d(critvals, alpha)(x)</span>
+
+<span class="sd">for n in [19, 19.5, 20, 21, 25]:</span>
+<span class="sd">    print critpolys(n)</span>
+
+<span class="sd">print pval_lftable(0.166, 20)</span>
+<span class="sd">print pval_lftable(0.166, 21)</span>
+
+
+
+<span class="sd">print &#39;n=25:&#39;, &#39;.103 .052 .010&#39;</span>
+<span class="sd">print [pval_lf(x, 25) for x in [.159, .173, .201, .236]]</span>
+
+<span class="sd">print &#39;n=10&#39;, &#39;.103 .050 .009&#39;</span>
+<span class="sd">print [pval_lf(x, 10) for x in [.241, .262, .304, .352]]</span>
+
+
+<span class="sd">print &#39;n=400&#39;, &#39;.104 .050 .011&#39;</span>
+<span class="sd">print [pval_lf(x, 400) for x in crit[-2,2:-1]]</span>
+<span class="sd">print &#39;n=900&#39;, &#39;.093 .054 .011&#39;</span>
+<span class="sd">print [pval_lf(x, 900) for x in crit[-1,2:-1]]</span>
+<span class="sd">print [pval_lftable(x, 400) for x in crit[-2,:]]</span>
+<span class="sd">print [pval_lftable(x, 300) for x in crit[-3,:]]</span>
+
+<span class="sd">xx = np.random.randn(40)</span>
+<span class="sd">print kstest_normal(xx)</span>
+
+<span class="sd">xx2 = np.array([ 1.138, -0.325, -1.461, -0.441, -0.005, -0.957, -1.52 ,  0.481,</span>
+<span class="sd">        0.713,  0.175, -1.764, -0.209, -0.681,  0.671,  0.204,  0.403,</span>
+<span class="sd">       -0.165,  1.765,  0.127, -1.261, -0.101,  0.527,  1.114, -0.57 ,</span>
+<span class="sd">       -1.172,  0.697,  0.146,  0.704,  0.422,  0.63 ,  0.661,  0.025,</span>
+<span class="sd">        0.177,  0.578,  0.945,  0.211,  0.153,  0.279,  0.35 ,  0.396])</span>
+
+<span class="sd">( 1.138, -0.325, -1.461, -0.441, -0.005, -0.957, -1.52 ,  0.481,</span>
+<span class="sd">        0.713,  0.175, -1.764, -0.209, -0.681,  0.671,  0.204,  0.403,</span>
+<span class="sd">       -0.165,  1.765,  0.127, -1.261, -0.101,  0.527,  1.114, -0.57 ,</span>
+<span class="sd">       -1.172,  0.697,  0.146,  0.704,  0.422,  0.63 ,  0.661,  0.025,</span>
+<span class="sd">        0.177,  0.578,  0.945,  0.211,  0.153,  0.279,  0.35 ,  0.396)</span>
+<span class="sd">r_lillieTest = [0.15096827429598147, 0.02225473302348436]</span>
+<span class="sd">print kstest_normal(xx2), np.array(kstest_normal(xx2)) - r_lillieTest</span>
+<span class="sd">print kstest_normal(xx2, &#39;table&#39;)</span>
+<span class="sd">&#39;&#39;&#39;</span>
+</pre></div>
+
+
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <form class="search" action="../../../search.html" method="get">
+      <div><input type="text" name="q" /></div>
+      <div><input type="submit" value="Go" /></div>
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer" role="contentinfo">
+        &#169; Copyright 2009-2017, Josef Perktold, Skipper Seabold, Jonathan Taylor, statsmodels-developers.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.5.3.
+    </div>
+  </body>
+</html>

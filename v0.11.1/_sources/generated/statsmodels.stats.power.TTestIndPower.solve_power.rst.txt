@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.stats.power.TTestIndPower.solve\_power
+==================================================
+
+.. currentmodule:: statsmodels.stats.power
+
+.. automethod:: TTestIndPower.solve_power

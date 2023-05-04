@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.tsa.ar\_model.AR.from\_formula
+==========================================
+
+.. currentmodule:: statsmodels.tsa.ar_model
+
+.. automethod:: AR.from_formula

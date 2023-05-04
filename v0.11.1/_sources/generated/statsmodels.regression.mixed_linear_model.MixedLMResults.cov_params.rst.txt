@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.regression.mixed\_linear\_model.MixedLMResults.cov\_params
+======================================================================
+
+.. currentmodule:: statsmodels.regression.mixed_linear_model
+
+.. automethod:: MixedLMResults.cov_params

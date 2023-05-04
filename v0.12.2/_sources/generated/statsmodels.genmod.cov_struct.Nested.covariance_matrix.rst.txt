@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.genmod.cov\_struct.Nested.covariance\_matrix
+========================================================
+
+.. currentmodule:: statsmodels.genmod.cov_struct
+
+.. automethod:: Nested.covariance_matrix

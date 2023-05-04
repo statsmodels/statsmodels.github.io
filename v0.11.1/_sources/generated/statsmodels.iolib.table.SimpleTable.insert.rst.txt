@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.iolib.table.SimpleTable.insert
+==========================================
+
+.. currentmodule:: statsmodels.iolib.table
+
+.. automethod:: SimpleTable.insert

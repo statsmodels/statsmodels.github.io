@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.base.model.ResultMixin.bootstrap
+============================================
+
+.. currentmodule:: statsmodels.base.model
+
+.. automethod:: ResultMixin.bootstrap
