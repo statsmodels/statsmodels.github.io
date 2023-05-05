@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.genmod.families.family.Binomial.loglike
+===================================================
+
+.. currentmodule:: statsmodels.genmod.families.family
+
+.. automethod:: Binomial.loglike

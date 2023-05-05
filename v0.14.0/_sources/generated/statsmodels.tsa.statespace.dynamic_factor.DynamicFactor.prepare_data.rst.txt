@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.tsa.statespace.dynamic\_factor.DynamicFactor.prepare\_data
+======================================================================
+
+.. currentmodule:: statsmodels.tsa.statespace.dynamic_factor
+
+.. automethod:: DynamicFactor.prepare_data

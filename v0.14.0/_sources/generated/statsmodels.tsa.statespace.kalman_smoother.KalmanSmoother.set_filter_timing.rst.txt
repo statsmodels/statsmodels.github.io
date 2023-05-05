@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.tsa.statespace.kalman\_smoother.KalmanSmoother.set\_filter\_timing
+==============================================================================
+
+.. currentmodule:: statsmodels.tsa.statespace.kalman_smoother
+
+.. automethod:: KalmanSmoother.set_filter_timing

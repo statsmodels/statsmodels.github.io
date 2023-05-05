@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.tsa.statespace.kalman\_smoother.KalmanSmoother.initialize\_stationary
+=================================================================================
+
+.. currentmodule:: statsmodels.tsa.statespace.kalman_smoother
+
+.. automethod:: KalmanSmoother.initialize_stationary

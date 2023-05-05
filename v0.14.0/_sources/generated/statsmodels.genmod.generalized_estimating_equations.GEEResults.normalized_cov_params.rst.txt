@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.genmod.generalized\_estimating\_equations.GEEResults.normalized\_cov\_params
+========================================================================================
+
+.. currentmodule:: statsmodels.genmod.generalized_estimating_equations
+
+.. automethod:: GEEResults.normalized_cov_params

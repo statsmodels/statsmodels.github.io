@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.tsa.statespace.dynamic\_factor.DynamicFactor.fit
+============================================================
+
+.. currentmodule:: statsmodels.tsa.statespace.dynamic_factor
+
+.. automethod:: DynamicFactor.fit

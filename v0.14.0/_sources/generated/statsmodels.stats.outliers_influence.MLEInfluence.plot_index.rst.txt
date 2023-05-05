@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.stats.outliers\_influence.MLEInfluence.plot\_index
+==============================================================
+
+.. currentmodule:: statsmodels.stats.outliers_influence
+
+.. automethod:: MLEInfluence.plot_index

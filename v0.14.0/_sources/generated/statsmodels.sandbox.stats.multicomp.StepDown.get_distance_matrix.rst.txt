@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.sandbox.stats.multicomp.StepDown.get\_distance\_matrix
+==================================================================
+
+.. currentmodule:: statsmodels.sandbox.stats.multicomp
+
+.. automethod:: StepDown.get_distance_matrix

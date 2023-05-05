@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.sandbox.distributions.transformed.TransfTwo\_gen.expect
+===================================================================
+
+.. currentmodule:: statsmodels.sandbox.distributions.transformed
+
+.. automethod:: TransfTwo_gen.expect

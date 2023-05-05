@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.sandbox.regression.gmm.IV2SLS.loglike
+=================================================
+
+.. currentmodule:: statsmodels.sandbox.regression.gmm
+
+.. automethod:: IV2SLS.loglike

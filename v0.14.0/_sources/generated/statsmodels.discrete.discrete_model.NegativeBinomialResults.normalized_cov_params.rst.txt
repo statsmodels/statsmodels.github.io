@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.discrete.discrete\_model.NegativeBinomialResults.normalized\_cov\_params
+====================================================================================
+
+.. currentmodule:: statsmodels.discrete.discrete_model
+
+.. automethod:: NegativeBinomialResults.normalized_cov_params

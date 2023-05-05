@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.stats.multitest.NullDistribution.pdf
+================================================
+
+.. currentmodule:: statsmodels.stats.multitest
+
+.. automethod:: NullDistribution.pdf

@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.tsa.statespace.varmax.VARMAXResults.conf\_int
+=========================================================
+
+.. currentmodule:: statsmodels.tsa.statespace.varmax
+
+.. automethod:: VARMAXResults.conf_int

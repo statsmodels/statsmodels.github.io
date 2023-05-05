@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.miscmodels.tmodel.TLinearModel.hessian
+==================================================
+
+.. currentmodule:: statsmodels.miscmodels.tmodel
+
+.. automethod:: TLinearModel.hessian
