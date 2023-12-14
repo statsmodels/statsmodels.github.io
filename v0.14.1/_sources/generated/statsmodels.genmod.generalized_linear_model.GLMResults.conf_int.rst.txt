@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.genmod.generalized\_linear\_model.GLMResults.conf\_int
+==================================================================
+
+.. currentmodule:: statsmodels.genmod.generalized_linear_model
+
+.. automethod:: GLMResults.conf_int

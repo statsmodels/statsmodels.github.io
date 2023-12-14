@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.stats.contingency\_tables.StratifiedTable.test\_null\_odds
+======================================================================
+
+.. currentmodule:: statsmodels.stats.contingency_tables
+
+.. automethod:: StratifiedTable.test_null_odds

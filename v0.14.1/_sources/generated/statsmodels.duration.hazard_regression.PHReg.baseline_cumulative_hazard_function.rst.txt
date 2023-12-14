@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.duration.hazard\_regression.PHReg.baseline\_cumulative\_hazard\_function
+====================================================================================
+
+.. currentmodule:: statsmodels.duration.hazard_regression
+
+.. automethod:: PHReg.baseline_cumulative_hazard_function

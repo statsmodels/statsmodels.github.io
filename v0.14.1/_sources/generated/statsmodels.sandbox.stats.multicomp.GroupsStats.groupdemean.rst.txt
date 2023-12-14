@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.sandbox.stats.multicomp.GroupsStats.groupdemean
+===========================================================
+
+.. currentmodule:: statsmodels.sandbox.stats.multicomp
+
+.. automethod:: GroupsStats.groupdemean

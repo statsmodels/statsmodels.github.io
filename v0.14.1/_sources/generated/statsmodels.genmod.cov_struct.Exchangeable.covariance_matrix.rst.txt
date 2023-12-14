@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.genmod.cov\_struct.Exchangeable.covariance\_matrix
+==============================================================
+
+.. currentmodule:: statsmodels.genmod.cov_struct
+
+.. automethod:: Exchangeable.covariance_matrix

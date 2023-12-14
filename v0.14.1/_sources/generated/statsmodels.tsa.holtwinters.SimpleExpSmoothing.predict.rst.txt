@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.tsa.holtwinters.SimpleExpSmoothing.predict
+======================================================
+
+.. currentmodule:: statsmodels.tsa.holtwinters
+
+.. automethod:: SimpleExpSmoothing.predict

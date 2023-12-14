@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.genmod.families.family.Gaussian.weights
+===================================================
+
+.. currentmodule:: statsmodels.genmod.families.family
+
+.. automethod:: Gaussian.weights
