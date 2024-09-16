@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.stats.power.FTestPower.plot\_power
+==============================================
+
+.. currentmodule:: statsmodels.stats.power
+
+.. automethod:: FTestPower.plot_power

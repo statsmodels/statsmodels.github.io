@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.multivariate.multivariate\_ols.\_MultivariateOLSResults.summary
+===========================================================================
+
+.. currentmodule:: statsmodels.multivariate.multivariate_ols
+
+.. automethod:: _MultivariateOLSResults.summary

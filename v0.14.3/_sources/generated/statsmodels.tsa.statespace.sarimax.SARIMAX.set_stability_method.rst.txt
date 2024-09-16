@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.tsa.statespace.sarimax.SARIMAX.set\_stability\_method
+=================================================================
+
+.. currentmodule:: statsmodels.tsa.statespace.sarimax
+
+.. automethod:: SARIMAX.set_stability_method

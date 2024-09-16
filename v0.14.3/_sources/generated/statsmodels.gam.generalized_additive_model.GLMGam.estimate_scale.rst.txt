@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.gam.generalized\_additive\_model.GLMGam.estimate\_scale
+===================================================================
+
+.. currentmodule:: statsmodels.gam.generalized_additive_model
+
+.. automethod:: GLMGam.estimate_scale

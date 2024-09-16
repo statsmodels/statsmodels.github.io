@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.genmod.families.family.InverseGaussian.resid\_dev
+=============================================================
+
+.. currentmodule:: statsmodels.genmod.families.family
+
+.. automethod:: InverseGaussian.resid_dev

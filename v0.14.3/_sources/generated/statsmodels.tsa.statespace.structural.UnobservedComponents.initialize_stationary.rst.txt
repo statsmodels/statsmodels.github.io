@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.tsa.statespace.structural.UnobservedComponents.initialize\_stationary
+=================================================================================
+
+.. currentmodule:: statsmodels.tsa.statespace.structural
+
+.. automethod:: UnobservedComponents.initialize_stationary

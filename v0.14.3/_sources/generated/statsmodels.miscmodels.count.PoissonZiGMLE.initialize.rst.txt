@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.miscmodels.count.PoissonZiGMLE.initialize
+=====================================================
+
+.. currentmodule:: statsmodels.miscmodels.count
+
+.. automethod:: PoissonZiGMLE.initialize

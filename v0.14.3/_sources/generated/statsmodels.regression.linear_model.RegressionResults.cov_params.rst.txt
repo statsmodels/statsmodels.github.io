@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.regression.linear\_model.RegressionResults.cov\_params
+==================================================================
+
+.. currentmodule:: statsmodels.regression.linear_model
+
+.. automethod:: RegressionResults.cov_params

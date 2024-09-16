@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.tsa.vector\_ar.vecm.VECM.initialize
+===============================================
+
+.. currentmodule:: statsmodels.tsa.vector_ar.vecm
+
+.. automethod:: VECM.initialize

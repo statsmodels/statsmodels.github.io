@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.genmod.generalized\_estimating\_equations.GEEResults.plot\_partial\_residuals
+=========================================================================================
+
+.. currentmodule:: statsmodels.genmod.generalized_estimating_equations
+
+.. automethod:: GEEResults.plot_partial_residuals
