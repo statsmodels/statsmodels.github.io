@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.sandbox.distributions.transformed.ExpTransf\_gen.logcdf
+===================================================================
+
+.. currentmodule:: statsmodels.sandbox.distributions.transformed
+
+.. automethod:: ExpTransf_gen.logcdf

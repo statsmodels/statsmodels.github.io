@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.iolib.summary2.Summary.as\_latex
+============================================
+
+.. currentmodule:: statsmodels.iolib.summary2
+
+.. automethod:: Summary.as_latex

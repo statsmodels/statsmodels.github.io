@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.regression.mixed\_linear\_model.MixedLMResults.conf\_int
+====================================================================
+
+.. currentmodule:: statsmodels.regression.mixed_linear_model
+
+.. automethod:: MixedLMResults.conf_int

@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.nonparametric.kernel\_regression.KernelCensoredReg.loo\_likelihood
+==============================================================================
+
+.. currentmodule:: statsmodels.nonparametric.kernel_regression
+
+.. automethod:: KernelCensoredReg.loo_likelihood

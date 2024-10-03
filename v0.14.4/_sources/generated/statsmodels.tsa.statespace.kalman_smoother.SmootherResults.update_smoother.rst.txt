@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.tsa.statespace.kalman\_smoother.SmootherResults.update\_smoother
+============================================================================
+
+.. currentmodule:: statsmodels.tsa.statespace.kalman_smoother
+
+.. automethod:: SmootherResults.update_smoother

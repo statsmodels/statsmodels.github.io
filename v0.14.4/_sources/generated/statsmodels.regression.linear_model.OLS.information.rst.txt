@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.regression.linear\_model.OLS.information
+====================================================
+
+.. currentmodule:: statsmodels.regression.linear_model
+
+.. automethod:: OLS.information

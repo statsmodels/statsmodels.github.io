@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.genmod.families.family.Binomial.initialize
+======================================================
+
+.. currentmodule:: statsmodels.genmod.families.family
+
+.. automethod:: Binomial.initialize
