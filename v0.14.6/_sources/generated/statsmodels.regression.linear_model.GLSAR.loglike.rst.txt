@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.regression.linear\_model.GLSAR.loglike
+==================================================
+
+.. currentmodule:: statsmodels.regression.linear_model
+
+.. automethod:: GLSAR.loglike

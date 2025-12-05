@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.discrete.count\_model.ZeroInflatedGeneralizedPoissonResults.save
+============================================================================
+
+.. currentmodule:: statsmodels.discrete.count_model
+
+.. automethod:: ZeroInflatedGeneralizedPoissonResults.save

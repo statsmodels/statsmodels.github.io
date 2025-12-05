@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.genmod.families.links.Log.inverse
+=============================================
+
+.. currentmodule:: statsmodels.genmod.families.links
+
+.. automethod:: Log.inverse

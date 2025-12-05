@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.regression.linear\_model.OLSResults.conf\_int\_el
+=============================================================
+
+.. currentmodule:: statsmodels.regression.linear_model
+
+.. automethod:: OLSResults.conf_int_el

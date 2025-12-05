@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.sandbox.stats.multicomp.MultiComparison.tukeyhsd
+============================================================
+
+.. currentmodule:: statsmodels.sandbox.stats.multicomp
+
+.. automethod:: MultiComparison.tukeyhsd

@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.genmod.families.family.Binomial.weights
+===================================================
+
+.. currentmodule:: statsmodels.genmod.families.family
+
+.. automethod:: Binomial.weights

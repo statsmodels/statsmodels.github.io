@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.tsa.holtwinters.SimpleExpSmoothing.loglike
+======================================================
+
+.. currentmodule:: statsmodels.tsa.holtwinters
+
+.. automethod:: SimpleExpSmoothing.loglike

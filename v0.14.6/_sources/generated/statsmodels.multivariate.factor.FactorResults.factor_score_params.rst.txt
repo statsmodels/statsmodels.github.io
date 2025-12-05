@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.multivariate.factor.FactorResults.factor\_score\_params
+===================================================================
+
+.. currentmodule:: statsmodels.multivariate.factor
+
+.. automethod:: FactorResults.factor_score_params

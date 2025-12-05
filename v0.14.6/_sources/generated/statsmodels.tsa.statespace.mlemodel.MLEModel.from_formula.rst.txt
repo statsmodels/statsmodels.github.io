@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.tsa.statespace.mlemodel.MLEModel.from\_formula
+==========================================================
+
+.. currentmodule:: statsmodels.tsa.statespace.mlemodel
+
+.. automethod:: MLEModel.from_formula

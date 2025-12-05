@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.tsa.statespace.sarimax.SARIMAXResults.impulse\_responses
+====================================================================
+
+.. currentmodule:: statsmodels.tsa.statespace.sarimax
+
+.. automethod:: SARIMAXResults.impulse_responses

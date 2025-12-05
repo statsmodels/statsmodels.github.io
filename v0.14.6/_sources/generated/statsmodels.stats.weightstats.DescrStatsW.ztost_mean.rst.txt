@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.stats.weightstats.DescrStatsW.ztost\_mean
+=====================================================
+
+.. currentmodule:: statsmodels.stats.weightstats
+
+.. automethod:: DescrStatsW.ztost_mean

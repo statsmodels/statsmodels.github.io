@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.regression.recursive\_ls.RecursiveLSResults.info\_criteria
+======================================================================
+
+.. currentmodule:: statsmodels.regression.recursive_ls
+
+.. automethod:: RecursiveLSResults.info_criteria

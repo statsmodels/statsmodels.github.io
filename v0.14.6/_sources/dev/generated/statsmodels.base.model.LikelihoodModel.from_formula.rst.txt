@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.base.model.LikelihoodModel.from\_formula
+====================================================
+
+.. currentmodule:: statsmodels.base.model
+
+.. automethod:: LikelihoodModel.from_formula

@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.duration.hazard\_regression.PHRegResults.remove\_data
+=================================================================
+
+.. currentmodule:: statsmodels.duration.hazard_regression
+
+.. automethod:: PHRegResults.remove_data

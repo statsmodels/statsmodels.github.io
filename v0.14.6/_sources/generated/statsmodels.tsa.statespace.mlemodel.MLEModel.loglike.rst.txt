@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.tsa.statespace.mlemodel.MLEModel.loglike
+====================================================
+
+.. currentmodule:: statsmodels.tsa.statespace.mlemodel
+
+.. automethod:: MLEModel.loglike
