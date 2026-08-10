@@ -9,7 +9,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
-    <title>statsmodels.stats.stattools &#8212; statsmodels 0.15.0 (+1862)</title>
+    <title>statsmodels.stats.stattools &#8212; statsmodels 0.15.0 (+1874)</title>
   <link rel="icon" type="image/png" sizes="32x32" href="../../../_static/icons/favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="../../../_static/icons/favicon-16x16.png">
   <link rel="manifest" href="../../../_static/icons/site.webmanifest">
@@ -71,7 +71,7 @@
     <link rel="search" title="Search" href="../../../search.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="0.15.0 (+1862)" />
+  <meta name="docsearch:version" content="0.15.0 (+1874)" />
     <meta name="docbuild:last-update" content="Aug 10, 2026"/>
   
     
@@ -967,9 +967,11 @@
 
 
 
-<span class="k">def</span><span class="w"> </span><span class="nf">_medcouple_1d</span><span class="p">(</span><span class="n">y</span><span class="p">):</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_medcouple_1d_legacy</span><span class="p">(</span><span class="n">y</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    Calculates the medcouple robust measure of skew</span>
+<span class="sd">    Calculates the medcouple robust measure of skew. Less efficient version of</span>
+<span class="sd">    the algorithm which computes in O(N**2) time. Useful for validating the</span>
+<span class="sd">    O(N log N) version and for applications requiring legacy behavior.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
@@ -983,7 +985,7 @@
 
 <span class="sd">    Notes</span>
 <span class="sd">    -----</span>
-<span class="sd">    The current algorithm requires a O(N**2) memory allocations, and so may</span>
+<span class="sd">    This version of the algorithm requires a O(N**2) memory allocations, and so may</span>
 <span class="sd">    not work for very large arrays (N&gt;10000).</span>
 
 <span class="sd">    References</span>
@@ -1019,21 +1021,353 @@
     <span class="c1"># GH5395</span>
     <span class="n">num_ties</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">lower</span> <span class="o">==</span> <span class="mf">0.0</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">num_ties</span><span class="p">:</span>
+
         <span class="c1"># Replacements has -1 above the anti-diagonal, 0 on the anti-diagonal,</span>
         <span class="c1"># and 1 below the anti-diagonal</span>
         <span class="n">replacements</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">((</span><span class="n">num_ties</span><span class="p">,</span> <span class="n">num_ties</span><span class="p">))</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="n">num_ties</span><span class="p">)</span>
         <span class="n">replacements</span> <span class="o">-=</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">triu</span><span class="p">(</span><span class="n">replacements</span><span class="p">)</span>
+
         <span class="c1"># Convert diagonal to anti-diagonal</span>
         <span class="n">replacements</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">fliplr</span><span class="p">(</span><span class="n">replacements</span><span class="p">)</span>
+
         <span class="c1"># Always replace upper right block</span>
         <span class="n">h</span><span class="p">[:</span><span class="n">num_ties</span><span class="p">,</span> <span class="o">-</span><span class="n">num_ties</span><span class="p">:]</span> <span class="o">=</span> <span class="n">replacements</span>
 
     <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">median</span><span class="p">(</span><span class="n">h</span><span class="p">)</span>
 
 
+<span class="k">def</span><span class="w"> </span><span class="nf">_wmedian</span><span class="p">(</span><span class="n">A</span><span class="p">,</span> <span class="n">W</span><span class="p">):</span>
+<span class="w">    </span><span class="sa">r</span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Compute the weighted median of the values in A using the associated weights in W.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    A : 1-d NumPy array of float</span>
+<span class="sd">        The numeric values for which the weighted median is to be computed.</span>
+<span class="sd">    W : 1-d NumPy array of int</span>
+<span class="sd">        The corresponding non-negative integer weights for each value in A.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    float</span>
+<span class="sd">        The weighted median of A. If there are multiple medians due to tied weights,</span>
+<span class="sd">        the lower median is returned.</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    This is a helper function for the O(N log N) medcouple algorithm.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="c1"># Validation: NaN protection</span>
+    <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">A</span><span class="p">))</span> <span class="ow">or</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">W</span><span class="p">)):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;A and W may not contain NaN.&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Ensure 1-d arrays</span>
+    <span class="k">if</span> <span class="n">A</span><span class="o">.</span><span class="n">ndim</span> <span class="o">!=</span> <span class="mi">1</span> <span class="ow">or</span> <span class="n">W</span><span class="o">.</span><span class="n">ndim</span> <span class="o">!=</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;A and W must be 1-dimensional arrays.&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Ensure same length</span>
+    <span class="k">if</span> <span class="n">A</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">!=</span> <span class="n">W</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;A and W must have the same length.&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Sort A and W according to A</span>
+    <span class="n">idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">A</span><span class="p">)</span>
+    <span class="n">A_sorted</span> <span class="o">=</span> <span class="n">A</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span>
+    <span class="n">W_sorted</span> <span class="o">=</span> <span class="n">W</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span>
+
+    <span class="c1"># Compute cumulative sum of weights</span>
+    <span class="n">w_cumsum</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">cumsum</span><span class="p">(</span><span class="n">W_sorted</span><span class="p">)</span>
+    <span class="n">wtot</span> <span class="o">=</span> <span class="n">w_cumsum</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+
+    <span class="c1"># Find the smallest index i such that cumulative weight &gt;= total weight / 2</span>
+    <span class="n">median_idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">searchsorted</span><span class="p">(</span><span class="n">w_cumsum</span><span class="p">,</span> <span class="n">wtot</span> <span class="o">/</span> <span class="mi">2</span><span class="p">,</span> <span class="n">side</span><span class="o">=</span><span class="s2">&quot;left&quot;</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">A_sorted</span><span class="p">[</span><span class="n">median_idx</span><span class="p">]</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_construct_A_W</span><span class="p">(</span><span class="n">L</span><span class="p">,</span> <span class="n">R</span><span class="p">,</span> <span class="n">Zplus</span><span class="p">,</span> <span class="n">Zminus</span><span class="p">,</span> <span class="n">n_plus</span><span class="p">,</span> <span class="n">eps2</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Vectorized construction of A and W as NumPy arrays.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    L : np.ndarray</span>
+<span class="sd">        1-d array of left bounds.</span>
+<span class="sd">    R : np.ndarray</span>
+<span class="sd">        1-d array of right bounds.</span>
+<span class="sd">    Zplus : np.ndarray</span>
+<span class="sd">        1-d array of input values.</span>
+<span class="sd">    Zminus :  np.ndarray</span>
+<span class="sd">        1-d array of input values.</span>
+<span class="sd">    n_plus : int</span>
+<span class="sd">    eps2 : float</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    A : np.ndarray</span>
+<span class="sd">        Array of kernel values.</span>
+<span class="sd">    W : np.ndarray</span>
+<span class="sd">        Corresponding weights.</span>
+<span class="sd">    valid_i : np.ndarray</span>
+<span class="sd">        Indices used for construction.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">valid_i</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">L</span> <span class="o">&lt;=</span> <span class="n">R</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">L_valid</span> <span class="o">=</span> <span class="n">L</span><span class="p">[</span><span class="n">valid_i</span><span class="p">]</span>
+    <span class="n">R_valid</span> <span class="o">=</span> <span class="n">R</span><span class="p">[</span><span class="n">valid_i</span><span class="p">]</span>
+    <span class="n">mid_indices</span> <span class="o">=</span> <span class="p">(</span><span class="n">L_valid</span> <span class="o">+</span> <span class="n">R_valid</span><span class="p">)</span> <span class="o">//</span> <span class="mi">2</span>
+
+    <span class="n">A</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty_like</span><span class="p">(</span><span class="n">valid_i</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">valid_i</span><span class="o">.</span><span class="n">size</span><span class="p">):</span>
+        <span class="n">A</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="n">_h_kern</span><span class="p">(</span><span class="n">valid_i</span><span class="p">[</span><span class="n">k</span><span class="p">],</span> <span class="n">mid_indices</span><span class="p">[</span><span class="n">k</span><span class="p">],</span> <span class="n">Zplus</span><span class="p">,</span> <span class="n">Zminus</span><span class="p">,</span> <span class="n">n_plus</span><span class="p">,</span> <span class="n">eps2</span><span class="p">)</span>
+
+    <span class="n">W</span> <span class="o">=</span> <span class="n">R_valid</span> <span class="o">-</span> <span class="n">L_valid</span> <span class="o">+</span> <span class="mi">1</span>
+    <span class="k">return</span> <span class="n">A</span><span class="p">,</span> <span class="n">W</span><span class="p">,</span> <span class="n">valid_i</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_h_kern</span><span class="p">(</span><span class="n">index_plus</span><span class="p">,</span> <span class="n">index_minus</span><span class="p">,</span> <span class="n">Zplus</span><span class="p">,</span> <span class="n">Zminus</span><span class="p">,</span> <span class="n">n_plus</span><span class="p">,</span> <span class="n">eps2</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    H kernel function.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    index_plus : int-like</span>
+<span class="sd">        Index of Zplus.</span>
+<span class="sd">    index_minus : int-like</span>
+<span class="sd">        Index of Zminus.</span>
+<span class="sd">    Zplus : np.ndarray</span>
+<span class="sd">        1-d array of input values.</span>
+<span class="sd">    Zminus :  np.ndarray</span>
+<span class="sd">        1-d array of input values.</span>
+<span class="sd">    n_plus : int</span>
+<span class="sd">    eps2 : float</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    float</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">zp_i</span> <span class="o">=</span> <span class="n">Zplus</span><span class="p">[</span><span class="n">index_plus</span><span class="p">]</span>
+    <span class="n">zm_i</span> <span class="o">=</span> <span class="n">Zminus</span><span class="p">[</span><span class="n">index_minus</span><span class="p">]</span>
+
+    <span class="c1"># tie breaker: np.sign functionally equivalent to signum</span>
+    <span class="k">if</span> <span class="nb">abs</span><span class="p">(</span><span class="n">zp_i</span> <span class="o">-</span> <span class="n">zm_i</span><span class="p">)</span> <span class="o">&lt;=</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">eps2</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">sign</span><span class="p">(</span><span class="n">n_plus</span> <span class="o">-</span> <span class="mi">1</span> <span class="o">-</span> <span class="n">index_plus</span> <span class="o">-</span> <span class="n">index_minus</span><span class="p">)</span>
+    <span class="k">return</span> <span class="p">(</span><span class="n">zp_i</span> <span class="o">+</span> <span class="n">zm_i</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="n">zp_i</span> <span class="o">-</span> <span class="n">zm_i</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_finalize_h_kernel_sweep</span><span class="p">(</span><span class="n">L</span><span class="p">,</span> <span class="n">R</span><span class="p">,</span> <span class="n">Zplus</span><span class="p">,</span> <span class="n">Zminus</span><span class="p">,</span> <span class="n">n_plus</span><span class="p">,</span> <span class="n">eps2</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Compute the final array A.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    L : np.ndarray</span>
+<span class="sd">        1-d array of left indices.</span>
+<span class="sd">    R : np.ndarray</span>
+<span class="sd">        1-d array of right indices.</span>
+<span class="sd">    Zplus : np.ndarray</span>
+<span class="sd">        1-d array of input values.</span>
+<span class="sd">    Zminus :  np.ndarray</span>
+<span class="sd">        1-d array of input values.</span>
+<span class="sd">    n_plus : int</span>
+<span class="sd">    eps2 : float</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    A : numpy.ndarray of float</span>
+<span class="sd">        1-d array of sorted h_kern values in descending order.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="c1"># Determine total number of h_kern values.</span>
+    <span class="n">total_count</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">R</span> <span class="o">-</span> <span class="n">L</span> <span class="o">+</span> <span class="mi">1</span><span class="p">))</span>
+
+    <span class="c1"># Preallocate an array for the results.</span>
+    <span class="n">A</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">(</span><span class="n">total_count</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
+
+    <span class="c1"># Position to insert next block of values.</span>
+    <span class="n">pos</span> <span class="o">=</span> <span class="mi">0</span>
+
+    <span class="c1"># Loop over each index_plus element.</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">L</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]):</span>
+        <span class="n">left</span> <span class="o">=</span> <span class="n">L</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+        <span class="n">right</span> <span class="o">=</span> <span class="n">R</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+
+        <span class="c1"># Loop over each corresponding index_minus.</span>
+        <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">left</span><span class="p">,</span> <span class="n">right</span> <span class="o">+</span> <span class="mi">1</span><span class="p">):</span>
+
+            <span class="c1"># Here both i and j are scalars.</span>
+            <span class="n">A</span><span class="p">[</span><span class="n">pos</span><span class="p">]</span> <span class="o">=</span> <span class="n">_h_kern</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">j</span><span class="p">,</span> <span class="n">Zplus</span><span class="p">,</span> <span class="n">Zminus</span><span class="p">,</span> <span class="n">n_plus</span><span class="p">,</span> <span class="n">eps2</span><span class="p">)</span>
+            <span class="n">pos</span> <span class="o">+=</span> <span class="mi">1</span>
+
+    <span class="c1"># Sort in descending order and return.</span>
+    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="n">A</span><span class="p">)[::</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_medcouple_nlogn</span><span class="p">(</span><span class="n">X</span><span class="p">,</span> <span class="n">eps1</span><span class="o">=</span><span class="mi">2</span><span class="o">**-</span><span class="mi">52</span><span class="p">,</span> <span class="n">eps2</span><span class="o">=</span><span class="mi">2</span><span class="o">**-</span><span class="mi">1022</span><span class="p">):</span>
+<span class="w">    </span><span class="sa">r</span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Calculates the medcouple robust measure of skewness. Faster version of the</span>
+<span class="sd">    algorithm which computes in O(N log N) time.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    X : np.ndarray</span>
+<span class="sd">        Input 1-d array of numeric values.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    float</span>
+<span class="sd">        The medcouple statistic.</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+
+<span class="sd">    NaNs are not automatically removed. If present in the input, the result</span>
+<span class="sd">    will be NaN.</span>
+
+<span class="sd">    .. [*] Guy Brys, Mia Hubert and Anja Struyf (2004) A Robust Measure</span>
+<span class="sd">       of Skewness; JCGS 13 (4), 996-1017.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">X</span><span class="p">)):</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span>
+
+    <span class="n">n</span> <span class="o">=</span> <span class="n">X</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+    <span class="k">if</span> <span class="n">n</span> <span class="o">&lt;</span> <span class="mi">3</span><span class="p">:</span>
+        <span class="kn">from</span><span class="w"> </span><span class="nn">warnings</span><span class="w"> </span><span class="kn">import</span> <span class="n">warn</span>
+        <span class="n">msg</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="s2">&quot;medcouple is undefined for input with less than 3 elements. &quot;</span>
+            <span class="s2">&quot;Returning NaN.&quot;</span>
+        <span class="p">)</span>
+        <span class="n">warn</span><span class="p">(</span><span class="n">msg</span><span class="p">,</span> <span class="n">ValueWarning</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span>
+
+    <span class="k">if</span> <span class="n">n</span> <span class="o">&lt;</span> <span class="mi">10</span><span class="p">:</span>
+        <span class="kn">from</span><span class="w"> </span><span class="nn">warnings</span><span class="w"> </span><span class="kn">import</span> <span class="n">warn</span>
+        <span class="n">msg</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="s2">&quot;Fast medcouple algorithm (use_fast=True) is not recommended &quot;</span>
+            <span class="s2">&quot;for small datasets (N &lt; 10). Results may be unstable. Consider &quot;</span>
+            <span class="s2">&quot;using use_fast=False for accuracy.&quot;</span>
+        <span class="p">)</span>
+        <span class="n">warn</span><span class="p">(</span><span class="n">msg</span><span class="p">,</span> <span class="ne">UserWarning</span><span class="p">)</span>
+
+    <span class="n">Z</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="n">X</span><span class="p">)[::</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+    <span class="n">n2</span> <span class="o">=</span> <span class="p">(</span><span class="n">n</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span> <span class="o">//</span> <span class="mi">2</span>
+    <span class="n">Zmed</span> <span class="o">=</span> <span class="n">Z</span><span class="p">[</span><span class="n">n2</span><span class="p">]</span> <span class="k">if</span> <span class="n">n</span> <span class="o">%</span> <span class="mi">2</span> <span class="k">else</span> <span class="p">(</span><span class="n">Z</span><span class="p">[</span><span class="n">n2</span><span class="p">]</span> <span class="o">+</span> <span class="n">Z</span><span class="p">[</span><span class="n">n2</span> <span class="o">+</span> <span class="mi">1</span><span class="p">])</span> <span class="o">/</span> <span class="mi">2</span>
+
+    <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">Z</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">-</span> <span class="n">Zmed</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">eps1</span> <span class="o">*</span> <span class="p">(</span><span class="n">eps1</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">Zmed</span><span class="p">)):</span>
+        <span class="k">return</span> <span class="o">-</span><span class="mf">1.0</span>
+    <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">Z</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">-</span> <span class="n">Zmed</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">eps1</span> <span class="o">*</span> <span class="p">(</span><span class="n">eps1</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">Zmed</span><span class="p">)):</span>
+        <span class="k">return</span> <span class="mf">1.0</span>
+
+    <span class="n">Z</span> <span class="o">-=</span> <span class="n">Zmed</span>
+    <span class="n">Zden</span> <span class="o">=</span> <span class="mi">2</span> <span class="o">*</span> <span class="nb">max</span><span class="p">(</span><span class="n">Z</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="o">-</span><span class="n">Z</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span>
+    <span class="n">Z</span> <span class="o">/=</span> <span class="n">Zden</span>
+    <span class="n">Zmed</span> <span class="o">/=</span> <span class="n">Zden</span>
+    <span class="n">Zeps</span> <span class="o">=</span> <span class="n">eps1</span> <span class="o">*</span> <span class="p">(</span><span class="n">eps1</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">Zmed</span><span class="p">))</span>
+
+    <span class="c1"># Zplus, Zminus are 1-d np.ndarrays</span>
+    <span class="n">Zplus</span> <span class="o">=</span> <span class="n">Z</span><span class="p">[</span><span class="n">Z</span> <span class="o">&gt;=</span> <span class="o">-</span><span class="n">Zeps</span><span class="p">]</span>
+    <span class="n">Zminus</span> <span class="o">=</span> <span class="n">Z</span><span class="p">[</span><span class="n">Z</span> <span class="o">&lt;=</span> <span class="n">Zeps</span><span class="p">]</span>
+
+    <span class="c1"># get lengths</span>
+    <span class="n">n_plus</span> <span class="o">=</span> <span class="n">Zplus</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">n_minus</span> <span class="o">=</span> <span class="n">Zminus</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+    <span class="c1"># construct L, R as numpy arrays</span>
+    <span class="n">L</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">n_plus</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">int</span><span class="p">)</span>
+    <span class="n">R</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">full</span><span class="p">(</span><span class="n">n_plus</span><span class="p">,</span> <span class="n">n_minus</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">int</span><span class="p">)</span>
+
+    <span class="n">Ltot</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">Rtot</span> <span class="o">=</span> <span class="n">n_minus</span> <span class="o">*</span> <span class="n">n_plus</span>
+    <span class="n">medc_idx</span> <span class="o">=</span> <span class="n">Rtot</span> <span class="o">//</span> <span class="mi">2</span>
+
+    <span class="k">while</span> <span class="n">Rtot</span> <span class="o">-</span> <span class="n">Ltot</span> <span class="o">&gt;</span> <span class="n">n_plus</span><span class="p">:</span>
+
+        <span class="c1"># Construct A, W as NumPy arrays</span>
+        <span class="n">A</span><span class="p">,</span> <span class="n">W</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">_construct_A_W</span><span class="p">(</span><span class="n">L</span><span class="p">,</span> <span class="n">R</span><span class="p">,</span> <span class="n">Zplus</span><span class="p">,</span> <span class="n">Zminus</span><span class="p">,</span> <span class="n">n_plus</span><span class="p">,</span> <span class="n">eps2</span><span class="p">)</span>
+
+        <span class="n">h_med</span> <span class="o">=</span> <span class="n">_wmedian</span><span class="p">(</span><span class="n">A</span><span class="p">,</span> <span class="n">W</span><span class="p">)</span>
+
+        <span class="n">Am_eps</span> <span class="o">=</span> <span class="n">eps1</span> <span class="o">*</span> <span class="p">(</span><span class="n">eps1</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">h_med</span><span class="p">))</span>
+
+        <span class="c1"># Preallocate arrays P and Q of length n_plus.</span>
+        <span class="n">P</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">(</span><span class="n">n_plus</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">int</span><span class="p">)</span>
+        <span class="n">Q</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">(</span><span class="n">n_plus</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">int</span><span class="p">)</span>
+
+        <span class="c1"># Construct P. Note: We traverse i in reversed order.</span>
+        <span class="n">j</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">for</span> <span class="n">idx</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_plus</span><span class="p">):</span>
+
+            <span class="c1"># i goes in reversed order; use reversed indices.</span>
+            <span class="n">i</span> <span class="o">=</span> <span class="n">n_plus</span> <span class="o">-</span> <span class="mi">1</span> <span class="o">-</span> <span class="n">idx</span>
+
+            <span class="c1"># Increase j until the condition is no longer met.</span>
+            <span class="k">while</span> <span class="n">j</span> <span class="o">&lt;</span> <span class="n">n_minus</span> <span class="ow">and</span> \
+                    <span class="n">_h_kern</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">j</span><span class="p">,</span> <span class="n">Zplus</span><span class="p">,</span> <span class="n">Zminus</span><span class="p">,</span> <span class="n">n_plus</span><span class="p">,</span> <span class="n">eps2</span><span class="p">)</span> <span class="o">-</span> <span class="n">h_med</span> <span class="o">&gt;</span> <span class="n">Am_eps</span><span class="p">:</span>
+                <span class="n">j</span> <span class="o">+=</span> <span class="mi">1</span>
+
+            <span class="c1"># j-1 is our current value for that i.</span>
+            <span class="c1"># Store it in P at the reversed index; we will fix the order later.</span>
+            <span class="n">P</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span> <span class="o">=</span> <span class="n">j</span> <span class="o">-</span> <span class="mi">1</span>
+
+        <span class="c1"># Reverse P to get the correct order.</span>
+        <span class="n">P</span> <span class="o">=</span> <span class="n">P</span><span class="p">[::</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+
+        <span class="c1"># Construct Q.</span>
+        <span class="n">j</span> <span class="o">=</span> <span class="n">n_minus</span> <span class="o">-</span> <span class="mi">1</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_plus</span><span class="p">):</span>
+            <span class="k">while</span> <span class="n">j</span> <span class="o">&gt;=</span> <span class="mi">0</span> <span class="ow">and</span> \
+                    <span class="n">_h_kern</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">j</span><span class="p">,</span> <span class="n">Zplus</span><span class="p">,</span> <span class="n">Zminus</span><span class="p">,</span> <span class="n">n_plus</span><span class="p">,</span> <span class="n">eps2</span><span class="p">)</span> <span class="o">-</span> <span class="n">h_med</span> <span class="o">&lt;</span> <span class="o">-</span><span class="n">Am_eps</span><span class="p">:</span>
+                <span class="n">j</span> <span class="o">-=</span> <span class="mi">1</span>
+            <span class="n">Q</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">j</span> <span class="o">+</span> <span class="mi">1</span>
+
+        <span class="c1"># Compute sumP and sumQ.</span>
+        <span class="n">sumP</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">P</span><span class="p">)</span> <span class="o">+</span> <span class="n">n_plus</span>
+        <span class="n">sumQ</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">Q</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">medc_idx</span> <span class="o">&lt;=</span> <span class="n">sumP</span> <span class="o">-</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="n">R</span> <span class="o">=</span> <span class="n">P</span>
+            <span class="n">Rtot</span> <span class="o">=</span> <span class="n">sumP</span>
+        <span class="k">elif</span> <span class="n">medc_idx</span> <span class="o">&gt;</span> <span class="n">sumQ</span> <span class="o">-</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="n">L</span> <span class="o">=</span> <span class="n">Q</span>
+            <span class="n">Ltot</span> <span class="o">=</span> <span class="n">sumQ</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">h_med</span>
+
+    <span class="n">A</span> <span class="o">=</span> <span class="n">_finalize_h_kernel_sweep</span><span class="p">(</span><span class="n">L</span><span class="p">,</span> <span class="n">R</span><span class="p">,</span> <span class="n">Zplus</span><span class="p">,</span> <span class="n">Zminus</span><span class="p">,</span> <span class="n">n_plus</span><span class="p">,</span> <span class="n">eps2</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">A</span><span class="p">[</span><span class="n">medc_idx</span> <span class="o">-</span> <span class="n">Ltot</span><span class="p">]</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_medcouple_1d</span><span class="p">(</span><span class="n">y</span><span class="p">,</span> <span class="n">use_fast</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Calculates the medcouple robust measure of skew.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    y : np.ndarray</span>
+<span class="sd">        1-d data to compute use in the estimator.</span>
+<span class="sd">    use_fast : bool</span>
+<span class="sd">        Whether to use the O(n log n) implementation. Defaults to True.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    mc : float</span>
+<span class="sd">        The medcouple statistic</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">y</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">squeeze</span><span class="p">(</span><span class="n">y</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">y</span><span class="o">.</span><span class="n">ndim</span> <span class="o">!=</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;y must be squeezable to a 1-d array&quot;</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">use_fast</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">_medcouple_nlogn</span><span class="p">(</span><span class="n">y</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">_medcouple_1d_legacy</span><span class="p">(</span><span class="n">y</span><span class="p">)</span>
+
+
 <div class="viewcode-block" id="medcouple">
 <a class="viewcode-back" href="../../../generated/statsmodels.stats.stattools.medcouple.html#statsmodels.stats.stattools.medcouple">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">medcouple</span><span class="p">(</span><span class="n">y</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">medcouple</span><span class="p">(</span><span class="n">y</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">use_fast</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Calculate the medcouple robust measure of skew</span>
 
@@ -1044,17 +1378,40 @@
 <span class="sd">    axis : {int, None}</span>
 <span class="sd">        Axis along which the medcouple statistic is computed.  If `None`, the</span>
 <span class="sd">        entire array is used.</span>
+<span class="sd">    use_fast : bool</span>
+<span class="sd">        Whether to use the faster O(N log N) implementation. Default is True.</span>
+<span class="sd">        To use the legacy O(N**2) version, set to False.</span>
 
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
-<span class="sd">    mc : ndarray</span>
-<span class="sd">        The medcouple statistic with the same shape as `y`, with the specified</span>
-<span class="sd">        axis removed.</span>
+<span class="sd">    mc : float or ndarray</span>
+<span class="sd">        The medcouple statistic.</span>
 
 <span class="sd">    Notes</span>
 <span class="sd">    -----</span>
-<span class="sd">    The current algorithm requires a O(N**2) memory allocations, and so may</span>
-<span class="sd">    not work for very large arrays (N&gt;10000).</span>
+<span class="sd">    The legacy algorithm (``use_fast=False``) uses an O(N**2) implementation</span>
+<span class="sd">    which provides exact results and is reliable for all dataset sizes,</span>
+<span class="sd">    including small inputs and cases with ties. However, it requires a O(N**2)</span>
+<span class="sd">    memory allocations, and so may not work for very large arrays (N&gt;10000).</span>
+
+<span class="sd">    The fast algorithm (``use_fast=True``) implements an O(N log N)</span>
+<span class="sd">    approximation which is optimized for large datasets. **It is not intended</span>
+<span class="sd">    for small sample sizes (N &lt; 10)** or datasets with a high proportion of</span>
+<span class="sd">    ties, as it may yield numerically unstable or inaccurate results in these</span>
+<span class="sd">    cases. For such inputs, prefer ``use_fast=False`` to ensure correctness.</span>
+
+<span class="sd">    If NaNs are present in the input when use_fast=True, the result will be</span>
+<span class="sd">    NaN. To preserve legacy behavior, a number may be returned when</span>
+<span class="sd">    use_fast=False.</span>
+
+<span class="sd">    If the size of ``y`` is less than 3 and ``use_fast=True``, the result will</span>
+<span class="sd">    be NaN. To preserve legacy behavior, a value may be returned when</span>
+<span class="sd">    ``use_fast=False``.</span>
+
+<span class="sd">    Small numerical differences are possible based on the choice of algorithm.</span>
+
+<span class="sd">    .. [*] Guy Brys, Mia Hubert and Anja Struyf (2004) A Robust Measure</span>
+<span class="sd">       of Skewness; JCGS 13 (4), 996-1017.</span>
 
 <span class="sd">    References</span>
 <span class="sd">    ----------</span>
@@ -1064,9 +1421,9 @@
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">y</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">y</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">double</span><span class="p">)</span>  <span class="c1"># GH 4243</span>
     <span class="k">if</span> <span class="n">axis</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-        <span class="k">return</span> <span class="n">_medcouple_1d</span><span class="p">(</span><span class="n">y</span><span class="o">.</span><span class="n">ravel</span><span class="p">())</span>
+        <span class="k">return</span> <span class="n">_medcouple_1d</span><span class="p">(</span><span class="n">y</span><span class="o">.</span><span class="n">ravel</span><span class="p">(),</span> <span class="n">use_fast</span><span class="o">=</span><span class="n">use_fast</span><span class="p">)</span>
 
-    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">apply_along_axis</span><span class="p">(</span><span class="n">_medcouple_1d</span><span class="p">,</span> <span class="n">axis</span><span class="p">,</span> <span class="n">y</span><span class="p">)</span></div>
+    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">apply_along_axis</span><span class="p">(</span><span class="n">_medcouple_1d</span><span class="p">,</span> <span class="n">axis</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">use_fast</span><span class="o">=</span><span class="n">use_fast</span><span class="p">)</span></div>
 
 </pre></div>
 
