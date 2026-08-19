@@ -9,7 +9,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
-    <title>statsmodels.nonparametric.bandwidths &#8212; statsmodels 0.15.0 (+2117)</title>
+    <title>statsmodels.nonparametric.bandwidths &#8212; statsmodels 0.15.0 (+2129)</title>
   <link rel="icon" type="image/png" sizes="32x32" href="../../../_static/icons/favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="../../../_static/icons/favicon-16x16.png">
   <link rel="manifest" href="../../../_static/icons/site.webmanifest">
@@ -71,7 +71,7 @@
     <link rel="search" title="Search" href="../../../search.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="0.15.0 (+2117)" />
+  <meta name="docsearch:version" content="0.15.0 (+2129)" />
     <meta name="docbuild:last-update" content="Aug 19, 2026"/>
   
     
@@ -562,9 +562,10 @@
 <span></span><span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.compat.pandas</span><span class="w"> </span><span class="kn">import</span> <span class="n">Substitution</span>
 
 <span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">scipy.stats</span><span class="w"> </span><span class="kn">import</span> <span class="n">scoreatpercentile</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">scipy.stats</span><span class="w"> </span><span class="kn">import</span> <span class="n">norm</span><span class="p">,</span> <span class="n">scoreatpercentile</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.sandbox.nonparametric</span><span class="w"> </span><span class="kn">import</span> <span class="n">kernels</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.tools.validation</span><span class="w"> </span><span class="kn">import</span> <span class="n">float_like</span>
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">_select_sigma</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">percentile</span><span class="o">=</span><span class="mi">25</span><span class="p">):</span>
@@ -575,23 +576,37 @@
 <span class="sd">    ----------</span>
 <span class="sd">    x : array_like</span>
 <span class="sd">        Array for which to get the dispersion estimate.</span>
-<span class="sd">    percentile : int, optional</span>
-<span class="sd">        Unused.</span>
+<span class="sd">    percentile : float, optional</span>
+<span class="sd">        The lower percentile of the inter-percentile range, in percent. The</span>
+<span class="sd">        upper percentile is ``100 - percentile``. The range is normalized by</span>
+<span class="sd">        the same range of the standard normal distribution, so that the</span>
+<span class="sd">        result estimates the standard deviation when the data are normal.</span>
+<span class="sd">        The default, 25, gives the interquartile range and uses Silverman's</span>
+<span class="sd">        rounded normalizing constant of 1.349.  percentile must be strictly</span>
+<span class="sd">        between 0 and 50.</span>
 
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
 <span class="sd">    float</span>
 <span class="sd">        The smaller of the sample standard deviation and the normalized</span>
-<span class="sd">        interquartile range.</span>
+<span class="sd">        inter-percentile range.</span>
 
 <span class="sd">    References</span>
 <span class="sd">    ----------</span>
 <span class="sd">    Silverman (1986) p.47</span>
 <span class="sd">    """</span>
-    <span class="c1"># normalize = norm.ppf(.75) - norm.ppf(.25)</span>
-    <span class="c1"># TODO: Make percentile work for other values than 75/25</span>
-    <span class="n">normalize</span> <span class="o">=</span> <span class="mf">1.349</span>
-    <span class="n">IQR</span> <span class="o">=</span> <span class="p">(</span><span class="n">scoreatpercentile</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="mi">100</span> <span class="o">-</span> <span class="n">percentile</span><span class="p">)</span> <span class="o">-</span> <span class="n">scoreatpercentile</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">percentile</span><span class="p">))</span> <span class="o">/</span> <span class="n">normalize</span>
+    <span class="n">percentile</span> <span class="o">=</span> <span class="n">float_like</span><span class="p">(</span><span class="n">percentile</span><span class="p">,</span> <span class="s2">"percentile"</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="mi">0</span> <span class="o">&lt;</span> <span class="n">percentile</span> <span class="o">&lt;</span> <span class="mi">50</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"percentile must be between 0 and 50"</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">percentile</span> <span class="o">==</span> <span class="mi">25</span><span class="p">:</span>
+        <span class="c1"># Silverman (1986) p.47 rounds the normal interquartile range to</span>
+        <span class="c1"># four digits. The rounded value is retained for the default so</span>
+        <span class="c1"># that the bandwidths it produces are unchanged.</span>
+        <span class="n">normalize</span> <span class="o">=</span> <span class="mf">1.349</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">normalize</span> <span class="o">=</span> <span class="n">norm</span><span class="o">.</span><span class="n">ppf</span><span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">percentile</span> <span class="o">/</span> <span class="mf">100.0</span><span class="p">)</span> <span class="o">-</span> <span class="n">norm</span><span class="o">.</span><span class="n">ppf</span><span class="p">(</span><span class="n">percentile</span> <span class="o">/</span> <span class="mf">100.0</span><span class="p">)</span>
+    <span class="n">iqr</span> <span class="o">=</span> <span class="n">scoreatpercentile</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="mi">100</span> <span class="o">-</span> <span class="n">percentile</span><span class="p">)</span> <span class="o">-</span> <span class="n">scoreatpercentile</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">percentile</span><span class="p">)</span>
+    <span class="n">IQR</span> <span class="o">=</span> <span class="n">iqr</span> <span class="o">/</span> <span class="n">normalize</span>
     <span class="n">std_dev</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">std</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">ddof</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">IQR</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">minimum</span><span class="p">(</span><span class="n">std_dev</span><span class="p">,</span> <span class="n">IQR</span><span class="p">)</span>
