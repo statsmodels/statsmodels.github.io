@@ -9,7 +9,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
-    <title>statsmodels.discrete.truncated_model &#8212; statsmodels 0.15.0 (+2379)</title>
+    <title>statsmodels.discrete.truncated_model &#8212; statsmodels 0.15.0 (+2389)</title>
   <link rel="icon" type="image/png" sizes="32x32" href="../../../_static/icons/favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="../../../_static/icons/favicon-16x16.png">
   <link rel="manifest" href="../../../_static/icons/site.webmanifest">
@@ -71,7 +71,7 @@
     <link rel="search" title="Search" href="../../../search.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="0.15.0 (+2379)" />
+  <meta name="docsearch:version" content="0.15.0 (+2389)" />
     <meta name="docbuild:last-update" content="Aug 26, 2026"/>
   
     
@@ -569,6 +569,7 @@
 <span class="kn">import</span><span class="w"> </span><span class="nn">warnings</span>
 
 <span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">scipy.linalg</span><span class="w"> </span><span class="kn">import</span> <span class="n">block_diag</span>
 
 <span class="kn">import</span><span class="w"> </span><span class="nn">statsmodels.base.model</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">base</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">statsmodels.base.wrapper</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">wrap</span>
@@ -581,6 +582,8 @@
     <span class="n">NegativeBinomialP</span><span class="p">,</span>
     <span class="n">Poisson</span><span class="p">,</span>
     <span class="n">_discrete_results_docs</span><span class="p">,</span>
+    <span class="n">_l1_results_attr</span><span class="p">,</span>
+    <span class="n">_validate_l1_method</span><span class="p">,</span>
 <span class="p">)</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.distributions.discrete</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
     <span class="n">truncatednegbin</span><span class="p">,</span>
@@ -590,6 +593,13 @@
 <span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.tools._decorators</span><span class="w"> </span><span class="kn">import</span> <span class="n">cache_readonly</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.tools.numdiff</span><span class="w"> </span><span class="kn">import</span> <span class="n">approx_hess</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.tools.sm_exceptions</span><span class="w"> </span><span class="kn">import</span> <span class="n">ConvergenceWarning</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.tools.validation</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">array_like</span><span class="p">,</span>
+    <span class="n">bool_like</span><span class="p">,</span>
+    <span class="n">float_like</span><span class="p">,</span>
+    <span class="n">int_like</span><span class="p">,</span>
+    <span class="n">string_like</span><span class="p">,</span>
+<span class="p">)</span>
 
 
 <span class="k">class</span><span class="w"> </span><span class="nc">TruncatedLFGeneric</span><span class="p">(</span><span class="n">CountModel</span><span class="p">):</span>
@@ -1680,6 +1690,11 @@
             <span class="n">missing</span><span class="o">=</span><span class="n">missing</span><span class="p">,</span>
             <span class="o">**</span><span class="n">kwargs</span>
             <span class="p">)</span>
+        <span class="c1"># Use self.exog rather than the exog argument: the base class has</span>
+        <span class="c1"># already converted it to a 2-dimensional ndarray, so this also</span>
+        <span class="c1"># accepts the array_like inputs (lists, Series, DataFrames) that</span>
+        <span class="c1"># every other count model accepts.</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">k_exog</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">exog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">k_extra1</span> <span class="o">=</span> <span class="mi">0</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">k_extra2</span> <span class="o">=</span> <span class="mi">0</span>
 
@@ -1709,6 +1724,18 @@
                                                        <span class="n">p</span><span class="o">=</span><span class="n">p</span><span class="p">)</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">k_extra2</span> <span class="o">+=</span> <span class="mi">1</span>
 
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_k_zero</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">"""</span>
+<span class="sd">        Index that splits the parameter vector into its two components.</span>
+
+<span class="sd">        Parameters are ordered as the zero model's exog parameters, the zero</span>
+<span class="sd">        model's extra parameters, the main model's exog parameters and then</span>
+<span class="sd">        the main model's extra parameters. ``params[:_k_zero]`` therefore</span>
+<span class="sd">        belongs to the zero model and ``params[_k_zero:]`` to the main model.</span>
+<span class="sd">        """</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_exog</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_extra1</span>
+
 <div class="viewcode-block" id="HurdleCountModel.loglike">
 <a class="viewcode-back" href="../../../generated/statsmodels.discrete.truncated_model.HurdleCountModel.loglike.html#statsmodels.discrete.truncated_model.HurdleCountModel.loglike">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">loglike</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">):</span>
@@ -1725,8 +1752,7 @@
 <span class="sd">        loglike : float</span>
 <span class="sd">            The log-likelihood function of the model evaluated at `params`.</span>
 <span class="sd">        """</span>
-        <span class="n">k</span> <span class="o">=</span> <span class="nb">int</span><span class="p">((</span><span class="nb">len</span><span class="p">(</span><span class="n">params</span><span class="p">)</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_extra1</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_extra2</span><span class="p">)</span> <span class="o">/</span> <span class="mi">2</span>
-                <span class="p">)</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_extra1</span>
+        <span class="n">k</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_k_zero</span>
         <span class="k">return</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">model1</span><span class="o">.</span><span class="n">loglike</span><span class="p">(</span><span class="n">params</span><span class="p">[:</span><span class="n">k</span><span class="p">])</span> <span class="o">+</span>
                 <span class="bp">self</span><span class="o">.</span><span class="n">model2</span><span class="o">.</span><span class="n">loglike</span><span class="p">(</span><span class="n">params</span><span class="p">[</span><span class="n">k</span><span class="p">:]))</span></div>
 
@@ -1771,7 +1797,6 @@
 
         <span class="c1"># fix up cov_params,</span>
         <span class="c1"># we could use normalized cov_params directly, unless it's not used</span>
-        <span class="kn">from</span><span class="w"> </span><span class="nn">scipy.linalg</span><span class="w"> </span><span class="kn">import</span> <span class="n">block_diag</span>
         <span class="n">result</span><span class="o">.</span><span class="n">_results</span><span class="o">.</span><span class="n">normalized_cov_params</span> <span class="o">=</span> <span class="kc">None</span>
         <span class="k">try</span><span class="p">:</span>
             <span class="n">cov1</span> <span class="o">=</span> <span class="n">results1</span><span class="o">.</span><span class="n">_results</span><span class="o">.</span><span class="n">cov_params</span><span class="p">()</span>
@@ -1789,6 +1814,319 @@
 
 
     <span class="n">fit</span><span class="o">.</span><span class="vm">__doc__</span> <span class="o">=</span> <span class="n">DiscreteModel</span><span class="o">.</span><span class="n">fit</span><span class="o">.</span><span class="vm">__doc__</span>
+
+<div class="viewcode-block" id="HurdleCountModel.fit_regularized">
+<a class="viewcode-back" href="../../../generated/statsmodels.discrete.truncated_model.HurdleCountModel.fit_regularized.html#statsmodels.discrete.truncated_model.HurdleCountModel.fit_regularized">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">fit_regularized</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">start_params</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">method</span><span class="o">=</span><span class="s2">"l1"</span><span class="p">,</span>
+        <span class="n">maxiter</span><span class="o">=</span><span class="s2">"defined_by_method"</span><span class="p">,</span>
+        <span class="n">full_output</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+        <span class="n">disp</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+        <span class="n">callback</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">alpha</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+        <span class="n">trim_mode</span><span class="o">=</span><span class="s2">"auto"</span><span class="p">,</span>
+        <span class="n">auto_trim_tol</span><span class="o">=</span><span class="mf">0.01</span><span class="p">,</span>
+        <span class="n">size_trim_tol</span><span class="o">=</span><span class="mf">1e-4</span><span class="p">,</span>
+        <span class="n">qc_tol</span><span class="o">=</span><span class="mf">0.03</span><span class="p">,</span>
+        <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
+    <span class="p">):</span>
+<span class="w">        </span><span class="sa">r</span><span class="sd">"""</span>
+<span class="sd">        Fit the model using a regularized maximum likelihood.</span>
+
+<span class="sd">        The zero model and the main model are penalized and fit separately,</span>
+<span class="sd">        and the combined parameter vector is then refit jointly.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        start_params : array_like, optional</span>
+<span class="sd">            Initial guess of the solution for the log-likelihood</span>
+<span class="sd">            maximization. The default is an array of zeros. Ordered as</span>
+<span class="sd">            described under `alpha`.</span>
+<span class="sd">        method : {'l1', 'l1_cvxopt_cp'}, optional</span>
+<span class="sd">            See notes for details.</span>
+<span class="sd">        maxiter : int or 'defined_by_method', optional</span>
+<span class="sd">            Maximum number of iterations to perform.</span>
+<span class="sd">            If 'defined_by_method', then use method defaults (see notes).</span>
+<span class="sd">        full_output : bool, optional</span>
+<span class="sd">            Set to True to have all available output in the Results object's</span>
+<span class="sd">            mle_retvals attribute. The output is dependent on the solver.</span>
+<span class="sd">            See LikelihoodModelResults notes section for more information.</span>
+<span class="sd">        disp : bool, optional</span>
+<span class="sd">            Set to True to print convergence messages.</span>
+<span class="sd">        callback : callable, optional</span>
+<span class="sd">            Called after each iteration, as callback(xk), where xk is the</span>
+<span class="sd">            current parameter vector.</span>
+<span class="sd">        alpha : float or array_like, optional</span>
+<span class="sd">            Non-negative. The weight multiplying the l1 penalty term. If a</span>
+<span class="sd">            scalar, every exog parameter of both components is penalized by</span>
+<span class="sd">            this value and the extra parameters are left unpenalized, for</span>
+<span class="sd">            example the shape parameter of a NegativeBinomialP component.</span>
+
+<span class="sd">            If an array, it must have one entry per parameter, ordered as the</span>
+<span class="sd">            zero model's exog parameters, the zero model's extra parameters,</span>
+<span class="sd">            the main model's exog parameters and then the main model's extra</span>
+<span class="sd">            parameters. For example, a hurdle model with 3 exog variables,</span>
+<span class="sd">            ``zerodist="poisson"`` and ``dist="negbin"`` takes an `alpha` of</span>
+<span class="sd">            length 7, whose last entry is the weight on the main model's</span>
+<span class="sd">            shape parameter.</span>
+<span class="sd">        trim_mode : {'auto', 'size', 'off'}, optional</span>
+<span class="sd">            If not 'off', trim (set to zero) parameters that would have been</span>
+<span class="sd">            zero if the solver reached the theoretical minimum.</span>
+<span class="sd">            If 'auto', trim params using the theory in the notes below.</span>
+<span class="sd">            If 'size', trim params if they have very small absolute value.</span>
+<span class="sd">        auto_trim_tol : float, optional</span>
+<span class="sd">            Tolerance used when trim_mode == 'auto'.</span>
+<span class="sd">        size_trim_tol : float, optional</span>
+<span class="sd">            Tolerance used when trim_mode == 'size'.</span>
+<span class="sd">        qc_tol : float, optional</span>
+<span class="sd">            Print warning and do not allow auto trim when condition (ii) in</span>
+<span class="sd">            the notes below is violated by this much.</span>
+<span class="sd">        **kwargs</span>
+<span class="sd">            Additional keyword arguments used when fitting the model.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        L1HurdleCountResultsWrapper</span>
+<span class="sd">            A results instance.</span>
+
+<span class="sd">        Notes</span>
+<span class="sd">        -----</span>
+<span class="sd">        Using 'l1_cvxopt_cp' requires the cvxopt module.</span>
+
+<span class="sd">        Optional arguments for the solvers (available in</span>
+<span class="sd">        Results.mle_settings)::</span>
+
+<span class="sd">            'l1'</span>
+<span class="sd">                acc : float (default 1e-6)</span>
+<span class="sd">                    Requested accuracy as used by slsqp</span>
+<span class="sd">            'l1_cvxopt_cp'</span>
+<span class="sd">                abstol : float</span>
+<span class="sd">                    absolute accuracy (default: 1e-7).</span>
+<span class="sd">                reltol : float</span>
+<span class="sd">                    relative accuracy (default: 1e-6).</span>
+<span class="sd">                feastol : float</span>
+<span class="sd">                    tolerance for feasibility conditions (default: 1e-7).</span>
+<span class="sd">                refinement : int</span>
+<span class="sd">                    number of iterative refinement steps when solving KKT</span>
+<span class="sd">                    equations (default: 1).</span>
+
+<span class="sd">        Optimization methodology</span>
+
+<span class="sd">        With :math:`L` the negative log likelihood, we solve the convex but</span>
+<span class="sd">        non-smooth problem</span>
+
+<span class="sd">        .. math:: \min_\beta L(\beta) + \sum_k\alpha_k |\beta_k|</span>
+
+<span class="sd">        via the transformation to the smooth, convex, constrained problem</span>
+<span class="sd">        in twice as many variables (adding the "added variables" :math:`u_k`)</span>
+
+<span class="sd">        .. math:: \min_{\beta,u} L(\beta) + \sum_k\alpha_k u_k,</span>
+
+<span class="sd">        subject to</span>
+
+<span class="sd">        .. math:: -u_k \leq \beta_k \leq u_k.</span>
+
+<span class="sd">        With :math:`\partial_k L` the derivative of :math:`L` in the</span>
+<span class="sd">        :math:`k^{th}` parameter direction, theory dictates that, at the</span>
+<span class="sd">        minimum, exactly one of two conditions holds:</span>
+
+<span class="sd">        (i) :math:`|\partial_k L| = \alpha_k`  and  :math:`\beta_k \neq 0`</span>
+<span class="sd">        (ii) :math:`|\partial_k L| \leq \alpha_k`  and  :math:`\beta_k = 0`</span>
+<span class="sd">        """</span>
+        <span class="n">_validate_l1_method</span><span class="p">(</span><span class="n">method</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">maxiter</span> <span class="o">!=</span> <span class="s2">"defined_by_method"</span><span class="p">:</span>
+            <span class="n">maxiter</span> <span class="o">=</span> <span class="n">int_like</span><span class="p">(</span><span class="n">maxiter</span><span class="p">,</span> <span class="s2">"maxiter"</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">maxiter</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"maxiter must be non-negative"</span><span class="p">)</span>
+        <span class="n">full_output</span> <span class="o">=</span> <span class="n">bool_like</span><span class="p">(</span><span class="n">full_output</span><span class="p">,</span> <span class="s2">"full_output"</span><span class="p">)</span>
+        <span class="n">disp</span> <span class="o">=</span> <span class="n">bool_like</span><span class="p">(</span><span class="n">disp</span><span class="p">,</span> <span class="s2">"disp"</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">callback</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="ow">not</span> <span class="nb">callable</span><span class="p">(</span><span class="n">callback</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">"callback must be callable or None"</span><span class="p">)</span>
+        <span class="n">trim_mode</span> <span class="o">=</span> <span class="n">string_like</span><span class="p">(</span>
+            <span class="n">trim_mode</span><span class="p">,</span> <span class="s2">"trim_mode"</span><span class="p">,</span> <span class="n">options</span><span class="o">=</span><span class="p">(</span><span class="s2">"auto"</span><span class="p">,</span> <span class="s2">"size"</span><span class="p">,</span> <span class="s2">"off"</span><span class="p">),</span>
+            <span class="n">lower</span><span class="o">=</span><span class="kc">False</span>
+        <span class="p">)</span>
+        <span class="n">auto_trim_tol</span> <span class="o">=</span> <span class="n">float_like</span><span class="p">(</span><span class="n">auto_trim_tol</span><span class="p">,</span> <span class="s2">"auto_trim_tol"</span><span class="p">)</span>
+        <span class="n">size_trim_tol</span> <span class="o">=</span> <span class="n">float_like</span><span class="p">(</span><span class="n">size_trim_tol</span><span class="p">,</span> <span class="s2">"size_trim_tol"</span><span class="p">)</span>
+        <span class="n">qc_tol</span> <span class="o">=</span> <span class="n">float_like</span><span class="p">(</span><span class="n">qc_tol</span><span class="p">,</span> <span class="s2">"qc_tol"</span><span class="p">)</span>
+
+        <span class="n">k_zero</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_k_zero</span>
+        <span class="n">k_params</span> <span class="o">=</span> <span class="n">k_zero</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_exog</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_extra2</span>
+        <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">size</span><span class="p">(</span><span class="n">alpha</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="c1"># Do not penalize extra parameters if alpha is a scalar</span>
+            <span class="n">alpha</span> <span class="o">=</span> <span class="n">float_like</span><span class="p">(</span><span class="n">alpha</span><span class="p">,</span> <span class="s2">"alpha"</span><span class="p">)</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span>
+                <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">k_exog</span><span class="p">),</span>
+                <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">k_extra1</span><span class="p">),</span>
+                <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">k_exog</span><span class="p">),</span>
+                <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">k_extra2</span><span class="p">),</span>
+            <span class="p">])</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">alpha</span> <span class="o">=</span> <span class="n">array_like</span><span class="p">(</span><span class="n">alpha</span><span class="p">,</span> <span class="s2">"alpha"</span><span class="p">,</span> <span class="n">ndim</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">alpha</span><span class="o">.</span><span class="n">size</span> <span class="o">!=</span> <span class="n">k_params</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                    <span class="s2">"alpha must be a scalar or a 1-dimensional array with "</span>
+                    <span class="sa">f</span><span class="s2">"one entry per parameter. The model has </span><span class="si">{</span><span class="n">k_params</span><span class="si">}</span><span class="s2"> "</span>
+                    <span class="sa">f</span><span class="s2">"parameters, </span><span class="si">{</span><span class="n">k_zero</span><span class="si">}</span><span class="s2"> in the zero model and "</span>
+                    <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">k_params</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">k_zero</span><span class="si">}</span><span class="s2"> in the main model, but alpha has "</span>
+                    <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">alpha</span><span class="o">.</span><span class="n">size</span><span class="si">}</span><span class="s2">."</span>
+                <span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">alpha</span> <span class="o">&gt;=</span> <span class="mi">0</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"alpha must be non-negative"</span><span class="p">)</span>
+        <span class="n">alpha1</span> <span class="o">=</span> <span class="n">alpha</span><span class="p">[:</span><span class="n">k_zero</span><span class="p">]</span>
+        <span class="n">alpha2</span> <span class="o">=</span> <span class="n">alpha</span><span class="p">[</span><span class="n">k_zero</span><span class="p">:]</span>
+
+        <span class="k">if</span> <span class="n">start_params</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">start_params1</span> <span class="o">=</span> <span class="kc">None</span>
+            <span class="n">start_params2</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">start_params</span> <span class="o">=</span> <span class="n">array_like</span><span class="p">(</span><span class="n">start_params</span><span class="p">,</span> <span class="s2">"start_params"</span><span class="p">,</span> <span class="n">ndim</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">start_params</span><span class="o">.</span><span class="n">size</span> <span class="o">!=</span> <span class="n">k_params</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                    <span class="s2">"start_params must have one entry per parameter. The "</span>
+                    <span class="sa">f</span><span class="s2">"model has </span><span class="si">{</span><span class="n">k_params</span><span class="si">}</span><span class="s2"> parameters, </span><span class="si">{</span><span class="n">k_zero</span><span class="si">}</span><span class="s2"> in the zero "</span>
+                    <span class="sa">f</span><span class="s2">"model and </span><span class="si">{</span><span class="n">k_params</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">k_zero</span><span class="si">}</span><span class="s2"> in the main model, but "</span>
+                    <span class="sa">f</span><span class="s2">"start_params has </span><span class="si">{</span><span class="n">start_params</span><span class="o">.</span><span class="n">size</span><span class="si">}</span><span class="s2">."</span>
+                <span class="p">)</span>
+            <span class="n">start_params1</span> <span class="o">=</span> <span class="n">start_params</span><span class="p">[:</span><span class="n">k_zero</span><span class="p">]</span>
+            <span class="n">start_params2</span> <span class="o">=</span> <span class="n">start_params</span><span class="p">[</span><span class="n">k_zero</span><span class="p">:]</span>
+
+        <span class="n">results1</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model1</span><span class="o">.</span><span class="n">fit_regularized</span><span class="p">(</span>
+            <span class="n">start_params</span><span class="o">=</span><span class="n">start_params1</span><span class="p">,</span>
+            <span class="n">method</span><span class="o">=</span><span class="n">method</span><span class="p">,</span>
+            <span class="n">maxiter</span><span class="o">=</span><span class="n">maxiter</span><span class="p">,</span>
+            <span class="n">full_output</span><span class="o">=</span><span class="n">full_output</span><span class="p">,</span>
+            <span class="n">disp</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+            <span class="n">callback</span><span class="o">=</span><span class="n">callback</span><span class="p">,</span>
+            <span class="n">alpha</span><span class="o">=</span><span class="n">alpha1</span><span class="p">,</span>
+            <span class="n">trim_mode</span><span class="o">=</span><span class="n">trim_mode</span><span class="p">,</span>
+            <span class="n">auto_trim_tol</span><span class="o">=</span><span class="n">auto_trim_tol</span><span class="p">,</span>
+            <span class="n">size_trim_tol</span><span class="o">=</span><span class="n">size_trim_tol</span><span class="p">,</span>
+            <span class="n">qc_tol</span><span class="o">=</span><span class="n">qc_tol</span><span class="p">,</span>
+            <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">start_params1</span> <span class="o">=</span> <span class="n">results1</span><span class="o">.</span><span class="n">params</span>
+        <span class="n">results2</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model2</span><span class="o">.</span><span class="n">fit_regularized</span><span class="p">(</span>
+            <span class="n">start_params</span><span class="o">=</span><span class="n">start_params2</span><span class="p">,</span>
+            <span class="n">method</span><span class="o">=</span><span class="n">method</span><span class="p">,</span>
+            <span class="n">maxiter</span><span class="o">=</span><span class="n">maxiter</span><span class="p">,</span>
+            <span class="n">full_output</span><span class="o">=</span><span class="n">full_output</span><span class="p">,</span>
+            <span class="n">disp</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+            <span class="n">callback</span><span class="o">=</span><span class="n">callback</span><span class="p">,</span>
+            <span class="n">alpha</span><span class="o">=</span><span class="n">alpha2</span><span class="p">,</span>
+            <span class="n">trim_mode</span><span class="o">=</span><span class="n">trim_mode</span><span class="p">,</span>
+            <span class="n">auto_trim_tol</span><span class="o">=</span><span class="n">auto_trim_tol</span><span class="p">,</span>
+            <span class="n">size_trim_tol</span><span class="o">=</span><span class="n">size_trim_tol</span><span class="p">,</span>
+            <span class="n">qc_tol</span><span class="o">=</span><span class="n">qc_tol</span><span class="p">,</span>
+            <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">start_params2</span> <span class="o">=</span> <span class="n">results2</span><span class="o">.</span><span class="n">params</span>
+        <span class="n">start_params</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">start_params1</span><span class="p">,</span> <span class="n">start_params2</span><span class="p">)</span>
+
+        <span class="n">cntfit</span> <span class="o">=</span> <span class="nb">super</span><span class="p">(</span><span class="n">CountModel</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">fit_regularized</span><span class="p">(</span>
+            <span class="n">start_params</span><span class="o">=</span><span class="n">start_params</span><span class="p">,</span>
+            <span class="n">method</span><span class="o">=</span><span class="n">method</span><span class="p">,</span>
+            <span class="n">maxiter</span><span class="o">=</span><span class="n">maxiter</span><span class="p">,</span>
+            <span class="n">full_output</span><span class="o">=</span><span class="n">full_output</span><span class="p">,</span>
+            <span class="n">disp</span><span class="o">=</span><span class="n">disp</span><span class="p">,</span>
+            <span class="n">callback</span><span class="o">=</span><span class="n">callback</span><span class="p">,</span>
+            <span class="n">alpha</span><span class="o">=</span><span class="n">alpha</span><span class="p">,</span>
+            <span class="n">trim_mode</span><span class="o">=</span><span class="n">trim_mode</span><span class="p">,</span>
+            <span class="n">auto_trim_tol</span><span class="o">=</span><span class="n">auto_trim_tol</span><span class="p">,</span>
+            <span class="n">size_trim_tol</span><span class="o">=</span><span class="n">size_trim_tol</span><span class="p">,</span>
+            <span class="n">qc_tol</span><span class="o">=</span><span class="n">qc_tol</span><span class="p">,</span>
+            <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">cntfit</span><span class="o">.</span><span class="n">mle_retvals</span><span class="p">[</span><span class="s2">"converged"</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="n">results1</span><span class="o">.</span><span class="n">mle_retvals</span><span class="p">[</span><span class="s2">"converged"</span><span class="p">],</span> <span class="n">results2</span><span class="o">.</span><span class="n">mle_retvals</span><span class="p">[</span><span class="s2">"converged"</span><span class="p">]</span>
+        <span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">k_extra1</span> <span class="o">+=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">results1</span><span class="o">.</span><span class="n">_results</span><span class="p">,</span> <span class="s2">"k_extra"</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">k_extra2</span> <span class="o">+=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">results2</span><span class="o">.</span><span class="n">_results</span><span class="p">,</span> <span class="s2">"k_extra"</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">k_extra</span> <span class="o">=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">k_extra1</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_extra2</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="n">xnames1</span> <span class="o">=</span> <span class="p">[</span><span class="s2">"zm_"</span> <span class="o">+</span> <span class="n">name</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">model1</span><span class="o">.</span><span class="n">exog_names</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">exog_names</span><span class="p">[:]</span> <span class="o">=</span> <span class="n">xnames1</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">model2</span><span class="o">.</span><span class="n">exog_names</span>
+        <span class="c1"># Deliberately keep the covariance that came back from the joint</span>
+        <span class="c1"># refit. fit has no joint optimization step, so it has to assemble a</span>
+        <span class="c1"># covariance out of the two component fits, but here</span>
+        <span class="c1"># DiscreteModel.cov_params_func_l1 has already built one from the</span>
+        <span class="c1"># joint hessian and the joint set of trimmed parameters. Replacing it</span>
+        <span class="c1"># with a block diagonal of the component covariances would pair the</span>
+        <span class="c1"># params of one optimization with the standard errors of another,</span>
+        <span class="c1"># which shows up as a non-zero coefficient reported with a nan</span>
+        <span class="c1"># standard error whenever the two disagree about trimming.</span>
+
+        <span class="n">hurdlefit</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">result_class_reg</span><span class="p">(</span>
+            <span class="bp">self</span><span class="p">,</span> <span class="n">cntfit</span><span class="p">,</span> <span class="n">results_zero</span><span class="o">=</span><span class="n">results1</span><span class="p">,</span> <span class="n">results_count</span><span class="o">=</span><span class="n">results2</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">result_class_reg_wrapper</span><span class="p">(</span><span class="n">hurdlefit</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="HurdleCountModel.score_obs">
+<a class="viewcode-back" href="../../../generated/statsmodels.discrete.truncated_model.HurdleCountModel.score_obs.html#statsmodels.discrete.truncated_model.HurdleCountModel.score_obs">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">score_obs</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">"""</span>
+<span class="sd">        Hurdle model score (gradient) vector of the log-likelihood.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        params : array_like</span>
+<span class="sd">            The parameters of the model</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        score_obs : ndarray, 2-D</span>
+<span class="sd">            The derivative of the log-likelihood for each observation,</span>
+<span class="sd">            evaluated at `params`, with shape (nobs, k_params).</span>
+<span class="sd">        """</span>
+        <span class="n">k_zero</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_k_zero</span>
+        <span class="n">params_zero</span> <span class="o">=</span> <span class="n">params</span><span class="p">[:</span><span class="n">k_zero</span><span class="p">]</span>
+        <span class="n">params_main</span> <span class="o">=</span> <span class="n">params</span><span class="p">[</span><span class="n">k_zero</span><span class="p">:]</span>
+        <span class="n">score_zero</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model1</span><span class="o">.</span><span class="n">score_obs</span><span class="p">(</span><span class="n">params_zero</span><span class="p">)</span>
+        <span class="c1"># The score of the main model is only defined for non-zero elements of</span>
+        <span class="c1"># endog due to under-the-hood masking in left-truncated models. Since</span>
+        <span class="c1"># those entries contribute nothing to the gradient, we can just fill</span>
+        <span class="c1"># them with 0.</span>
+        <span class="n">score_main</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="bp">self</span><span class="o">.</span><span class="n">exog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_exog</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_extra2</span><span class="p">))</span>
+        <span class="n">truncated_score_main</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model2</span><span class="o">.</span><span class="n">score_obs</span><span class="p">(</span><span class="n">params_main</span><span class="p">)</span>
+        <span class="n">nonzero_idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nonzero</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">endog</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">score_main</span><span class="p">[</span><span class="n">nonzero_idx</span><span class="p">,</span> <span class="p">:]</span> <span class="o">=</span> <span class="n">truncated_score_main</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">hstack</span><span class="p">((</span><span class="n">score_zero</span><span class="p">,</span> <span class="n">score_main</span><span class="p">))</span></div>
+
+
+<div class="viewcode-block" id="HurdleCountModel.score">
+<a class="viewcode-back" href="../../../generated/statsmodels.discrete.truncated_model.HurdleCountModel.score.html#statsmodels.discrete.truncated_model.HurdleCountModel.score">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">score</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">score_obs</span><span class="p">(</span><span class="n">params</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="HurdleCountModel.hessian">
+<a class="viewcode-back" href="../../../generated/statsmodels.discrete.truncated_model.HurdleCountModel.hessian.html#statsmodels.discrete.truncated_model.HurdleCountModel.hessian">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">hessian</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">"""</span>
+<span class="sd">        Hurdle model Hessian matrix of the log-likelihood. When the zero and</span>
+<span class="sd">        main models are separately estimated, this is a block diagonal matrix of</span>
+<span class="sd">        the two models' Hessians.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        params : array_like</span>
+<span class="sd">            The parameters of the model</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        hess : ndarray, (k_vars, k_vars)</span>
+<span class="sd">            The Hessian, second derivative of loglikelihood function, evaluated</span>
+<span class="sd">            at `params`</span>
+<span class="sd">        """</span>
+        <span class="n">k_zero</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_k_zero</span>
+        <span class="n">params_zero</span> <span class="o">=</span> <span class="n">params</span><span class="p">[:</span><span class="n">k_zero</span><span class="p">]</span>
+        <span class="n">params_main</span> <span class="o">=</span> <span class="n">params</span><span class="p">[</span><span class="n">k_zero</span><span class="p">:]</span>
+        <span class="n">hessian_zero</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model1</span><span class="o">.</span><span class="n">hessian</span><span class="p">(</span><span class="n">params_zero</span><span class="p">)</span>
+        <span class="n">hessian_main</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model2</span><span class="o">.</span><span class="n">hessian</span><span class="p">(</span><span class="n">params_main</span><span class="p">)</span>
+        <span class="n">hessian</span> <span class="o">=</span> <span class="n">block_diag</span><span class="p">(</span><span class="n">hessian_zero</span><span class="p">,</span> <span class="n">hessian_main</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">hessian</span></div>
+
 
 <div class="viewcode-block" id="HurdleCountModel.predict">
 <a class="viewcode-back" href="../../../generated/statsmodels.discrete.truncated_model.HurdleCountModel.predict.html#statsmodels.discrete.truncated_model.HurdleCountModel.predict">[docs]</a>
@@ -2025,8 +2363,55 @@
 
 
 
-<span class="k">class</span><span class="w"> </span><span class="nc">L1HurdleCountResults</span><span class="p">(</span><span class="n">L1CountResults</span><span class="p">,</span> <span class="n">HurdleCountResults</span><span class="p">):</span>
-    <span class="k">pass</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">L1HurdleCountResults</span><span class="p">(</span><span class="n">HurdleCountResults</span><span class="p">):</span>
+    <span class="vm">__doc__</span> <span class="o">=</span> <span class="n">_discrete_results_docs</span> <span class="o">%</span> <span class="p">{</span>
+        <span class="s2">"one_line_description"</span><span class="p">:</span> <span class="s2">"A results class for Hurdle model fit by l1 regularization"</span><span class="p">,</span>
+        <span class="s2">"extra_attr"</span><span class="p">:</span> <span class="n">_l1_results_attr</span>
+    <span class="p">}</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">model</span><span class="p">,</span>
+        <span class="n">mlefit</span><span class="p">,</span>
+        <span class="n">results_zero</span><span class="p">,</span>
+        <span class="n">results_count</span><span class="p">,</span>
+        <span class="n">cov_type</span><span class="o">=</span><span class="s2">"nonrobust"</span><span class="p">,</span>
+        <span class="n">cov_kwds</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">use_t</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+    <span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span>
+            <span class="n">model</span><span class="o">=</span><span class="n">model</span><span class="p">,</span>
+            <span class="n">mlefit</span><span class="o">=</span><span class="n">mlefit</span><span class="p">,</span>
+            <span class="n">results_zero</span><span class="o">=</span><span class="n">results_zero</span><span class="p">,</span>
+            <span class="n">results_count</span><span class="o">=</span><span class="n">results_count</span><span class="p">,</span>
+            <span class="n">cov_type</span><span class="o">=</span><span class="n">cov_type</span><span class="p">,</span>
+            <span class="n">cov_kwds</span><span class="o">=</span><span class="n">cov_kwds</span><span class="p">,</span>
+            <span class="n">use_t</span><span class="o">=</span><span class="n">use_t</span>
+        <span class="p">)</span>
+        <span class="c1"># TODO: mixins might eliminate the need for the below duplicated code</span>
+        <span class="c1">#  (cf. .discrete_model.L1CountResults)</span>
+        <span class="c1"># self.trimmed is a boolean array with T/F telling whether or not that</span>
+        <span class="c1"># entry in params has been zeroed out.</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">trimmed</span> <span class="o">=</span> <span class="n">mlefit</span><span class="o">.</span><span class="n">mle_retvals</span><span class="p">[</span><span class="s2">"trimmed"</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">nnz_params</span> <span class="o">=</span> <span class="p">(</span><span class="o">~</span><span class="bp">self</span><span class="o">.</span><span class="n">trimmed</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
+
+        <span class="c1"># Set degrees of freedom. Adjust for extra parameters not included in</span>
+        <span class="c1"># df_model. Unlike L1CountResults, df_resid does not add k_extra back,</span>
+        <span class="c1"># so that it agrees with HurdleCountResults on an untrimmed fit.</span>
+        <span class="n">k_extra</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="p">,</span> <span class="s2">"k_extra"</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">df_model</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">nnz_params</span> <span class="o">-</span> <span class="mi">1</span> <span class="o">-</span> <span class="n">k_extra</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">df_resid</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">endog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">nnz_params</span>
+
+    <span class="nd">@cache_readonly</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">bse</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c1"># Not HurdleCountResults.bse, which concatenates the standard errors</span>
+        <span class="c1"># of the two component fits. params come from the joint refit, so the</span>
+        <span class="c1"># standard errors have to come from the joint covariance as well, or</span>
+        <span class="c1"># the two disagree about which parameters were trimmed. This is the</span>
+        <span class="c1"># standard LikelihoodModelResults.bse.</span>
+        <span class="k">with</span> <span class="n">warnings</span><span class="o">.</span><span class="n">catch_warnings</span><span class="p">():</span>
+            <span class="n">warnings</span><span class="o">.</span><span class="n">simplefilter</span><span class="p">(</span><span class="s2">"ignore"</span><span class="p">,</span> <span class="ne">RuntimeWarning</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">diag</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">cov_params</span><span class="p">()))</span>
 
 
 <span class="k">class</span><span class="w"> </span><span class="nc">HurdleCountResultsWrapper</span><span class="p">(</span><span class="n">lm</span><span class="o">.</span><span class="n">RegressionResultsWrapper</span><span class="p">):</span>
