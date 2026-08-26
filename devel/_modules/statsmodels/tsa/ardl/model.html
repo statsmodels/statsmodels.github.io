@@ -9,7 +9,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
-    <title>statsmodels.tsa.ardl.model &#8212; statsmodels 0.15.0 (+2402)</title>
+    <title>statsmodels.tsa.ardl.model &#8212; statsmodels 0.15.0 (+2405)</title>
   <link rel="icon" type="image/png" sizes="32x32" href="../../../../_static/icons/favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="../../../../_static/icons/favicon-16x16.png">
   <link rel="manifest" href="../../../../_static/icons/site.webmanifest">
@@ -71,7 +71,7 @@
     <link rel="search" title="Search" href="../../../../search.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="0.15.0 (+2402)" />
+  <meta name="docsearch:version" content="0.15.0 (+2405)" />
     <meta name="docbuild:last-update" content="Aug 26, 2026"/>
   
     
@@ -705,7 +705,15 @@
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="n">Hashable</span><span class="p">,</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]]:</span>
     <span class="n">keys</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">Hashable</span><span class="p">]</span>
     <span class="n">exog_order</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="n">Hashable</span><span class="p">,</span> <span class="nb">int</span> <span class="o">|</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span><span class="p">]</span>
-    <span class="k">if</span> <span class="n">exog</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">order</span> <span class="ow">in</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="kc">None</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">exog</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="p">(</span><span class="n">order</span> <span class="ow">in</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">order</span><span class="p">):</span>
+        <span class="c1"># order is `{}`, the resolved (already-formatted) empty order that</span>
+        <span class="c1"># a no-exog model's own _order attribute holds -- ARDLResults.apply</span>
+        <span class="c1"># and .append round-trip _order back through this function when</span>
+        <span class="c1"># cloning a fitted model onto new data, so `order in (0, None)`</span>
+        <span class="c1"># alone isn't enough: an empty dict is truthy-equal to neither `0`</span>
+        <span class="c1"># nor `None`, so without this it falls through to the array_like</span>
+        <span class="c1"># call below and raises on the None exog that's completely</span>
+        <span class="c1"># legitimate for a model that never had exog to begin with.</span>
         <span class="k">return</span> <span class="p">{}</span>
     <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">exog</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">):</span>
         <span class="n">exog</span> <span class="o">=</span> <span class="n">array_like</span><span class="p">(</span><span class="n">exog</span><span class="p">,</span> <span class="s2">"exog"</span><span class="p">,</span> <span class="n">ndim</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">maxdim</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
@@ -1735,6 +1743,41 @@
 <span class="sd">        """</span>
 
         <span class="n">existing</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span>
+
+        <span class="c1"># These two checks must run before the ARDL(...) reconstruction</span>
+        <span class="c1"># below, not after it: existing._order is a dict keyed by the</span>
+        <span class="c1"># original exog's column names (DataFrame) or positions (ndarray),</span>
+        <span class="c1"># so almost any exog mismatch -- missing entirely, wrong number of</span>
+        <span class="c1"># columns, different column names -- makes _format_order raise its</span>
+        <span class="c1"># own "extra keys"/"array_like" error first, while trying to apply</span>
+        <span class="c1"># that stale order to the new exog. That error gets caught by the</span>
+        <span class="c1"># try/except below and wrapped into a generic message, so the</span>
+        <span class="c1"># specific, actionable errors here were previously unreachable for</span>
+        <span class="c1"># most of the mismatches they exist to describe.</span>
+        <span class="k">if</span> <span class="p">(</span><span class="n">exog</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">)</span> <span class="o">!=</span> <span class="p">(</span><span class="n">existing</span><span class="o">.</span><span class="n">exog</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">existing</span><span class="o">.</span><span class="n">exog</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                    <span class="s2">"exog must be provided when the original model contained "</span>
+                    <span class="s2">"exog variables"</span>
+                <span class="p">)</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="s2">"exog must be None when the original model did not contain "</span>
+                <span class="s2">"exog variables"</span>
+            <span class="p">)</span>
+        <span class="k">if</span> <span class="n">existing</span><span class="o">.</span><span class="n">exog</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="c1"># Mirrors _format_order's own type check: a DataFrame's column</span>
+            <span class="c1"># count is read directly, anything else goes through the same</span>
+            <span class="c1"># array_like coercion _format_order itself uses.</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">exog</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">):</span>
+                <span class="n">n_exog</span> <span class="o">=</span> <span class="n">exog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">n_exog</span> <span class="o">=</span> <span class="n">array_like</span><span class="p">(</span><span class="n">exog</span><span class="p">,</span> <span class="s2">"exog"</span><span class="p">,</span> <span class="n">ndim</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">maxdim</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+            <span class="k">if</span> <span class="n">existing</span><span class="o">.</span><span class="n">exog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">!=</span> <span class="n">n_exog</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                    <span class="s2">"The number of exog variables passed must match the "</span>
+                    <span class="sa">f</span><span class="s2">"original Number of exog values (</span><span class="si">{</span><span class="n">existing</span><span class="o">.</span><span class="n">exog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="si">}</span><span class="s2">)"</span>
+                <span class="p">)</span>
+
         <span class="k">try</span><span class="p">:</span>
             <span class="n">deterministic</span> <span class="o">=</span> <span class="n">existing</span><span class="o">.</span><span class="n">deterministic</span>
             <span class="k">if</span> <span class="n">deterministic</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
@@ -1767,21 +1810,6 @@
             <span class="n">exc</span><span class="o">.</span><span class="n">args</span> <span class="o">=</span> <span class="p">(</span><span class="n">error</span><span class="p">,</span> <span class="p">)</span> <span class="o">+</span> <span class="n">exc</span><span class="o">.</span><span class="n">args</span>
             <span class="k">raise</span> <span class="n">exc</span><span class="o">.</span><span class="n">with_traceback</span><span class="p">(</span><span class="n">exc</span><span class="o">.</span><span class="n">__traceback__</span><span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">exc</span>
 
-        <span class="k">if</span> <span class="p">(</span><span class="n">mod</span><span class="o">.</span><span class="n">exog</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">)</span> <span class="o">!=</span> <span class="p">(</span><span class="n">existing</span><span class="o">.</span><span class="n">exog</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">):</span>
-            <span class="k">if</span> <span class="n">existing</span><span class="o">.</span><span class="n">exog</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-                    <span class="s2">"exog must be provided when the original model contained "</span>
-                    <span class="s2">"exog variables"</span>
-                <span class="p">)</span>
-            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-                <span class="s2">"exog must be None when the original model did not contain "</span>
-                <span class="s2">"exog variables"</span>
-            <span class="p">)</span>
-        <span class="k">if</span> <span class="n">existing</span><span class="o">.</span><span class="n">exog</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">existing</span><span class="o">.</span><span class="n">exog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">!=</span> <span class="n">mod</span><span class="o">.</span><span class="n">exog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]:</span>
-            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-                <span class="s2">"The number of exog variables passed must match the original "</span>
-                <span class="sa">f</span><span class="s2">"Number of exog values (</span><span class="si">{</span><span class="n">existing</span><span class="o">.</span><span class="n">exog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="si">}</span><span class="s2">)"</span>
-            <span class="p">)</span>
         <span class="k">if</span> <span class="n">refit</span><span class="p">:</span>
             <span class="n">fit_kwargs</span> <span class="o">=</span> <span class="p">{}</span> <span class="k">if</span> <span class="n">fit_kwargs</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">fit_kwargs</span>
             <span class="k">return</span> <span class="n">mod</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="o">**</span><span class="n">fit_kwargs</span><span class="p">)</span>
