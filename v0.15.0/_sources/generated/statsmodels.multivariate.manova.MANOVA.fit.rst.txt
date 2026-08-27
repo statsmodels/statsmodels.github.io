@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.multivariate.manova.MANOVA.fit
+==========================================
+
+.. currentmodule:: statsmodels.multivariate.manova
+
+.. automethod:: MANOVA.fit

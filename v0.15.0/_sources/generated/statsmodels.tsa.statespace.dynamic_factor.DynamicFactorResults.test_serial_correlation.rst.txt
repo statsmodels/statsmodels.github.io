@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.tsa.statespace.dynamic\_factor.DynamicFactorResults.test\_serial\_correlation
+=========================================================================================
+
+.. currentmodule:: statsmodels.tsa.statespace.dynamic_factor
+
+.. automethod:: DynamicFactorResults.test_serial_correlation

@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.genmod.families.family.NegativeBinomial.starting\_mu
+================================================================
+
+.. currentmodule:: statsmodels.genmod.families.family
+
+.. automethod:: NegativeBinomial.starting_mu

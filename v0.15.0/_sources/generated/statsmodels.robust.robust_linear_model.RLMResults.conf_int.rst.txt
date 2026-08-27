@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.robust.robust\_linear\_model.RLMResults.conf\_int
+=============================================================
+
+.. currentmodule:: statsmodels.robust.robust_linear_model
+
+.. automethod:: RLMResults.conf_int

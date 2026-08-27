@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.tsa.arima\_process.ArmaProcess.pacf
+===============================================
+
+.. currentmodule:: statsmodels.tsa.arima_process
+
+.. automethod:: ArmaProcess.pacf

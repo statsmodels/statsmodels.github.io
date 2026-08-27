@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.sandbox.tsa.fftarma.ArmaFft.plot4
+=============================================
+
+.. currentmodule:: statsmodels.sandbox.tsa.fftarma
+
+.. automethod:: ArmaFft.plot4

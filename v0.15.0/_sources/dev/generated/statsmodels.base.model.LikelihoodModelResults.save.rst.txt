@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.base.model.LikelihoodModelResults.save
+==================================================
+
+.. currentmodule:: statsmodels.base.model
+
+.. automethod:: LikelihoodModelResults.save

@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.duration.hazard\_regression.PHRegResults.load
+=========================================================
+
+.. currentmodule:: statsmodels.duration.hazard_regression
+
+.. automethod:: PHRegResults.load

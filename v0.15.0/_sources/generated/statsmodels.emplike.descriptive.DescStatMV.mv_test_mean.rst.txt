@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.emplike.descriptive.DescStatMV.mv\_test\_mean
+=========================================================
+
+.. currentmodule:: statsmodels.emplike.descriptive
+
+.. automethod:: DescStatMV.mv_test_mean

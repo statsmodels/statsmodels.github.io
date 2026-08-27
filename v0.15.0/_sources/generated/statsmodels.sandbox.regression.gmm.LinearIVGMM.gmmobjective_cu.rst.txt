@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.sandbox.regression.gmm.LinearIVGMM.gmmobjective\_cu
+===============================================================
+
+.. currentmodule:: statsmodels.sandbox.regression.gmm
+
+.. automethod:: LinearIVGMM.gmmobjective_cu

@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.genmod.families.family.NegativeBinomial.deviance
+============================================================
+
+.. currentmodule:: statsmodels.genmod.families.family
+
+.. automethod:: NegativeBinomial.deviance

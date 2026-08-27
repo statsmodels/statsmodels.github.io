@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.genmod.families.family.Tweedie.resid\_dev
+=====================================================
+
+.. currentmodule:: statsmodels.genmod.families.family
+
+.. automethod:: Tweedie.resid_dev

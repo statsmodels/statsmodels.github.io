@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.genmod.families.family.Binomial.resid\_dev
+======================================================
+
+.. currentmodule:: statsmodels.genmod.families.family
+
+.. automethod:: Binomial.resid_dev

@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.sandbox.regression.gmm.LinearIVGMM.score
+====================================================
+
+.. currentmodule:: statsmodels.sandbox.regression.gmm
+
+.. automethod:: LinearIVGMM.score

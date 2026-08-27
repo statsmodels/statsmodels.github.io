@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.stats.correlation\_tools.FactoredPSDMatrix.solve
+============================================================
+
+.. currentmodule:: statsmodels.stats.correlation_tools
+
+.. automethod:: FactoredPSDMatrix.solve

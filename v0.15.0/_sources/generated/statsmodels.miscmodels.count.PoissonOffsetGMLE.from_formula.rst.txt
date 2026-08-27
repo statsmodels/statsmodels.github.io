@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.miscmodels.count.PoissonOffsetGMLE.from\_formula
+============================================================
+
+.. currentmodule:: statsmodels.miscmodels.count
+
+.. automethod:: PoissonOffsetGMLE.from_formula

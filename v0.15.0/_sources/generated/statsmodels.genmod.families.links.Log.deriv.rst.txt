@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.genmod.families.links.Log.deriv
+===========================================
+
+.. currentmodule:: statsmodels.genmod.families.links
+
+.. automethod:: Log.deriv

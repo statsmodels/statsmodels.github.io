@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.stats.contingency\_tables.SquareTable.test\_ordinal\_association
+============================================================================
+
+.. currentmodule:: statsmodels.stats.contingency_tables
+
+.. automethod:: SquareTable.test_ordinal_association

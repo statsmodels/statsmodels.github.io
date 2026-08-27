@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.tsa.statespace.kalman\_smoother.KalmanSmoother.simulate
+===================================================================
+
+.. currentmodule:: statsmodels.tsa.statespace.kalman_smoother
+
+.. automethod:: KalmanSmoother.simulate

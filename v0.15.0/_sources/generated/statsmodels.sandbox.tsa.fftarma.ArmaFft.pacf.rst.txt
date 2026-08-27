@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.sandbox.tsa.fftarma.ArmaFft.pacf
+============================================
+
+.. currentmodule:: statsmodels.sandbox.tsa.fftarma
+
+.. automethod:: ArmaFft.pacf

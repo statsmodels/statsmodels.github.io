@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.regression.linear\_model.OLS.score
+==============================================
+
+.. currentmodule:: statsmodels.regression.linear_model
+
+.. automethod:: OLS.score

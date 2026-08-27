@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.genmod.families.family.Gaussian.predict
+===================================================
+
+.. currentmodule:: statsmodels.genmod.families.family
+
+.. automethod:: Gaussian.predict

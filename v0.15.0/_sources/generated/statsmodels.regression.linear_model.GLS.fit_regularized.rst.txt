@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.regression.linear\_model.GLS.fit\_regularized
+=========================================================
+
+.. currentmodule:: statsmodels.regression.linear_model
+
+.. automethod:: GLS.fit_regularized

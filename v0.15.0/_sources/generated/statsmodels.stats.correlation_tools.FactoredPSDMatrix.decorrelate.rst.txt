@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.stats.correlation\_tools.FactoredPSDMatrix.decorrelate
+==================================================================
+
+.. currentmodule:: statsmodels.stats.correlation_tools
+
+.. automethod:: FactoredPSDMatrix.decorrelate

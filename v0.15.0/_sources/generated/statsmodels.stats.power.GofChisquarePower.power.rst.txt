@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.stats.power.GofChisquarePower.power
+===============================================
+
+.. currentmodule:: statsmodels.stats.power
+
+.. automethod:: GofChisquarePower.power

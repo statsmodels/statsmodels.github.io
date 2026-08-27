@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.sandbox.regression.gmm.LinearIVGMM.predict
+======================================================
+
+.. currentmodule:: statsmodels.sandbox.regression.gmm
+
+.. automethod:: LinearIVGMM.predict

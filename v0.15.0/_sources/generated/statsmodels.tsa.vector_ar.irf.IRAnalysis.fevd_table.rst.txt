@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.tsa.vector\_ar.irf.IRAnalysis.fevd\_table
+=====================================================
+
+.. currentmodule:: statsmodels.tsa.vector_ar.irf
+
+.. automethod:: IRAnalysis.fevd_table

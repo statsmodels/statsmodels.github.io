@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.tsa.varma\_process.VarmaPoly.reduceform
+===================================================
+
+.. currentmodule:: statsmodels.tsa.varma_process
+
+.. automethod:: VarmaPoly.reduceform

@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.tsa.regime\_switching.markov\_autoregression.MarkovAutoregression.hessian
+=====================================================================================
+
+.. currentmodule:: statsmodels.tsa.regime_switching.markov_autoregression
+
+.. automethod:: MarkovAutoregression.hessian

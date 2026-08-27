@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.tsa.statespace.kalman\_filter.KalmanFilter.design
+=============================================================
+
+.. currentmodule:: statsmodels.tsa.statespace.kalman_filter
+
+.. autoattribute:: KalmanFilter.design

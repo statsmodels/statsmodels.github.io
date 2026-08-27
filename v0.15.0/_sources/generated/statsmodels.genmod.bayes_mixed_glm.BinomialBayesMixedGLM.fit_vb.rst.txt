@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.genmod.bayes\_mixed\_glm.BinomialBayesMixedGLM.fit\_vb
+==================================================================
+
+.. currentmodule:: statsmodels.genmod.bayes_mixed_glm
+
+.. automethod:: BinomialBayesMixedGLM.fit_vb

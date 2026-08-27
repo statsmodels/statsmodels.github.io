@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.discrete.discrete\_model.Logit.hessian
+==================================================
+
+.. currentmodule:: statsmodels.discrete.discrete_model
+
+.. automethod:: Logit.hessian

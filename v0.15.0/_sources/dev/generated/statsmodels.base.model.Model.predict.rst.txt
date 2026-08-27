@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.base.model.Model.predict
+====================================
+
+.. currentmodule:: statsmodels.base.model
+
+.. automethod:: Model.predict

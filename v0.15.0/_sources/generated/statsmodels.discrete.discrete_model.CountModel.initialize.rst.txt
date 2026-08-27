@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.discrete.discrete\_model.CountModel.initialize
+==========================================================
+
+.. currentmodule:: statsmodels.discrete.discrete_model
+
+.. automethod:: CountModel.initialize

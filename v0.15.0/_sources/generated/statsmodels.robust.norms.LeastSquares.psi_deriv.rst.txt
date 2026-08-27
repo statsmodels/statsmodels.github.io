@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.robust.norms.LeastSquares.psi\_deriv
+================================================
+
+.. currentmodule:: statsmodels.robust.norms
+
+.. automethod:: LeastSquares.psi_deriv

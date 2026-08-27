@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.nonparametric.kernel\_regression.KernelCensoredReg.censored
+=======================================================================
+
+.. currentmodule:: statsmodels.nonparametric.kernel_regression
+
+.. automethod:: KernelCensoredReg.censored

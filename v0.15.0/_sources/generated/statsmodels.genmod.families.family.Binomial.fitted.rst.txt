@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.genmod.families.family.Binomial.fitted
+==================================================
+
+.. currentmodule:: statsmodels.genmod.families.family
+
+.. automethod:: Binomial.fitted

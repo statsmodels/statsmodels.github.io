@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.emplike.descriptive.DescStatUV.ci\_var
+==================================================
+
+.. currentmodule:: statsmodels.emplike.descriptive
+
+.. automethod:: DescStatUV.ci_var

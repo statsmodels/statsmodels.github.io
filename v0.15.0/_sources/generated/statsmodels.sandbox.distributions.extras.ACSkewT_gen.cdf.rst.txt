@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.sandbox.distributions.extras.ACSkewT\_gen.cdf
+=========================================================
+
+.. currentmodule:: statsmodels.sandbox.distributions.extras
+
+.. automethod:: ACSkewT_gen.cdf

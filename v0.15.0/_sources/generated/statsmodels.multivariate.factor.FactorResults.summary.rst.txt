@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.multivariate.factor.FactorResults.summary
+=====================================================
+
+.. currentmodule:: statsmodels.multivariate.factor
+
+.. automethod:: FactorResults.summary

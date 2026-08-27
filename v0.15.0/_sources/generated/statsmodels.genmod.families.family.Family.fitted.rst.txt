@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.genmod.families.family.Family.fitted
+================================================
+
+.. currentmodule:: statsmodels.genmod.families.family
+
+.. automethod:: Family.fitted

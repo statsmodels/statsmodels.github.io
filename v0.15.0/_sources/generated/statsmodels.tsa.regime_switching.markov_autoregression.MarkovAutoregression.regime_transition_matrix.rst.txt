@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.tsa.regime\_switching.markov\_autoregression.MarkovAutoregression.regime\_transition\_matrix
+========================================================================================================
+
+.. currentmodule:: statsmodels.tsa.regime_switching.markov_autoregression
+
+.. automethod:: MarkovAutoregression.regime_transition_matrix

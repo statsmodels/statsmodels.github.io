@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.stats.weightstats.CompareMeans.ztost\_ind
+=====================================================
+
+.. currentmodule:: statsmodels.stats.weightstats
+
+.. automethod:: CompareMeans.ztost_ind

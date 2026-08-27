@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.robust.norms.TukeyBiweight.rho
+==========================================
+
+.. currentmodule:: statsmodels.robust.norms
+
+.. automethod:: TukeyBiweight.rho

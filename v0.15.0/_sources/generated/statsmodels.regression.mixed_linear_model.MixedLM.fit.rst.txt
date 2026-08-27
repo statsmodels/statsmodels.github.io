@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.regression.mixed\_linear\_model.MixedLM.fit
+=======================================================
+
+.. currentmodule:: statsmodels.regression.mixed_linear_model
+
+.. automethod:: MixedLM.fit

@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.sandbox.regression.gmm.LinearIVGMM.calc\_weightmatrix
+=================================================================
+
+.. currentmodule:: statsmodels.sandbox.regression.gmm
+
+.. automethod:: LinearIVGMM.calc_weightmatrix

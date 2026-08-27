@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.discrete.count\_model.GenericZeroInflated.predict
+=============================================================
+
+.. currentmodule:: statsmodels.discrete.count_model
+
+.. automethod:: GenericZeroInflated.predict

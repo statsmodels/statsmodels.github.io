@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.regression.mixed\_linear\_model.MixedLMResults.profile\_re
+======================================================================
+
+.. currentmodule:: statsmodels.regression.mixed_linear_model
+
+.. automethod:: MixedLMResults.profile_re

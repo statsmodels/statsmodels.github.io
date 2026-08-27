@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.tsa.regime\_switching.markov\_regression.MarkovRegression.transform\_params
+=======================================================================================
+
+.. currentmodule:: statsmodels.tsa.regime_switching.markov_regression
+
+.. automethod:: MarkovRegression.transform_params

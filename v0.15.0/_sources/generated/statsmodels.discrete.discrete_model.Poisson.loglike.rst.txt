@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.discrete.discrete\_model.Poisson.loglike
+====================================================
+
+.. currentmodule:: statsmodels.discrete.discrete_model
+
+.. automethod:: Poisson.loglike

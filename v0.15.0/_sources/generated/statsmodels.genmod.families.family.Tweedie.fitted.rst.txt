@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.genmod.families.family.Tweedie.fitted
+=================================================
+
+.. currentmodule:: statsmodels.genmod.families.family
+
+.. automethod:: Tweedie.fitted

@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.genmod.families.family.Gamma.loglike\_obs
+=====================================================
+
+.. currentmodule:: statsmodels.genmod.families.family
+
+.. automethod:: Gamma.loglike_obs

@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.emplike.descriptive.DescStatMV.ci\_corr
+===================================================
+
+.. currentmodule:: statsmodels.emplike.descriptive
+
+.. automethod:: DescStatMV.ci_corr

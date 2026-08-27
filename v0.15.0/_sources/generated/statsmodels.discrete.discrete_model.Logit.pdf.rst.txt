@@ -1,0 +1,8 @@
+:orphan:
+
+statsmodels.discrete.discrete\_model.Logit.pdf
+==============================================
+
+.. currentmodule:: statsmodels.discrete.discrete_model
+
+.. automethod:: Logit.pdf
