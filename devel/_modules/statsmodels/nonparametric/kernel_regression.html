@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
-    <title>statsmodels.nonparametric.kernel_regression &#8212; statsmodels 0.15.1 (+587)</title>
+    <title>statsmodels.nonparametric.kernel_regression &#8212; statsmodels 0.15.1 (+604)</title>
   <link rel="icon" type="image/png" sizes="32x32" href="../../../_static/icons/favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="../../../_static/icons/favicon-16x16.png">
   <link rel="manifest" href="../../../_static/icons/site.webmanifest">
@@ -71,7 +71,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="color-scheme" content="light dark"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="0.15.1 (+587)" />
+  <meta name="docsearch:version" content="0.15.1 (+604)" />
     <meta name="docbuild:last-update" content="Oct 23, 2026"/>
   
     
@@ -649,9 +649,11 @@
 <span class="sd">    bw : str or array_like, optional</span>
 <span class="sd">        Either a user-specified bandwidth or the method for bandwidth</span>
 <span class="sd">        selection. If a string, valid values are 'cv_ls' (least-squares</span>
-<span class="sd">        cross-validation) and 'aic' (AIC Hurvich bandwidth estimation).</span>
-<span class="sd">        Default is 'cv_ls'. User specified bandwidth must have as many</span>
-<span class="sd">        entries as the number of variables.</span>
+<span class="sd">        cross-validation), 'aic' (AIC Hurvich bandwidth estimation) and</span>
+<span class="sd">        'normal_reference' (normal reference rule of thumb). Default is</span>
+<span class="sd">        'cv_ls'. User specified bandwidth must have as many entries as the</span>
+<span class="sd">        number of variables and must be non-negative, zero is allowed for</span>
+<span class="sd">        discrete variables.</span>
 <span class="sd">    ckertype : str, optional</span>
 <span class="sd">        The kernel used for the continuous variables.</span>
 <span class="sd">    okertype : str, optional</span>
@@ -738,23 +740,37 @@
     <span class="k">def</span><span class="w"> </span><span class="nf">_compute_reg_bw</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">bw</span><span class="p">):</span>
         <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">bw</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_bw_method</span> <span class="o">=</span> <span class="s2">"user-specified"</span>
-            <span class="k">return</span> <span class="n">array_like</span><span class="p">(</span><span class="n">bw</span><span class="p">,</span> <span class="s2">"bw"</span><span class="p">,</span> <span class="n">ndim</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+            <span class="n">bw</span> <span class="o">=</span> <span class="n">array_like</span><span class="p">(</span><span class="n">bw</span><span class="p">,</span> <span class="s2">"bw"</span><span class="p">,</span> <span class="n">ndim</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">bw</span> <span class="o">&gt;=</span> <span class="mi">0</span><span class="p">):</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"bw must be non-negative"</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">bw</span>
         <span class="k">else</span><span class="p">:</span>
             <span class="c1"># The user specified a bandwidth selection method e.g., 'cv_ls'</span>
+            <span class="k">if</span> <span class="n">bw</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">"cv_ls"</span><span class="p">,</span> <span class="s2">"aic"</span><span class="p">,</span> <span class="s2">"normal_reference"</span><span class="p">):</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                    <span class="sa">f</span><span class="s2">"bw must be one of 'cv_ls', 'aic' or 'normal_reference', "</span>
+                    <span class="sa">f</span><span class="s2">"got </span><span class="si">{</span><span class="n">bw</span><span class="si">!r}</span><span class="s2">"</span>
+                <span class="p">)</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_bw_method</span> <span class="o">=</span> <span class="n">bw</span>
+            <span class="n">X</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">std</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">exog</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+            <span class="n">h0</span> <span class="o">=</span> <span class="mf">1.06</span> <span class="o">*</span> <span class="n">X</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span> <span class="o">**</span> <span class="p">(</span><span class="o">-</span><span class="mf">1.0</span> <span class="o">/</span> <span class="p">(</span><span class="mi">4</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_vars</span><span class="p">))</span>
+            <span class="k">if</span> <span class="n">bw</span> <span class="o">==</span> <span class="s2">"normal_reference"</span><span class="p">:</span>
+                <span class="c1"># the rule of thumb is only defined for continuous variables,</span>
+                <span class="c1"># the bandwidths of the discrete ones are not used by the</span>
+                <span class="c1"># kernels and stay at the starting value</span>
+                <span class="n">ix_cont</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">_get_type_pos</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">var_type</span><span class="p">)</span>
+                <span class="k">return</span> <span class="n">h0</span><span class="p">[</span><span class="n">ix_cont</span><span class="p">]</span>
             <span class="c1"># Workaround to avoid instance methods in __dict__</span>
             <span class="k">if</span> <span class="n">bw</span> <span class="o">==</span> <span class="s2">"cv_ls"</span><span class="p">:</span>
                 <span class="n">res</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">cv_loo</span>
             <span class="k">else</span><span class="p">:</span>  <span class="c1"># bw == 'aic'</span>
                 <span class="n">res</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">aic_hurvich</span>
-            <span class="n">X</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">std</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">exog</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
-            <span class="n">h0</span> <span class="o">=</span> <span class="mf">1.06</span> <span class="o">*</span> <span class="n">X</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span> <span class="o">**</span> <span class="p">(</span><span class="o">-</span><span class="mf">1.0</span> <span class="o">/</span> <span class="p">(</span><span class="mi">4</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">size</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">exog</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)))</span>
-
             <span class="n">func</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">est</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">reg_type</span><span class="p">]</span>
             <span class="n">bw_estimated</span> <span class="o">=</span> <span class="n">optimize</span><span class="o">.</span><span class="n">fmin</span><span class="p">(</span>
                 <span class="n">res</span><span class="p">,</span> <span class="n">x0</span><span class="o">=</span><span class="n">h0</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="p">(</span><span class="n">func</span><span class="p">,),</span> <span class="n">maxiter</span><span class="o">=</span><span class="mf">1e3</span><span class="p">,</span> <span class="n">maxfun</span><span class="o">=</span><span class="mf">1e3</span><span class="p">,</span> <span class="n">disp</span><span class="o">=</span><span class="mi">0</span>
             <span class="p">)</span>
             <span class="k">return</span> <span class="n">bw_estimated</span>
+
 
     <span class="k">def</span><span class="w"> </span><span class="nf">_est_loc_linear</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">bw</span><span class="p">,</span> <span class="n">endog</span><span class="p">,</span> <span class="n">exog</span><span class="p">,</span> <span class="n">data_predict</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">"""</span>
