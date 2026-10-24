@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
-    <title>statsmodels.stats.outliers_influence &#8212; statsmodels 0.15.1 (+665)</title>
+    <title>statsmodels.stats.outliers_influence &#8212; statsmodels 0.15.1 (+667)</title>
   <link rel="icon" type="image/png" sizes="32x32" href="../../../_static/icons/favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="../../../_static/icons/favicon-16x16.png">
   <link rel="manifest" href="../../../_static/icons/site.webmanifest">
@@ -71,7 +71,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="color-scheme" content="light dark"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="0.15.1 (+665)" />
+  <meta name="docsearch:version" content="0.15.1 (+667)" />
     <meta name="docbuild:last-update" content="Oct 24, 2026"/>
   
     
@@ -576,7 +576,7 @@
 <span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.graphics._regressionplots_doc</span><span class="w"> </span><span class="kn">import</span> <span class="n">_plot_influence_doc</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.regression.linear_model</span><span class="w"> </span><span class="kn">import</span> <span class="n">OLS</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.regression.linear_model</span><span class="w"> </span><span class="kn">import</span> <span class="n">OLS</span><span class="p">,</span> <span class="n">WLS</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.stats.multitest</span><span class="w"> </span><span class="kn">import</span> <span class="n">multipletests</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.tools._decorators</span><span class="w"> </span><span class="kn">import</span> <span class="n">cache_readonly</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.tools.docstring_helpers</span><span class="w"> </span><span class="kn">import</span> <span class="n">Appender</span>
@@ -1430,7 +1430,7 @@
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
 <span class="sd">    results : RegressionResults</span>
-<span class="sd">        currently assumes the results are from an OLS regression</span>
+<span class="sd">        Results of an OLS or WLS regression.</span>
 
 <span class="sd">    Notes</span>
 <span class="sd">    -----</span>
@@ -1451,6 +1451,13 @@
 <span class="sd">    observations that are possible outliers. (However, this is not yet</span>
 <span class="sd">    available in an automated way.)</span>
 
+<span class="sd">    For WLS, the hat matrix, the studentized residuals, Cook's distance,</span>
+<span class="sd">    dffits and the LOOO measures are those of OLS on the whitened data,</span>
+<span class="sd">    ``sqrt(w) * endog`` and ``sqrt(w) * exog``, so a LOOO regression is a WLS</span>
+<span class="sd">    without observation i. This matches R's ``influence.measures`` for</span>
+<span class="sd">    ``lm(..., weights=w)``. ``resid_press`` and ``influence`` stay on the</span>
+<span class="sd">    scale of endog.</span>
+
 <span class="sd">    This should be extended to general least squares.</span>
 
 <span class="sd">    The leave-one-variable-out (LOVO) auxiliary regression are currently not</span>
@@ -1465,6 +1472,19 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">exog</span> <span class="o">=</span> <span class="n">results</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">exog</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">resid</span> <span class="o">=</span> <span class="n">results</span><span class="o">.</span><span class="n">resid</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">model_class</span> <span class="o">=</span> <span class="n">results</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="vm">__class__</span>
+        <span class="n">model</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">model</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">WLS</span><span class="p">):</span>
+            <span class="c1"># WLS, and OLS as its unit weight case, is OLS on the whitened</span>
+            <span class="c1"># data, see the class notes.</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_wendog</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">wendog</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_wexog</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">wexog</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_wresid</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">wresid</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_looo_class</span> <span class="o">=</span> <span class="n">OLS</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_wendog</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">endog</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_wexog</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">exog</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_wresid</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">resid</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_looo_class</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model_class</span>
 
         <span class="c1"># self.sigma_est = np.sqrt(results.mse_resid)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">scale</span> <span class="o">=</span> <span class="n">results</span><span class="o">.</span><span class="n">mse_resid</span>
@@ -1481,7 +1501,7 @@
     <span class="k">def</span><span class="w"> </span><span class="nf">hat_matrix_diag</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">"""Diagonal of the hat_matrix for OLS"""</span>
         <span class="c1"># TODO: temporarily calculated here, this should go to model class</span>
-        <span class="k">return</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">exog</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">pinv_wexog</span><span class="o">.</span><span class="n">T</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span></div>
+        <span class="k">return</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_wexog</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">pinv_wexog</span><span class="o">.</span><span class="n">T</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span></div>
 
 
 <div class="viewcode-block" id="OLSInfluence.resid_press">
@@ -1606,7 +1626,7 @@
             <span class="c1"># can be replace by different estimators of sigma</span>
             <span class="n">sigma</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">sigma2_est</span><span class="p">)</span>
 
-        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">resid</span> <span class="o">/</span> <span class="n">sigma</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">hii</span><span class="p">)</span></div>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_wresid</span> <span class="o">/</span> <span class="n">sigma</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">hii</span><span class="p">)</span></div>
 
 
     <span class="c1"># same computation as GLMInfluence</span>
@@ -1893,7 +1913,7 @@
 <span class="sd">        all results will be attached.</span>
 <span class="sd">        currently only 'params', 'mse_resid', 'det_cov_params' are stored</span>
 
-<span class="sd">        For OLS with a full rank exog, the results are computed with the</span>
+<span class="sd">        For OLS and WLS with a full rank exog, the results are computed with the</span>
 <span class="sd">        closed form leave-one-observation-out updates and no auxiliary</span>
 <span class="sd">        regressions are estimated, except for observations with a hat</span>
 <span class="sd">        matrix diagonal of (numerically) one. For other models, endog is</span>
@@ -1901,14 +1921,14 @@
 
 <span class="sd">        Only attributes of the auxiliary OLS instances are stored.</span>
 <span class="sd">        """</span>
-        <span class="n">endog</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">endog</span>
-        <span class="n">exog</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">exog</span>
+        <span class="n">endog</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_wendog</span>
+        <span class="n">exog</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_wexog</span>
 
         <span class="n">params</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">exog</span><span class="o">.</span><span class="n">shape</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
         <span class="n">mse_resid</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">endog</span><span class="o">.</span><span class="n">shape</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
         <span class="n">det_cov_params</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">endog</span><span class="o">.</span><span class="n">shape</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
 
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">model_class</span> <span class="ow">is</span> <span class="n">OLS</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">rank</span> <span class="o">==</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_vars</span><span class="p">:</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">model_class</span> <span class="ow">in</span> <span class="p">(</span><span class="n">OLS</span><span class="p">,</span> <span class="n">WLS</span><span class="p">)</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">rank</span> <span class="o">==</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_vars</span><span class="p">:</span>
             <span class="c1"># Closed form, see e.g. Belsley, Kuh and Welsch (1980), ch. 2.</span>
             <span class="c1"># Dropping observation i with hat diagonal h_i and residual e_i</span>
             <span class="c1"># changes the parameters by (X'X)^{-1} x_i e_i / (1 - h_i)</span>
@@ -1918,12 +1938,12 @@
             <span class="c1"># If h_i is one, then dropping observation i reduces the rank of</span>
             <span class="c1"># exog and the auxiliary regression is still needed.</span>
             <span class="n">mask</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">-</span> <span class="n">hii</span> <span class="o">&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">finfo</span><span class="p">(</span><span class="nb">float</span><span class="p">)</span><span class="o">.</span><span class="n">eps</span><span class="p">)</span>
-            <span class="n">resid</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">resid</span><span class="p">)[</span><span class="n">mask</span><span class="p">]</span>
+            <span class="n">resid</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_wresid</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span>
             <span class="n">one_minus_h</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">-</span> <span class="n">hii</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span>
             <span class="n">resid_press</span> <span class="o">=</span> <span class="n">resid</span> <span class="o">/</span> <span class="n">one_minus_h</span>
             <span class="n">dfbeta</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">pinv_wexog</span><span class="o">.</span><span class="n">T</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span> <span class="o">*</span> <span class="n">resid_press</span><span class="p">[:,</span> <span class="kc">None</span><span class="p">]</span>
             <span class="n">params</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">params</span> <span class="o">-</span> <span class="n">dfbeta</span>
-            <span class="n">ssr</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">resid</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">resid</span><span class="p">)</span>
+            <span class="n">ssr</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_wresid</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_wresid</span><span class="p">)</span>
             <span class="n">df_resid</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span> <span class="o">-</span> <span class="mi">1</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_vars</span>
             <span class="n">mse_resid</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">ssr</span> <span class="o">-</span> <span class="n">resid</span> <span class="o">*</span> <span class="n">resid_press</span><span class="p">)</span> <span class="o">/</span> <span class="n">df_resid</span>
             <span class="c1"># det(X_(i)'X_(i)) = det(X'X) (1 - h_i)</span>
@@ -1945,7 +1965,7 @@
             <span class="k">with</span> <span class="n">warnings</span><span class="o">.</span><span class="n">catch_warnings</span><span class="p">():</span>
                 <span class="k">if</span> <span class="n">ignore_singular</span><span class="p">:</span>
                     <span class="n">warnings</span><span class="o">.</span><span class="n">simplefilter</span><span class="p">(</span><span class="s2">"ignore"</span><span class="p">,</span> <span class="n">SingularMatrixWarning</span><span class="p">)</span>
-                <span class="n">res_i</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model_class</span><span class="p">(</span><span class="n">endog</span><span class="p">[</span><span class="n">inidx</span><span class="p">],</span> <span class="n">exog</span><span class="p">[</span><span class="n">inidx</span><span class="p">])</span><span class="o">.</span><span class="n">fit</span><span class="p">()</span>
+                <span class="n">res_i</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_looo_class</span><span class="p">(</span><span class="n">endog</span><span class="p">[</span><span class="n">inidx</span><span class="p">],</span> <span class="n">exog</span><span class="p">[</span><span class="n">inidx</span><span class="p">])</span><span class="o">.</span><span class="n">fit</span><span class="p">()</span>
                 <span class="n">params</span><span class="p">[</span><span class="n">outidx</span><span class="p">]</span> <span class="o">=</span> <span class="n">res_i</span><span class="o">.</span><span class="n">params</span>
                 <span class="n">mse_resid</span><span class="p">[</span><span class="n">outidx</span><span class="p">]</span> <span class="o">=</span> <span class="n">res_i</span><span class="o">.</span><span class="n">mse_resid</span>
                 <span class="n">det_cov_params</span><span class="p">[</span><span class="n">outidx</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">det</span><span class="p">(</span><span class="n">res_i</span><span class="o">.</span><span class="n">cov_params</span><span class="p">())</span>
