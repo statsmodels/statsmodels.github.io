@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
-    <title>statsmodels.stats.meta_analysis &#8212; statsmodels 0.15.1 (+763)</title>
+    <title>statsmodels.stats.meta_analysis &#8212; statsmodels 0.15.1 (+780)</title>
   <link rel="icon" type="image/png" sizes="32x32" href="../../../_static/icons/favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="../../../_static/icons/favicon-16x16.png">
   <link rel="manifest" href="../../../_static/icons/site.webmanifest">
@@ -71,7 +71,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="color-scheme" content="light dark"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="0.15.1 (+763)" />
+  <meta name="docsearch:version" content="0.15.1 (+780)" />
     <meta name="docbuild:last-update" content="Oct 25, 2026"/>
   
     
@@ -633,9 +633,10 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">sd_eff_w_fe_hksj</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">var_hksj_fe</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">sd_eff_w_re_hksj</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">var_hksj_re</span><span class="p">)</span>
 
-        <span class="c1"># explained variance measures</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">h2</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">q</span> <span class="o">/</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">k</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">i2</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">-</span> <span class="mi">1</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">h2</span>
+        <span class="c1"># explained variance measures, h2 is at least 1 and i2 at least 0</span>
+        <span class="c1"># (GH#10520), in line with tau2 being truncated at zero</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">h2</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">q</span> <span class="o">/</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">k</span> <span class="o">-</span> <span class="mi">1</span><span class="p">))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">i2</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span> <span class="o">-</span> <span class="mi">1</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">h2</span><span class="p">)</span>
 
         <span class="c1"># memoize ci_samples</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">cache_ci</span> <span class="o">=</span> <span class="p">{}</span>
@@ -1208,8 +1209,8 @@
 <span class="w">    </span><span class="sd">"""</span>
 <span class="sd">    Combining effect sizes for effect sizes using meta-analysis</span>
 
-<span class="sd">    This currently does not use np.asarray, all computations are possible in</span>
-<span class="sd">    pandas.</span>
+<span class="sd">    Lists and tuples are converted to arrays, arrays and pandas objects are</span>
+<span class="sd">    used as they are.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
@@ -1267,6 +1268,29 @@
 <span class="sd">    The results instance includes both, fixed scale and estimated scale</span>
 <span class="sd">    versions of standard errors and confidence intervals.</span>
 
+<span class="sd">    The DerSimonian and Laird one-step estimate of the random effects variance</span>
+<span class="sd">    ``tau2`` ("chi2" or "dl") is truncated at zero, as is the Paule and Mandel</span>
+<span class="sd">    estimate ("iterated" or "pm"). If the estimate is truncated, then the</span>
+<span class="sd">    random effects results are equal to the fixed effects results.</span>
+
+<span class="sd">    .. versionchanged:: 0.15.1</span>
+
+<span class="sd">        The DerSimonian and Laird estimate of ``tau2`` is truncated at zero.</span>
+<span class="sd">        Previously a negative ``tau2`` was used, which could produce a random</span>
+<span class="sd">        effects mean outside the range of the effects.</span>
+
+<span class="sd">    The attributes ``h2`` and ``i2`` of the results are ``q / (k - 1)`` and</span>
+<span class="sd">    ``1 - 1 / h2``, where ``q`` is the test statistic of the homogeneity test</span>
+<span class="sd">    and ``k`` is the number of studies. They are floored at their lower bounds,</span>
+<span class="sd">    ``h2`` at 1 and ``i2`` at 0, which are the values when ``tau2`` is zero.</span>
+<span class="sd">    ``i2`` is a fraction and not a percent.</span>
+
+<span class="sd">    .. versionchanged:: 0.15.1</span>
+
+<span class="sd">        ``h2`` is at least 1 and ``i2`` is at least 0. Previously ``h2`` was</span>
+<span class="sd">        below 1 and ``i2`` was negative (or ``-inf`` if ``q`` is zero) if ``q``</span>
+<span class="sd">        is smaller than ``k - 1``.</span>
+
 <span class="sd">    References</span>
 <span class="sd">    ----------</span>
 <span class="sd">    Borenstein, Michael. 2009. Introduction to Meta-Analysis.</span>
@@ -1277,6 +1301,11 @@
 <span class="sd">        Boca Raton: CRC Press/Taylor &amp; Francis Group.</span>
 <span class="sd">    """</span>
 
+    <span class="c1"># lists and tuples are converted so that the computations below work, arrays</span>
+    <span class="c1"># and pandas objects are used as they are</span>
+    <span class="n">effect</span><span class="p">,</span> <span class="n">variance</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">v</span><span class="p">)</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">v</span><span class="p">,</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">))</span> <span class="k">else</span> <span class="n">v</span> <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="p">(</span><span class="n">effect</span><span class="p">,</span> <span class="n">variance</span><span class="p">)</span>
+    <span class="p">)</span>
     <span class="n">k</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">effect</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">row_names</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
         <span class="n">row_names</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="n">k</span><span class="p">))</span>
@@ -1297,7 +1326,7 @@
     <span class="c1"># fixed effects computation</span>
 
     <span class="n">weights_fe</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">/</span> <span class="n">var_eff</span>  <span class="c1"># no bias correction ?</span>
-    <span class="n">w_total_fe</span> <span class="o">=</span> <span class="n">weights_fe</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+    <span class="n">w_total_fe</span> <span class="o">=</span> <span class="n">weights_fe</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
     <span class="n">weights_rel_fe</span> <span class="o">=</span> <span class="n">weights_fe</span> <span class="o">/</span> <span class="n">w_total_fe</span>
 
     <span class="n">eff_w_fe</span> <span class="o">=</span> <span class="n">weights_rel_fe</span> <span class="o">*</span> <span class="n">eff</span>
@@ -1307,7 +1336,7 @@
 
     <span class="c1"># random effects computation</span>
 
-    <span class="n">q</span> <span class="o">=</span> <span class="p">(</span><span class="n">weights_fe</span> <span class="o">*</span> <span class="n">eff</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+    <span class="n">q</span> <span class="o">=</span> <span class="p">(</span><span class="n">weights_fe</span> <span class="o">*</span> <span class="n">eff</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
     <span class="n">q</span> <span class="o">-=</span> <span class="p">(</span><span class="n">weights_fe</span> <span class="o">*</span> <span class="n">eff</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span> <span class="o">**</span> <span class="mi">2</span> <span class="o">/</span> <span class="n">w_total_fe</span>
     <span class="n">df</span> <span class="o">=</span> <span class="n">k</span> <span class="o">-</span> <span class="mi">1</span>
     <span class="n">method</span> <span class="o">=</span> <span class="n">string_like</span><span class="p">(</span>
@@ -1321,8 +1350,8 @@
         <span class="n">tau2</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="p">(</span><span class="n">q</span> <span class="o">-</span> <span class="n">df</span><span class="p">)</span> <span class="o">/</span> <span class="n">c</span><span class="p">)</span>
 
     <span class="n">weights_re</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">/</span> <span class="p">(</span><span class="n">var_eff</span> <span class="o">+</span> <span class="n">tau2</span><span class="p">)</span>  <span class="c1"># no  bias_correction ?</span>
-    <span class="n">w_total_re</span> <span class="o">=</span> <span class="n">weights_re</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
-    <span class="n">weights_rel_re</span> <span class="o">=</span> <span class="n">weights_re</span> <span class="o">/</span> <span class="n">weights_re</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+    <span class="n">w_total_re</span> <span class="o">=</span> <span class="n">weights_re</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+    <span class="n">weights_rel_re</span> <span class="o">=</span> <span class="n">weights_re</span> <span class="o">/</span> <span class="n">weights_re</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
 
     <span class="n">eff_w_re</span> <span class="o">=</span> <span class="n">weights_rel_re</span> <span class="o">*</span> <span class="n">eff</span>
     <span class="n">mean_effect_re</span> <span class="o">=</span> <span class="n">eff_w_re</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
