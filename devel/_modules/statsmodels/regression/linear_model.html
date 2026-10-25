@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
-    <title>statsmodels.regression.linear_model &#8212; statsmodels 0.15.1 (+714)</title>
+    <title>statsmodels.regression.linear_model &#8212; statsmodels 0.15.1 (+722)</title>
   <link rel="icon" type="image/png" sizes="32x32" href="../../../_static/icons/favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="../../../_static/icons/favicon-16x16.png">
   <link rel="manifest" href="../../../_static/icons/site.webmanifest">
@@ -71,7 +71,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="color-scheme" content="light dark"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="0.15.1 (+714)" />
+  <meta name="docsearch:version" content="0.15.1 (+722)" />
     <meta name="docbuild:last-update" content="Oct 25, 2026"/>
   
     
@@ -804,8 +804,10 @@
 <span class="sd">    """</span>
 
     <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">endog</span><span class="p">,</span> <span class="n">exog</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="c1"># set via kwargs by WLS/GLS in _handle_data, None otherwise</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">weights</span><span class="p">:</span> <span class="n">Float64Array</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">sigma</span><span class="p">:</span> <span class="n">Float64Array</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
         <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">endog</span><span class="p">,</span> <span class="n">exog</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">pinv_wexog</span><span class="p">:</span> <span class="n">Float64Array</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_data_attr</span><span class="o">.</span><span class="n">extend</span><span class="p">([</span><span class="s2">"pinv_wexog"</span><span class="p">,</span> <span class="s2">"wendog"</span><span class="p">,</span> <span class="s2">"wexog"</span><span class="p">,</span> <span class="s2">"weights"</span><span class="p">])</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">initialize</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
@@ -817,7 +819,12 @@
 
         <span class="bp">self</span><span class="o">.</span><span class="n">_df_model</span> <span class="o">=</span> <span class="kc">None</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_df_resid</span> <span class="o">=</span> <span class="kc">None</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">rank</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="c1"># set by fit, None until the model has been fit</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">rank</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">pinv_wexog</span><span class="p">:</span> <span class="n">Float64Array</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">normalized_cov_params</span><span class="p">:</span> <span class="n">Float64Array</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">wexog_singular_values</span><span class="p">:</span> <span class="n">Float64Array</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">effects</span><span class="p">:</span> <span class="n">Float64Array</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>  <span class="c1"># only set by fit(method="qr")</span>
 
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">df_model</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
@@ -1630,12 +1637,30 @@
                 <span class="s2">"An exception will be raised in the next version."</span>
             <span class="p">)</span>
             <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="n">msg</span><span class="p">,</span> <span class="n">ValueWarning</span><span class="p">,</span> <span class="n">stacklevel</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">offset</span><span class="p">:</span> <span class="n">Float64Array</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>  <span class="c1"># set by _handle_data if passed</span>
         <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">endog</span><span class="p">,</span> <span class="n">exog</span><span class="p">,</span> <span class="n">missing</span><span class="o">=</span><span class="n">missing</span><span class="p">,</span> <span class="n">hasconst</span><span class="o">=</span><span class="n">hasconst</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
         <span class="k">if</span> <span class="s2">"weights"</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_init_keys</span><span class="p">:</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_init_keys</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="s2">"weights"</span><span class="p">)</span>
 
         <span class="k">if</span> <span class="nb">type</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="ow">is</span> <span class="n">OLS</span><span class="p">:</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_check_kwargs</span><span class="p">(</span><span class="n">kwargs</span><span class="p">,</span> <span class="p">[</span><span class="s2">"offset"</span><span class="p">])</span>
+
+<div class="viewcode-block" id="OLS.initialize">
+<a class="viewcode-back" href="../../../generated/statsmodels.regression.linear_model.OLS.initialize.html#statsmodels.sandbox.regression.gmm.OLS.initialize">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">initialize</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">"""</span>
+<span class="sd">        Initialize model components.</span>
+
+<span class="sd">        Whitens the data and resets the attributes set by ``fit``, and</span>
+<span class="sd">        additionally resets the cross products cached by ``score`` and</span>
+<span class="sd">        ``hessian``.</span>
+<span class="sd">        """</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">initialize</span><span class="p">()</span>
+        <span class="c1"># cached by _setup_score_hess</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_wendog_xprod</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_wexog_xprod</span><span class="p">:</span> <span class="n">Float64Array</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_wexog_x_wendog</span><span class="p">:</span> <span class="n">Float64Array</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span></div>
+
 
 <div class="viewcode-block" id="OLS.loglike">
 <a class="viewcode-back" href="../../../generated/statsmodels.regression.linear_model.OLS.loglike.html#statsmodels.sandbox.regression.gmm.OLS.loglike">[docs]</a>
@@ -1661,7 +1686,7 @@
         <span class="n">nobs2</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span> <span class="o">/</span> <span class="mf">2.0</span>
         <span class="n">nobs</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">nobs</span><span class="p">)</span>
         <span class="n">resid</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">endog</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">exog</span><span class="p">,</span> <span class="n">params</span><span class="p">)</span>
-        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">"offset"</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">offset</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
             <span class="n">resid</span> <span class="o">-=</span> <span class="bp">self</span><span class="o">.</span><span class="n">offset</span>
         <span class="n">ssr</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">resid</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span>
         <span class="k">if</span> <span class="n">scale</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
@@ -1723,7 +1748,7 @@
 <span class="sd">            The score vector.</span>
 
 <span class="sd">        """</span>
-        <span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">"_wexog_xprod"</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_wexog_xprod</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_setup_score_hess</span><span class="p">()</span>
 
         <span class="n">xtxb</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_wexog_xprod</span><span class="p">,</span> <span class="n">params</span><span class="p">)</span>
@@ -1739,7 +1764,7 @@
 
     <span class="k">def</span><span class="w"> </span><span class="nf">_setup_score_hess</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="n">y</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">wendog</span>
-        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">"offset"</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">offset</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
             <span class="n">y</span> <span class="o">=</span> <span class="n">y</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">offset</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_wendog_xprod</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">y</span> <span class="o">*</span> <span class="n">y</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_wexog_xprod</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">wexog</span><span class="o">.</span><span class="n">T</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">wexog</span><span class="p">)</span>
@@ -1779,7 +1804,7 @@
 <span class="sd">           was previously too small by a factor of 2.</span>
 
 <span class="sd">        """</span>
-        <span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">"_wexog_xprod"</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_wexog_xprod</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_setup_score_hess</span><span class="p">()</span>
 
         <span class="n">xtxb</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_wexog_xprod</span><span class="p">,</span> <span class="n">params</span><span class="p">)</span>
@@ -2520,10 +2545,10 @@
         <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">normalized_cov_params</span><span class="p">,</span> <span class="n">scale</span><span class="p">)</span>
 
         <span class="bp">self</span><span class="o">.</span><span class="n">_cache</span> <span class="o">=</span> <span class="p">{}</span>
-        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="s2">"wexog_singular_values"</span><span class="p">):</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_wexog_singular_values</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">wexog_singular_values</span>
-        <span class="k">else</span><span class="p">:</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_wexog_singular_values</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="c1"># model need not be a RegressionModel: GLM._fit_irls and GLMGam._fit_pirls</span>
+        <span class="c1"># wrap start_params in a RegressionResults when maxiter == 0, and</span>
+        <span class="c1"># NonlinearLS does the same. Those models never compute singular values.</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_wexog_singular_values</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="s2">"wexog_singular_values"</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
 
         <span class="bp">self</span><span class="o">.</span><span class="n">df_model</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">df_model</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">df_resid</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">df_resid</span>
@@ -2649,8 +2674,8 @@
     <span class="k">def</span><span class="w"> </span><span class="nf">centered_tss</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">"""The total (weighted) sum of squares centered about the mean"""</span>
         <span class="n">model</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span>
-        <span class="n">weights</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="s2">"weights"</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
-        <span class="n">sigma</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="s2">"sigma"</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+        <span class="n">weights</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">weights</span>
+        <span class="n">sigma</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">sigma</span>
         <span class="k">if</span> <span class="n">weights</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
             <span class="n">mean</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">average</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">endog</span><span class="p">,</span> <span class="n">weights</span><span class="o">=</span><span class="n">weights</span><span class="p">)</span>
             <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">weights</span> <span class="o">*</span> <span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">endog</span> <span class="o">-</span> <span class="n">mean</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span><span class="p">)</span>
@@ -2790,7 +2815,7 @@
 <span class="sd">        Otherwise computed using a Wald-like quadratic form that tests whether</span>
 <span class="sd">        all coefficients (excluding the constant) are zero.</span>
 <span class="sd">        """</span>
-        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">"cov_type"</span><span class="p">)</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">cov_type</span> <span class="o">!=</span> <span class="s2">"nonrobust"</span><span class="p">:</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">cov_type</span> <span class="o">!=</span> <span class="s2">"nonrobust"</span><span class="p">:</span>
             <span class="c1"># with heteroscedasticity or correlation robustness</span>
             <span class="n">k_params</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">normalized_cov_params</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
             <span class="n">mat</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="n">k_params</span><span class="p">)</span>
@@ -3085,10 +3110,7 @@
 <span class="sd">        array_like</span>
 <span class="sd">            The array `wresid` normalized by the sqrt of the scale to have</span>
 <span class="sd">            unit variance.</span>
-
 <span class="sd">        """</span>
-        <span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">"resid"</span><span class="p">):</span>
-            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"Method requires residuals."</span><span class="p">)</span>
         <span class="n">eps</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">finfo</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">wresid</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span><span class="o">.</span><span class="n">eps</span>
         <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">scale</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mi">10</span> <span class="o">*</span> <span class="n">eps</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">endog</span><span class="o">.</span><span class="n">mean</span><span class="p">():</span>
             <span class="c1"># do not divide if scale is zero close to numerical precision</span>
@@ -3213,7 +3235,7 @@
         <span class="c1"># If HAC then need to use HAC</span>
         <span class="c1"># If Cluster, should use cluster</span>
 
-        <span class="n">cov_type</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">"cov_type"</span><span class="p">,</span> <span class="s2">"nonrobust"</span><span class="p">)</span>
+        <span class="n">cov_type</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">cov_type</span>
         <span class="k">if</span> <span class="n">cov_type</span> <span class="o">==</span> <span class="s2">"nonrobust"</span><span class="p">:</span>
             <span class="n">sigma2</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">wresid</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span>
             <span class="n">xpx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">wexog</span><span class="o">.</span><span class="n">T</span><span class="p">,</span> <span class="n">wexog</span><span class="p">)</span> <span class="o">/</span> <span class="n">n</span>
@@ -3274,7 +3296,7 @@
 <span class="sd">        (sphericity).</span>
 
 <span class="sd">        """</span>
-        <span class="n">has_robust1</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">"cov_type"</span><span class="p">,</span> <span class="s2">"nonrobust"</span><span class="p">)</span> <span class="o">!=</span> <span class="s2">"nonrobust"</span>
+        <span class="n">has_robust1</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">cov_type</span> <span class="o">!=</span> <span class="s2">"nonrobust"</span>
         <span class="n">has_robust2</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">restricted</span><span class="p">,</span> <span class="s2">"cov_type"</span><span class="p">,</span> <span class="s2">"nonrobust"</span><span class="p">)</span> <span class="o">!=</span> <span class="s2">"nonrobust"</span>
 
         <span class="k">if</span> <span class="n">has_robust1</span> <span class="ow">or</span> <span class="n">has_robust2</span><span class="p">:</span>
@@ -3376,7 +3398,7 @@
             <span class="c1"># here is self-consistent regardless of `large_sample`.</span>
             <span class="n">lrstat</span><span class="p">,</span> <span class="n">lr_pvalue</span><span class="p">,</span> <span class="n">lrdf</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">compare_lm_test</span><span class="p">(</span><span class="n">restricted</span><span class="p">,</span> <span class="n">use_lr</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
         <span class="k">else</span><span class="p">:</span>
-            <span class="n">has_robust1</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">"cov_type"</span><span class="p">,</span> <span class="s2">"nonrobust"</span><span class="p">)</span> <span class="o">!=</span> <span class="s2">"nonrobust"</span>
+            <span class="n">has_robust1</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">cov_type</span> <span class="o">!=</span> <span class="s2">"nonrobust"</span>
             <span class="n">has_robust2</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">restricted</span><span class="p">,</span> <span class="s2">"cov_type"</span><span class="p">,</span> <span class="s2">"nonrobust"</span><span class="p">)</span> <span class="o">!=</span> <span class="s2">"nonrobust"</span>
 
             <span class="k">if</span> <span class="n">has_robust1</span> <span class="ow">or</span> <span class="n">has_robust2</span><span class="p">:</span>
@@ -3892,8 +3914,7 @@
             <span class="p">(</span><span class="s2">"Df Model:"</span><span class="p">,</span> <span class="kc">None</span><span class="p">),</span>
         <span class="p">]</span>
 
-        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">"cov_type"</span><span class="p">):</span>
-            <span class="n">top_left</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="s2">"Covariance Type:"</span><span class="p">,</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">cov_type</span><span class="p">]))</span>
+        <span class="n">top_left</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="s2">"Covariance Type:"</span><span class="p">,</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">cov_type</span><span class="p">]))</span>
 
         <span class="n">rsquared_type</span> <span class="o">=</span> <span class="s2">""</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_constant</span> <span class="k">else</span> <span class="s2">" (uncentered)"</span>
         <span class="n">rsquared</span> <span class="o">=</span> <span class="n">cached</span><span class="p">(</span><span class="s2">"rsquared"</span><span class="p">,</span> <span class="k">lambda</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">rsquared</span><span class="p">)</span>
@@ -3992,8 +4013,7 @@
                 <span class="s2">"R² is computed without centering (uncentered) since the "</span>
                 <span class="s2">"model does not contain a constant."</span>
             <span class="p">)</span>
-        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">"cov_type"</span><span class="p">):</span>
-            <span class="n">etext</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">cov_kwds</span><span class="p">[</span><span class="s2">"description"</span><span class="p">])</span>
+        <span class="n">etext</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">cov_kwds</span><span class="p">[</span><span class="s2">"description"</span><span class="p">])</span>
         <span class="n">rank_deficient</span> <span class="o">=</span> <span class="n">cached</span><span class="p">(</span>
             <span class="s2">"rank_deficient"</span><span class="p">,</span>
             <span class="k">lambda</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">exog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">exog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span>
@@ -4109,8 +4129,7 @@
                 <span class="s2">"R² is computed without centering (uncentered) since the </span><span class="se">\</span>
 <span class="s2">                model does not contain a constant."</span>
             <span class="p">)</span>
-        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">"cov_type"</span><span class="p">):</span>
-            <span class="n">etext</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">cov_kwds</span><span class="p">[</span><span class="s2">"description"</span><span class="p">])</span>
+        <span class="n">etext</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">cov_kwds</span><span class="p">[</span><span class="s2">"description"</span><span class="p">])</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">exog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">exog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]:</span>
             <span class="n">wstr</span> <span class="o">=</span> <span class="s2">"The input rank is higher than the number of observations."</span>
             <span class="n">etext</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">wstr</span><span class="p">)</span>
