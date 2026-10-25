@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
-    <title>statsmodels.stats.outliers_influence &#8212; statsmodels 0.15.1 (+708)</title>
+    <title>statsmodels.stats.outliers_influence &#8212; statsmodels 0.15.1 (+718)</title>
   <link rel="icon" type="image/png" sizes="32x32" href="../../../_static/icons/favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="../../../_static/icons/favicon-16x16.png">
   <link rel="manifest" href="../../../_static/icons/site.webmanifest">
@@ -71,7 +71,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="color-scheme" content="light dark"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="0.15.1 (+708)" />
+  <meta name="docsearch:version" content="0.15.1 (+718)" />
     <meta name="docbuild:last-update" content="Oct 25, 2026"/>
   
     
@@ -1425,7 +1425,14 @@
 <a class="viewcode-back" href="../../../generated/statsmodels.stats.outliers_influence.OLSInfluence.html#statsmodels.stats.outliers_influence.OLSInfluence">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">OLSInfluence</span><span class="p">(</span><span class="n">_BaseInfluenceMixin</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""</span>
-<span class="sd">    Class to calculate outlier and influence measures for OLS result</span>
+<span class="sd">    Class to calculate outlier and influence measures for OLS and WLS results</span>
+
+<span class="sd">    .. versionchanged:: 0.15.1</span>
+
+<span class="sd">       The weights of WLS results are used. Previously the weights were</span>
+<span class="sd">       ignored, so that the hat matrix diagonal, the studentized residuals,</span>
+<span class="sd">       Cook's distance, dffits, dfbeta, dfbetas and the covariance ratio</span>
+<span class="sd">       were incorrect for WLS results.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
@@ -1440,11 +1447,13 @@
 <span class="sd">    slower (mainly results with `_external` postfix in the name).</span>
 <span class="sd">    For the auxiliary LOOO regression, only the required results are stored.</span>
 
-<span class="sd">    If the model is OLS and exog has full rank, then the LOOO results are</span>
-<span class="sd">    computed from the closed form updates, e.g. Belsley, Kuh and Welsch (1980),</span>
-<span class="sd">    without auxiliary regressions, and are fast also for large data sets.</span>
+<span class="sd">    If the model is OLS or WLS and exog has full rank, then the LOOO results</span>
+<span class="sd">    are computed from the closed form updates, e.g. Belsley, Kuh and Welsch</span>
+<span class="sd">    (1980), without auxiliary regressions, and are fast also for large data</span>
+<span class="sd">    sets.</span>
 
-<span class="sd">    For other models, using the LOOO measures is currently only recommended if</span>
+<span class="sd">    For other models, such as subclasses of OLS or WLS, or if exog does not</span>
+<span class="sd">    have full rank, using the LOOO measures is currently only recommended if</span>
 <span class="sd">    the data set is not too large. One possible approach for LOOO measures</span>
 <span class="sd">    would be to identify possible problem observations with the _internal</span>
 <span class="sd">    measures, and then run the leave-one-observation-out only with</span>
@@ -1454,11 +1463,36 @@
 <span class="sd">    For WLS, the hat matrix, the studentized residuals, Cook's distance,</span>
 <span class="sd">    dffits and the LOOO measures are those of OLS on the whitened data,</span>
 <span class="sd">    ``sqrt(w) * endog`` and ``sqrt(w) * exog``, so a LOOO regression is a WLS</span>
-<span class="sd">    without observation i. This matches R's ``influence.measures`` for</span>
-<span class="sd">    ``lm(..., weights=w)``. ``resid_press`` and ``influence`` stay on the</span>
-<span class="sd">    scale of endog.</span>
+<span class="sd">    without observation i. For positive weights, this matches R's</span>
+<span class="sd">    ``influence.measures`` for ``lm(..., weights=w)``. ``resid_press`` and</span>
+<span class="sd">    ``influence`` stay on the scale of endog, and so does ``ess_press``, which</span>
+<span class="sd">    is the unweighted sum of squares of the PRESS residuals.</span>
 
-<span class="sd">    This should be extended to general least squares.</span>
+<span class="sd">    The weights of WLS are treated as precision weights, i.e. as inverse</span>
+<span class="sd">    variances of the errors, and not as frequency weights. As in</span>
+<span class="sd">    ``WLS.mse_resid``, the estimate of the error variance and the residual</span>
+<span class="sd">    degrees of freedom use the number of rows of the data and not the sum of the</span>
+<span class="sd">    weights.</span>
+
+<span class="sd">    ``WLS.df_resid`` counts observations with a weight of zero, whereas R drops</span>
+<span class="sd">    those cases. The hat matrix diagonal and the dfbeta of the other</span>
+<span class="sd">    observations are the same as in R. For observations with a zero weight, the</span>
+<span class="sd">    hat matrix diagonal, Cook's distance, dfbeta and the studentized residuals</span>
+<span class="sd">    are zero, but ``cov_ratio`` is not one. Measures that depend on the</span>
+<span class="sd">    estimate of the error variance and the residual degrees of freedom differ</span>
+<span class="sd">    from R. If there are ``n_pos`` observations with positive weights and ``k``</span>
+<span class="sd">    is the number of parameters, then Cook's distance is larger than in R by</span>
+<span class="sd">    the factor</span>
+<span class="sd">    ``(nobs - k) / (n_pos - k)`` and the internally studentized residuals are</span>
+<span class="sd">    larger by the square root of that factor. The other measures, i.e. the</span>
+<span class="sd">    externally studentized residuals, dffits, dfbetas and ``cov_ratio``, differ</span>
+<span class="sd">    by similar amounts. They are the same as in R if the WLS model is estimated</span>
+<span class="sd">    with only the observations that have positive weights.</span>
+
+<span class="sd">    Only OLS and WLS are supported. Results of other models, for example GLS</span>
+<span class="sd">    with a non-trivial ``sigma`` or GLSAR, are not whitened and the measures</span>
+<span class="sd">    are incorrect, without an error or warning. GLS without ``sigma`` is the</span>
+<span class="sd">    same as OLS.</span>
 
 <span class="sd">    The leave-one-variable-out (LOVO) auxiliary regression are currently not</span>
 <span class="sd">    used.</span>
