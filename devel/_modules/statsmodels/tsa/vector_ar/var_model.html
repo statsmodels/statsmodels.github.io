@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
-    <title>statsmodels.tsa.vector_ar.var_model &#8212; statsmodels 0.15.1 (+733)</title>
+    <title>statsmodels.tsa.vector_ar.var_model &#8212; statsmodels 0.15.1 (+747)</title>
   <link rel="icon" type="image/png" sizes="32x32" href="../../../../_static/icons/favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="../../../../_static/icons/favicon-16x16.png">
   <link rel="manifest" href="../../../../_static/icons/site.webmanifest">
@@ -71,7 +71,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="color-scheme" content="light dark"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="0.15.1 (+733)" />
+  <meta name="docsearch:version" content="0.15.1 (+747)" />
     <meta name="docbuild:last-update" content="Oct 25, 2026"/>
   
     
@@ -587,6 +587,7 @@
 <span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.tools.rng_qrng</span><span class="w"> </span><span class="kn">import</span> <span class="n">check_random_state</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.tools.sm_exceptions</span><span class="w"> </span><span class="kn">import</span> <span class="n">OutputWarning</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.tools.validation</span><span class="w"> </span><span class="kn">import</span> <span class="n">array_like</span><span class="p">,</span> <span class="n">float_like</span><span class="p">,</span> <span class="n">int_like</span><span class="p">,</span> <span class="n">string_like</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.tsa._lagselect</span><span class="w"> </span><span class="kn">import</span> <span class="n">nested_lag_ols</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.tsa.base.tsa_model</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
     <span class="n">TimeSeriesModel</span><span class="p">,</span>
     <span class="n">TimeSeriesResultsWrapper</span><span class="p">,</span>
@@ -1069,6 +1070,99 @@
     <span class="p">)</span>
 
 
+<span class="k">def</span><span class="w"> </span><span class="nf">_var_order_ics</span><span class="p">(</span><span class="n">endog</span><span class="p">,</span> <span class="n">exog</span><span class="p">,</span> <span class="n">maxlags</span><span class="p">,</span> <span class="n">trend</span><span class="p">,</span> <span class="n">p_min</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""</span>
+<span class="sd">    Information criteria of all VAR lag orders from a single QR decomposition</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    endog : ndarray</span>
+<span class="sd">        The endogenous variables, of shape (n_totobs, neqs).</span>
+<span class="sd">    exog : ndarray or None</span>
+<span class="sd">        The exogenous variables, of shape (n_totobs, k_exog_user).</span>
+<span class="sd">    maxlags : int</span>
+<span class="sd">        The largest lag order considered.</span>
+<span class="sd">    trend : {"n", "c", "ct", "ctt"}</span>
+<span class="sd">        The deterministic terms.</span>
+<span class="sd">    p_min : int</span>
+<span class="sd">        The smallest lag order considered.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    dict[str, ndarray] or None</span>
+<span class="sd">        The arrays of "aic", "bic", "hqic" and "fpe" for lag orders</span>
+<span class="sd">        ``p_min, ..., maxlags``. None if the regressors are close to singular,</span>
+<span class="sd">        a lag column is constant, a residual covariance is close to singular,</span>
+<span class="sd">        or any value is not finite. ``VAR.select_order`` then estimates each</span>
+<span class="sd">        lag order separately.</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    Gives the same result as estimating ``VAR(p)`` for each ``p`` on the</span>
+<span class="sd">    sample used by the largest model, which is what ``VAR.select_order``</span>
+<span class="sd">    does. The regressors of order ``p`` are the first</span>
+<span class="sd">    ``k_det + neqs * p`` columns of ``Z = [trend, exog, lag 1, ...,</span>
+<span class="sd">    lag maxlags]``, so ``nested_lag_ols`` gives the residual cross products,</span>
+<span class="sd">    and ``sigma_u_mle``, of all lag orders. The time trend of a smaller</span>
+<span class="sd">    order is shifted, which does not change the space spanned with the</span>
+<span class="sd">    constant.</span>
+<span class="sd">    """</span>
+    <span class="n">endog</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">endog</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+    <span class="n">n_totobs</span><span class="p">,</span> <span class="n">neqs</span> <span class="o">=</span> <span class="n">endog</span><span class="o">.</span><span class="n">shape</span>
+    <span class="n">nobs</span> <span class="o">=</span> <span class="n">n_totobs</span> <span class="o">-</span> <span class="n">maxlags</span>
+    <span class="n">k_trend</span> <span class="o">=</span> <span class="n">util</span><span class="o">.</span><span class="n">get_trendorder</span><span class="p">(</span><span class="n">trend</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">exog</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">exog</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">exog</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+    <span class="n">k_exog_user</span> <span class="o">=</span> <span class="mi">0</span> <span class="k">if</span> <span class="n">exog</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">exog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+    <span class="n">k_det</span> <span class="o">=</span> <span class="n">k_trend</span> <span class="o">+</span> <span class="n">k_exog_user</span>
+    <span class="n">k</span> <span class="o">=</span> <span class="n">k_det</span> <span class="o">+</span> <span class="n">neqs</span> <span class="o">*</span> <span class="n">maxlags</span>
+    <span class="k">if</span> <span class="n">k</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span>
+
+    <span class="k">if</span> <span class="s2">"c"</span> <span class="ow">in</span> <span class="n">trend</span> <span class="ow">and</span> <span class="n">maxlags</span><span class="p">:</span>
+        <span class="c1"># add_trend refuses to add a constant to a constant lag column. All</span>
+        <span class="c1"># lag columns of a variable contain endog[maxlags - 1 : nobs], so</span>
+        <span class="c1"># none of them is constant if this part is not.</span>
+        <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">ptp</span><span class="p">(</span><span class="n">endog</span><span class="p">[</span><span class="n">maxlags</span> <span class="o">-</span> <span class="mi">1</span> <span class="p">:</span> <span class="n">nobs</span><span class="p">],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">):</span>
+            <span class="k">return</span> <span class="kc">None</span>
+
+    <span class="c1"># Same deterministic terms as VAR(maxlags), see _estimate_var</span>
+    <span class="n">det</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">((</span><span class="n">nobs</span><span class="p">,</span> <span class="n">k_det</span><span class="p">))</span>
+    <span class="n">trend_vals</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">maxlags</span> <span class="o">+</span> <span class="mf">1.0</span><span class="p">,</span> <span class="n">n_totobs</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span>
+    <span class="n">det</span><span class="p">[:,</span> <span class="p">:</span><span class="n">k_trend</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vander</span><span class="p">(</span><span class="n">trend_vals</span><span class="p">,</span> <span class="n">k_trend</span><span class="p">,</span> <span class="n">increasing</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">k_exog_user</span><span class="p">:</span>
+        <span class="n">det</span><span class="p">[:,</span> <span class="n">k_trend</span><span class="p">:]</span> <span class="o">=</span> <span class="n">exog</span><span class="p">[</span><span class="n">maxlags</span><span class="p">:]</span>
+    <span class="n">lags</span> <span class="o">=</span> <span class="p">[</span><span class="n">endog</span><span class="p">[</span><span class="n">maxlags</span> <span class="o">-</span> <span class="n">lag</span> <span class="p">:</span> <span class="n">n_totobs</span> <span class="o">-</span> <span class="n">lag</span><span class="p">]</span> <span class="k">for</span> <span class="n">lag</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">maxlags</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)]</span>
+    <span class="c1"># lstsq treats singular values below 1e-15 times the largest one as zero.</span>
+    <span class="c1"># The time trend of a smaller order is shifted by at most maxlags, which</span>
+    <span class="c1"># barely changes the singular values. The cutoff k * eps is a margin for</span>
+    <span class="c1"># this.</span>
+    <span class="n">res</span> <span class="o">=</span> <span class="n">nested_lag_ols</span><span class="p">(</span><span class="n">endog</span><span class="p">[</span><span class="n">maxlags</span><span class="p">:],</span> <span class="n">lags</span><span class="p">,</span> <span class="n">det</span><span class="p">,</span> <span class="n">rcond</span><span class="o">=</span><span class="n">k</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">finfo</span><span class="p">(</span><span class="nb">float</span><span class="p">)</span><span class="o">.</span><span class="n">eps</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">res</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span>
+    <span class="n">sse</span> <span class="o">=</span> <span class="n">res</span><span class="o">.</span><span class="n">ssr</span><span class="p">[</span><span class="n">p_min</span><span class="p">:]</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">chol</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">cholesky</span><span class="p">(</span><span class="n">sse</span> <span class="o">/</span> <span class="n">nobs</span><span class="p">)</span>
+    <span class="k">except</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">LinAlgError</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span>
+    <span class="n">ld</span> <span class="o">=</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">diagonal</span><span class="p">(</span><span class="n">chol</span><span class="p">,</span> <span class="n">axis1</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">axis2</span><span class="o">=</span><span class="mi">2</span><span class="p">)),</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+
+    <span class="c1"># Same expressions as VARResults.info_criteria, Lütkepohl pp. 146-150</span>
+    <span class="n">lag_order</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">p_min</span><span class="p">,</span> <span class="n">maxlags</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span>
+    <span class="n">free_params</span> <span class="o">=</span> <span class="n">lag_order</span> <span class="o">*</span> <span class="n">neqs</span><span class="o">**</span><span class="mi">2</span> <span class="o">+</span> <span class="n">neqs</span> <span class="o">*</span> <span class="n">k_det</span>
+    <span class="n">df_model</span> <span class="o">=</span> <span class="n">neqs</span> <span class="o">*</span> <span class="n">lag_order</span> <span class="o">+</span> <span class="n">k_det</span>
+    <span class="n">df_resid</span> <span class="o">=</span> <span class="n">nobs</span> <span class="o">-</span> <span class="n">df_model</span>
+    <span class="n">ics</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">"aic"</span><span class="p">:</span> <span class="n">ld</span> <span class="o">+</span> <span class="p">(</span><span class="mf">2.0</span> <span class="o">/</span> <span class="n">nobs</span><span class="p">)</span> <span class="o">*</span> <span class="n">free_params</span><span class="p">,</span>
+        <span class="s2">"bic"</span><span class="p">:</span> <span class="n">ld</span> <span class="o">+</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">nobs</span><span class="p">)</span> <span class="o">/</span> <span class="n">nobs</span><span class="p">)</span> <span class="o">*</span> <span class="n">free_params</span><span class="p">,</span>
+        <span class="s2">"hqic"</span><span class="p">:</span> <span class="n">ld</span> <span class="o">+</span> <span class="p">(</span><span class="mf">2.0</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">nobs</span><span class="p">))</span> <span class="o">/</span> <span class="n">nobs</span><span class="p">)</span> <span class="o">*</span> <span class="n">free_params</span><span class="p">,</span>
+        <span class="s2">"fpe"</span><span class="p">:</span> <span class="p">((</span><span class="n">nobs</span> <span class="o">+</span> <span class="n">df_model</span><span class="p">)</span> <span class="o">/</span> <span class="n">df_resid</span><span class="p">)</span> <span class="o">**</span> <span class="n">neqs</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">ld</span><span class="p">),</span>
+    <span class="p">}</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">all</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">v</span><span class="p">))</span> <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">ics</span><span class="o">.</span><span class="n">values</span><span class="p">()):</span>
+        <span class="k">return</span> <span class="kc">None</span>
+    <span class="k">return</span> <span class="n">ics</span>
+
+
 <div class="viewcode-block" id="LagOrderResults">
 <a class="viewcode-back" href="../../../../generated/statsmodels.tsa.vector_ar.var_model.LagOrderResults.html#statsmodels.tsa.vector_ar.svar_model.LagOrderResults">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">LagOrderResults</span><span class="p">:</span>
@@ -1470,13 +1564,21 @@
 
         <span class="n">ics</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="nb">list</span><span class="p">)</span>
         <span class="n">p_min</span> <span class="o">=</span> <span class="mi">0</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">exog</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">trend</span> <span class="o">!=</span> <span class="s2">"n"</span> <span class="k">else</span> <span class="mi">1</span>
-        <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">p_min</span><span class="p">,</span> <span class="n">maxlags</span> <span class="o">+</span> <span class="mi">1</span><span class="p">):</span>
-            <span class="c1"># exclude some periods to same amount of data used for each lag</span>
-            <span class="c1"># order</span>
-            <span class="n">result</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_estimate_var</span><span class="p">(</span><span class="n">p</span><span class="p">,</span> <span class="n">offset</span><span class="o">=</span><span class="n">maxlags</span> <span class="o">-</span> <span class="n">p</span><span class="p">,</span> <span class="n">trend</span><span class="o">=</span><span class="n">trend</span><span class="p">)</span>
+        <span class="n">fast_ics</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="n">trend</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">"n"</span><span class="p">,</span> <span class="s2">"c"</span><span class="p">,</span> <span class="s2">"ct"</span><span class="p">,</span> <span class="s2">"ctt"</span><span class="p">):</span>
+            <span class="n">fast_ics</span> <span class="o">=</span> <span class="n">_var_order_ics</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">endog</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">exog</span><span class="p">,</span> <span class="n">maxlags</span><span class="p">,</span> <span class="n">trend</span><span class="p">,</span> <span class="n">p_min</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">fast_ics</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">k_trend</span> <span class="o">=</span> <span class="n">util</span><span class="o">.</span><span class="n">get_trendorder</span><span class="p">(</span><span class="n">trend</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">fast_ics</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+                <span class="n">ics</span><span class="p">[</span><span class="n">k</span><span class="p">]</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">v</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">p_min</span><span class="p">,</span> <span class="n">maxlags</span> <span class="o">+</span> <span class="mi">1</span><span class="p">):</span>
+                <span class="c1"># exclude some periods to same amount of data used for each</span>
+                <span class="c1"># lag order</span>
+                <span class="n">result</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_estimate_var</span><span class="p">(</span><span class="n">p</span><span class="p">,</span> <span class="n">offset</span><span class="o">=</span><span class="n">maxlags</span> <span class="o">-</span> <span class="n">p</span><span class="p">,</span> <span class="n">trend</span><span class="o">=</span><span class="n">trend</span><span class="p">)</span>
 
-            <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">result</span><span class="o">.</span><span class="n">info_criteria</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
-                <span class="n">ics</span><span class="p">[</span><span class="n">k</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">v</span><span class="p">)</span>
+                <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">result</span><span class="o">.</span><span class="n">info_criteria</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+                    <span class="n">ics</span><span class="p">[</span><span class="n">k</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">v</span><span class="p">)</span>
 
         <span class="n">selected_orders</span> <span class="o">=</span> <span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">v</span><span class="p">)</span><span class="o">.</span><span class="n">argmin</span><span class="p">()</span> <span class="o">+</span> <span class="n">p_min</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">ics</span><span class="o">.</span><span class="n">items</span><span class="p">()}</span>
 

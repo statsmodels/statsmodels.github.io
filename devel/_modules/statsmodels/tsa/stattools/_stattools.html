@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
-    <title>statsmodels.tsa.stattools._stattools &#8212; statsmodels 0.15.1 (+733)</title>
+    <title>statsmodels.tsa.stattools._stattools &#8212; statsmodels 0.15.1 (+747)</title>
   <link rel="icon" type="image/png" sizes="32x32" href="../../../../_static/icons/favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="../../../../_static/icons/favicon-16x16.png">
   <link rel="manifest" href="../../../../_static/icons/site.webmanifest">
@@ -71,7 +71,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="color-scheme" content="light dark"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="0.15.1 (+733)" />
+  <meta name="docsearch:version" content="0.15.1 (+747)" />
     <meta name="docbuild:last-update" content="Oct 25, 2026"/>
   
     
@@ -596,6 +596,7 @@
 <span class="p">)</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.tsa._bds</span><span class="w"> </span><span class="kn">import</span> <span class="n">bds</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.tsa._innovations</span><span class="w"> </span><span class="kn">import</span> <span class="n">innovations_algo</span><span class="p">,</span> <span class="n">innovations_filter</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.tsa._lagselect</span><span class="w"> </span><span class="kn">import</span> <span class="n">nested_lag_ols</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.tsa.adfvalues</span><span class="w"> </span><span class="kn">import</span> <span class="n">mackinnoncrit</span><span class="p">,</span> <span class="n">mackinnonp</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.tsa.tsatools</span><span class="w"> </span><span class="kn">import</span> <span class="n">add_trend</span><span class="p">,</span> <span class="n">lagmat</span><span class="p">,</span> <span class="n">lagmat2ds</span>
 
@@ -769,16 +770,9 @@
 <span class="sd">    Gives the same result as ``_autolag`` with OLS on the regressors</span>
 <span class="sd">    ``X = [trend, level, lag 1, ..., lag maxlag]`` that ``adfuller`` builds.</span>
 <span class="sd">    All candidate regressions use the first ``j`` columns of ``X`` and the</span>
-<span class="sd">    same sample. If ``[X, y] = QR`` with ``X`` of shape ``(nobs, k)``, then</span>
-<span class="sd">    the regression on the first ``j`` columns has</span>
-
-<span class="sd">    * ``ssr_j = R[k, k] ** 2 + sum(R[j:k, k] ** 2)``</span>
-<span class="sd">    * ``|t_j| = |R[j - 1, k]| / sqrt(ssr_j / (nobs - j))`` for the</span>
-<span class="sd">      coefficient of its last column,</span>
-
-<span class="sd">    so one factorization gives the criteria of all lag lengths. The rows are</span>
-<span class="sd">    processed in blocks, and the triangular factor is updated block by block</span>
-<span class="sd">    so the full lagged regressor matrix is never formed.</span>
+<span class="sd">    same sample, so ``nested_lag_ols`` gives the criteria of all lag</span>
+<span class="sd">    lengths from one QR decomposition without forming the lagged regressor</span>
+<span class="sd">    matrix.</span>
 <span class="sd">    """</span>
     <span class="n">xdiff</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">diff</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
     <span class="n">nobs</span> <span class="o">=</span> <span class="n">xdiff</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">-</span> <span class="n">maxlag</span>
@@ -788,52 +782,28 @@
     <span class="c1"># Row t of windows is xdiff[t + maxlag], xdiff[t + maxlag - 1], ...,</span>
     <span class="c1"># xdiff[t], i.e., the dependent variable followed by its maxlag lags</span>
     <span class="n">windows</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">lib</span><span class="o">.</span><span class="n">stride_tricks</span><span class="o">.</span><span class="n">sliding_window_view</span><span class="p">(</span><span class="n">xdiff</span><span class="p">,</span> <span class="n">maxlag</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)[:,</span> <span class="p">::</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
-    <span class="c1"># Blocks of about 1MB keep the data in cache</span>
-    <span class="n">block_rows</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">4</span> <span class="o">*</span> <span class="p">(</span><span class="n">k</span> <span class="o">+</span> <span class="mi">1</span><span class="p">),</span> <span class="mi">2</span><span class="o">**</span><span class="mi">17</span> <span class="o">//</span> <span class="p">(</span><span class="n">k</span> <span class="o">+</span> <span class="mi">1</span><span class="p">))</span>
-    <span class="n">r</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">((</span><span class="mi">0</span><span class="p">,</span> <span class="n">k</span> <span class="o">+</span> <span class="mi">1</span><span class="p">))</span>
-    <span class="k">for</span> <span class="n">start</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">nobs</span><span class="p">,</span> <span class="n">block_rows</span><span class="p">):</span>
-        <span class="n">stop</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">start</span> <span class="o">+</span> <span class="n">block_rows</span><span class="p">,</span> <span class="n">nobs</span><span class="p">)</span>
-        <span class="n">block</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">((</span><span class="n">r</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">+</span> <span class="n">stop</span> <span class="o">-</span> <span class="n">start</span><span class="p">,</span> <span class="n">k</span> <span class="o">+</span> <span class="mi">1</span><span class="p">))</span>
-        <span class="n">block</span><span class="p">[:</span> <span class="n">r</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]]</span> <span class="o">=</span> <span class="n">r</span>
-        <span class="n">rows</span> <span class="o">=</span> <span class="n">block</span><span class="p">[</span><span class="n">r</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="p">:]</span>
-        <span class="k">if</span> <span class="n">ntrend</span><span class="p">:</span>
-            <span class="n">trend</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">start</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="n">stop</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
-            <span class="k">for</span> <span class="n">power</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">ntrend</span><span class="p">):</span>
-                <span class="n">rows</span><span class="p">[:,</span> <span class="n">power</span><span class="p">]</span> <span class="o">=</span> <span class="n">trend</span><span class="o">**</span><span class="n">power</span>
-        <span class="n">rows</span><span class="p">[:,</span> <span class="n">ntrend</span><span class="p">]</span> <span class="o">=</span> <span class="n">x</span><span class="p">[</span><span class="n">maxlag</span> <span class="o">+</span> <span class="n">start</span> <span class="p">:</span> <span class="n">maxlag</span> <span class="o">+</span> <span class="n">stop</span><span class="p">]</span>
-        <span class="n">rows</span><span class="p">[:,</span> <span class="n">startlag</span><span class="p">:</span><span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="n">windows</span><span class="p">[</span><span class="n">start</span><span class="p">:</span><span class="n">stop</span><span class="p">,</span> <span class="mi">1</span><span class="p">:]</span>
-        <span class="n">rows</span><span class="p">[:,</span> <span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="n">windows</span><span class="p">[</span><span class="n">start</span><span class="p">:</span><span class="n">stop</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span>
-        <span class="n">r</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">qr</span><span class="p">(</span><span class="n">block</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s2">"r"</span><span class="p">)</span>
-
-    <span class="k">if</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">r</span><span class="p">)):</span>
-        <span class="k">return</span> <span class="kc">None</span>
+    <span class="n">exog</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">((</span><span class="n">nobs</span><span class="p">,</span> <span class="n">startlag</span><span class="p">))</span>
+    <span class="n">exog</span><span class="p">[:,</span> <span class="p">:</span><span class="n">ntrend</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vander</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">nobs</span> <span class="o">+</span> <span class="mi">1</span><span class="p">),</span> <span class="n">ntrend</span><span class="p">,</span> <span class="n">increasing</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">exog</span><span class="p">[:,</span> <span class="n">ntrend</span><span class="p">]</span> <span class="o">=</span> <span class="n">x</span><span class="p">[</span><span class="n">maxlag</span><span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
     <span class="c1"># OLS treats singular values below ncols * eps times the largest one as</span>
-    <span class="c1"># zero. A subset of the columns has a smallest singular value at least</span>
-    <span class="c1"># as large, and a largest one at most as large, as all columns, so if</span>
-    <span class="c1"># this check passes OLS finds every candidate regression to have full</span>
-    <span class="c1"># rank. The factor 10 is a margin for rounding.</span>
-    <span class="n">sv</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">svd</span><span class="p">(</span><span class="n">r</span><span class="p">[:</span><span class="n">k</span><span class="p">,</span> <span class="p">:</span><span class="n">k</span><span class="p">],</span> <span class="n">compute_uv</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
-    <span class="k">if</span> <span class="n">sv</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">&lt;=</span> <span class="mi">10</span> <span class="o">*</span> <span class="n">k</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">finfo</span><span class="p">(</span><span class="nb">float</span><span class="p">)</span><span class="o">.</span><span class="n">eps</span> <span class="o">*</span> <span class="n">sv</span><span class="p">[</span><span class="mi">0</span><span class="p">]:</span>
-        <span class="k">return</span> <span class="kc">None</span>
-    <span class="n">qy</span> <span class="o">=</span> <span class="n">r</span><span class="p">[:</span><span class="n">k</span><span class="p">,</span> <span class="n">k</span><span class="p">]</span>
-    <span class="c1"># ssr_tail[j] is the sum of squares of qy[j:]</span>
-    <span class="n">ssr_tail</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">cumsum</span><span class="p">(</span><span class="n">qy</span><span class="p">[::</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">**</span> <span class="mi">2</span><span class="p">)[::</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span> <span class="mf">0.0</span><span class="p">)</span>
-    <span class="n">ssr</span> <span class="o">=</span> <span class="n">r</span><span class="p">[</span><span class="n">k</span><span class="p">,</span> <span class="n">k</span><span class="p">]</span> <span class="o">**</span> <span class="mi">2</span> <span class="o">+</span> <span class="n">ssr_tail</span><span class="p">[</span><span class="n">startlag</span><span class="p">:]</span>
-    <span class="k">if</span> <span class="ow">not</span> <span class="n">ssr</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mf">1e-10</span> <span class="o">*</span> <span class="p">(</span><span class="n">r</span><span class="p">[</span><span class="n">k</span><span class="p">,</span> <span class="n">k</span><span class="p">]</span> <span class="o">**</span> <span class="mi">2</span> <span class="o">+</span> <span class="n">ssr_tail</span><span class="p">[</span><span class="mi">0</span><span class="p">]):</span>
-        <span class="c1"># (Almost) perfect fit, the residuals are dominated by rounding</span>
+    <span class="c1"># zero</span>
+    <span class="n">res</span> <span class="o">=</span> <span class="n">nested_lag_ols</span><span class="p">(</span>
+        <span class="n">windows</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">],</span> <span class="n">windows</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">:],</span> <span class="n">exog</span><span class="p">,</span> <span class="n">rcond</span><span class="o">=</span><span class="n">k</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">finfo</span><span class="p">(</span><span class="nb">float</span><span class="p">)</span><span class="o">.</span><span class="n">eps</span>
+    <span class="p">)</span>
+    <span class="k">if</span> <span class="n">res</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
         <span class="k">return</span> <span class="kc">None</span>
 
-    <span class="n">ncols</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">startlag</span><span class="p">,</span> <span class="n">k</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">method</span> <span class="o">==</span> <span class="s2">"t-stat"</span><span class="p">:</span>
-        <span class="n">crit</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">qy</span><span class="p">[</span><span class="n">startlag</span> <span class="o">-</span> <span class="mi">1</span> <span class="p">:])</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">ssr</span> <span class="o">/</span> <span class="p">(</span><span class="n">nobs</span> <span class="o">-</span> <span class="n">ncols</span><span class="p">))</span>
+        <span class="n">crit</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">res</span><span class="o">.</span><span class="n">tvalues_last</span><span class="p">)</span>
         <span class="c1"># stop = stats.norm.ppf(.95)</span>
         <span class="n">significant</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">flatnonzero</span><span class="p">(</span><span class="n">crit</span> <span class="o">&gt;=</span> <span class="mf">1.6448536269514722</span><span class="p">)</span>
         <span class="n">bestlag</span> <span class="o">=</span> <span class="n">significant</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="k">if</span> <span class="n">significant</span><span class="o">.</span><span class="n">size</span> <span class="k">else</span> <span class="mi">0</span>
     <span class="k">else</span><span class="p">:</span>
+        <span class="n">ssr</span> <span class="o">=</span> <span class="n">res</span><span class="o">.</span><span class="n">ssr</span>
         <span class="n">nobs2</span> <span class="o">=</span> <span class="n">nobs</span> <span class="o">/</span> <span class="mf">2.0</span>
         <span class="n">llf</span> <span class="o">=</span> <span class="o">-</span><span class="n">nobs2</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">pi</span><span class="p">)</span> <span class="o">-</span> <span class="n">nobs2</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">ssr</span> <span class="o">/</span> <span class="n">nobs</span><span class="p">)</span> <span class="o">-</span> <span class="n">nobs2</span>
         <span class="n">penalty</span> <span class="o">=</span> <span class="mf">2.0</span> <span class="k">if</span> <span class="n">method</span> <span class="o">==</span> <span class="s2">"aic"</span> <span class="k">else</span> <span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">nobs</span><span class="p">)</span>
-        <span class="n">crit</span> <span class="o">=</span> <span class="o">-</span><span class="mi">2</span> <span class="o">*</span> <span class="n">llf</span> <span class="o">+</span> <span class="n">penalty</span> <span class="o">*</span> <span class="n">ncols</span>
+        <span class="n">crit</span> <span class="o">=</span> <span class="o">-</span><span class="mi">2</span> <span class="o">*</span> <span class="n">llf</span> <span class="o">+</span> <span class="n">penalty</span> <span class="o">*</span> <span class="n">res</span><span class="o">.</span><span class="n">df_model</span>
         <span class="n">bestlag</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argmin</span><span class="p">(</span><span class="n">crit</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">crit</span><span class="p">[</span><span class="n">bestlag</span><span class="p">],</span> <span class="nb">int</span><span class="p">(</span><span class="n">bestlag</span><span class="p">)</span>
 
@@ -1782,6 +1752,66 @@
 
 
 
+<span class="k">def</span><span class="w"> </span><span class="nf">_pacf_yw_levinson</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">nlags</span><span class="p">,</span> <span class="n">adjusted</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""</span>
+<span class="sd">    Partial autocorrelations of the Yule-Walker estimator by Levinson-Durbin</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    x : ndarray</span>
+<span class="sd">        The data series, 1d.</span>
+<span class="sd">    nlags : int</span>
+<span class="sd">        The largest lag, smaller than the number of observations.</span>
+<span class="sd">    adjusted : bool</span>
+<span class="sd">        Use the denominator nobs - k for the autocovariance at lag k if</span>
+<span class="sd">        True, nobs if False.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    ndarray</span>
+<span class="sd">        The partial autocorrelations for lags 0, 1, ..., m with m &lt;= nlags.</span>
+<span class="sd">        m &lt; nlags if the Toeplitz matrix of the autocovariances at lags</span>
+<span class="sd">        0, ..., m is not positive definite or the autocovariances are not</span>
+<span class="sd">        finite. Lags above m are left to ``yule_walker``.</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    The autocovariances are computed exactly as ``yule_walker`` computes</span>
+<span class="sd">    them. The PACF at lag k is the last coefficient of the AR(k) Yule-Walker</span>
+<span class="sd">    solution, which is the k-th reflection coefficient of the Levinson-Durbin</span>
+<span class="sd">    recursion, so all lags are found in O(nlags ** 2) operations from a</span>
+<span class="sd">    single autocovariance sequence. The recursion stops at the first leading</span>
+<span class="sd">    Toeplitz matrix that is not positive definite, where it is no longer</span>
+<span class="sd">    known to be stable.</span>
+<span class="sd">    """</span>
+    <span class="n">nobs</span> <span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">pacf</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">(</span><span class="n">nlags</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span>
+    <span class="n">pacf</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="mf">1.0</span>
+    <span class="c1"># Invalid values produce non-finite autocovariances, and yule_walker</span>
+    <span class="c1"># then repeats the calculation and its warnings</span>
+    <span class="k">with</span> <span class="n">np</span><span class="o">.</span><span class="n">errstate</span><span class="p">(</span><span class="nb">all</span><span class="o">=</span><span class="s2">"ignore"</span><span class="p">):</span>
+        <span class="n">x</span> <span class="o">=</span> <span class="n">x</span> <span class="o">-</span> <span class="n">x</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span>
+        <span class="n">acov</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">(</span><span class="n">nlags</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="n">acov</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">x</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span> <span class="o">/</span> <span class="n">nobs</span>
+        <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">nlags</span> <span class="o">+</span> <span class="mi">1</span><span class="p">):</span>
+            <span class="n">acov</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">x</span><span class="p">[:</span><span class="o">-</span><span class="n">k</span><span class="p">]</span> <span class="o">*</span> <span class="n">x</span><span class="p">[</span><span class="n">k</span><span class="p">:])</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span> <span class="o">/</span> <span class="p">(</span><span class="n">nobs</span> <span class="o">-</span> <span class="n">k</span> <span class="o">*</span> <span class="n">adjusted</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">acov</span><span class="p">)):</span>
+        <span class="k">return</span> <span class="n">pacf</span><span class="p">[:</span><span class="mi">1</span><span class="p">]</span>
+    <span class="c1"># phi[:k - 1] holds the coefficients of the AR(k - 1) model, and sigma</span>
+    <span class="c1"># its innovation variance</span>
+    <span class="n">phi</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">(</span><span class="n">nlags</span><span class="p">)</span>
+    <span class="n">sigma</span> <span class="o">=</span> <span class="n">acov</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">nlags</span> <span class="o">+</span> <span class="mi">1</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">sigma</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">pacf</span><span class="p">[:</span><span class="n">k</span><span class="p">]</span>
+        <span class="n">refl</span> <span class="o">=</span> <span class="p">(</span><span class="n">acov</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="o">-</span> <span class="n">phi</span><span class="p">[:</span> <span class="n">k</span> <span class="o">-</span> <span class="mi">1</span><span class="p">]</span> <span class="o">@</span> <span class="n">acov</span><span class="p">[</span><span class="n">k</span> <span class="o">-</span> <span class="mi">1</span> <span class="p">:</span> <span class="mi">0</span> <span class="p">:</span> <span class="o">-</span><span class="mi">1</span><span class="p">])</span> <span class="o">/</span> <span class="n">sigma</span>
+        <span class="n">phi</span><span class="p">[:</span> <span class="n">k</span> <span class="o">-</span> <span class="mi">1</span><span class="p">]</span> <span class="o">-=</span> <span class="n">refl</span> <span class="o">*</span> <span class="n">phi</span><span class="p">[:</span> <span class="n">k</span> <span class="o">-</span> <span class="mi">1</span><span class="p">][::</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+        <span class="n">phi</span><span class="p">[</span><span class="n">k</span> <span class="o">-</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">refl</span>
+        <span class="n">sigma</span> <span class="o">*=</span> <span class="mf">1.0</span> <span class="o">-</span> <span class="n">refl</span> <span class="o">*</span> <span class="n">refl</span>
+        <span class="n">pacf</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="n">refl</span>
+    <span class="k">return</span> <span class="n">pacf</span>
+
+
 <div class="viewcode-block" id="pacf_yw">
 <a class="viewcode-back" href="../../../../generated/statsmodels.tsa.stattools.pacf_yw.html#statsmodels.tsa.stattools.pacf_yw">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">pacf_yw</span><span class="p">(</span>
@@ -1790,7 +1820,7 @@
     <span class="n">method</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">"adjusted"</span><span class="p">,</span> <span class="s2">"mle"</span><span class="p">]</span> <span class="o">=</span> <span class="s2">"adjusted"</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""</span>
-<span class="sd">    Partial autocorrelation estimated with non-recursive yule_walker</span>
+<span class="sd">    Partial autocorrelation estimated with Yule-Walker</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
@@ -1818,8 +1848,12 @@
 
 <span class="sd">    Notes</span>
 <span class="sd">    -----</span>
-<span class="sd">    This solves yule_walker for each desired lag and contains</span>
-<span class="sd">    currently duplicate calculations.</span>
+<span class="sd">    The value at lag k is the last coefficient of the AR(k) model estimated</span>
+<span class="sd">    by ``yule_walker``. All lags are computed from one autocovariance</span>
+<span class="sd">    sequence using the Levinson-Durbin recursion. ``yule_walker`` is used</span>
+<span class="sd">    for the lags where the recursion is not known to be stable, which are</span>
+<span class="sd">    those where the Toeplitz matrix of the autocovariances is not positive</span>
+<span class="sd">    definite.</span>
 <span class="sd">    """</span>
     <span class="n">x</span> <span class="o">=</span> <span class="n">array_like</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="s2">"x"</span><span class="p">)</span>
     <span class="n">nlags</span> <span class="o">=</span> <span class="n">int_like</span><span class="p">(</span><span class="n">nlags</span><span class="p">,</span> <span class="s2">"nlags"</span><span class="p">,</span> <span class="n">optional</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
@@ -1827,16 +1861,19 @@
     <span class="k">if</span> <span class="n">nlags</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
         <span class="n">nlags</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="nb">min</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="mi">10</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">log10</span><span class="p">(</span><span class="n">nobs</span><span class="p">)),</span> <span class="n">nobs</span> <span class="o">-</span> <span class="mi">1</span><span class="p">),</span> <span class="mi">1</span><span class="p">)</span>
     <span class="n">method</span> <span class="o">=</span> <span class="n">string_like</span><span class="p">(</span><span class="n">method</span><span class="p">,</span> <span class="s2">"method"</span><span class="p">,</span> <span class="n">options</span><span class="o">=</span><span class="p">(</span><span class="s2">"adjusted"</span><span class="p">,</span> <span class="s2">"mle"</span><span class="p">))</span>
-    <span class="n">pacf</span> <span class="o">=</span> <span class="p">[</span><span class="mf">1.0</span><span class="p">]</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">x</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">1</span> <span class="ow">or</span> <span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span> <span class="o">==</span> <span class="p">(</span><span class="mi">1</span><span class="p">,))</span> <span class="ow">and</span> <span class="mi">0</span> <span class="o">&lt;</span> <span class="n">nlags</span> <span class="o">&lt;</span> <span class="n">nobs</span><span class="p">:</span>
+        <span class="n">pacf</span> <span class="o">=</span> <span class="n">_pacf_yw_levinson</span><span class="p">(</span><span class="n">x</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">),</span> <span class="n">nlags</span><span class="p">,</span> <span class="n">method</span> <span class="o">==</span> <span class="s2">"adjusted"</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">pacf</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">pacf</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">&gt;</span> <span class="n">nlags</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">pacf</span>
     <span class="k">with</span> <span class="n">warnings</span><span class="o">.</span><span class="n">catch_warnings</span><span class="p">():</span>
         <span class="n">warnings</span><span class="o">.</span><span class="n">simplefilter</span><span class="p">(</span><span class="s2">"once"</span><span class="p">,</span> <span class="n">ValueWarning</span><span class="p">)</span>
-        <span class="n">pacf</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span>
-            <span class="p">[</span>
-                <span class="n">yule_walker</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">k</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="n">method</span><span class="p">,</span> <span class="n">result_object</span><span class="o">=</span><span class="kc">False</span><span class="p">)[</span><span class="mi">0</span><span class="p">][</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
-                <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">nlags</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span>
-            <span class="p">]</span>
-        <span class="p">)</span>
-    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">pacf</span><span class="p">)</span></div>
+        <span class="n">rest</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="n">yule_walker</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">k</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="n">method</span><span class="p">,</span> <span class="n">result_object</span><span class="o">=</span><span class="kc">False</span><span class="p">)[</span><span class="mi">0</span><span class="p">][</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+            <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">pacf</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">nlags</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="p">]</span>
+    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">pacf</span><span class="p">,</span> <span class="n">rest</span><span class="p">])</span></div>
 
 
 
@@ -1935,6 +1972,72 @@
 
 
 
+<span class="k">def</span><span class="w"> </span><span class="nf">_pacf_ols_qr</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">nlags</span><span class="p">,</span> <span class="n">efficient</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""</span>
+<span class="sd">    Partial autocorrelations of the OLS estimator from a single QR</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    x : ndarray</span>
+<span class="sd">        The data series, 1d, demeaned by the caller. When efficient is</span>
+<span class="sd">        True, the regressions include a constant, so demeaning does not</span>
+<span class="sd">        change them but improves their conditioning.</span>
+<span class="sd">    nlags : int</span>
+<span class="sd">        The largest lag, at most nobs // 2.</span>
+<span class="sd">    efficient : bool</span>
+<span class="sd">        If True, the k-lag regression includes a constant and uses the</span>
+<span class="sd">        observations k, ..., nobs - 1. If False, it has no constant and</span>
+<span class="sd">        uses the observations nlags, ..., nobs - 1.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    ndarray or None</span>
+<span class="sd">        The partial autocorrelations for lags 0, 1, ..., nlags. None if a</span>
+<span class="sd">        regression is close to singular or the data are not finite, where</span>
+<span class="sd">        ``pacf_ols`` solves the regressions one by one.</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    Gives the same result as the least squares fit of each regression in</span>
+<span class="sd">    ``pacf_ols``. The k-lag regression uses the first k columns of</span>
+<span class="sd">    ``[lag 1, ..., lag nlags]``, and a constant if efficient is True, so</span>
+<span class="sd">    ``nested_lag_ols`` gives the last coefficient of every regression. When</span>
+<span class="sd">    efficient is True the samples differ, and the regressions use the</span>
+<span class="sd">    observations k, ..., nobs - 1 through its ``start`` argument. The lags</span>
+<span class="sd">    before the start of the sample are set to zero, as in lagmat, and do</span>
+<span class="sd">    not affect the results.</span>
+<span class="sd">    """</span>
+    <span class="n">nobs</span> <span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="c1"># lstsq treats singular values below max(nrows, ncols) * eps times the</span>
+    <span class="c1"># largest one as zero, and max(nrows, ncols) &lt;= nobs</span>
+    <span class="n">rcond</span> <span class="o">=</span> <span class="n">nobs</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">finfo</span><span class="p">(</span><span class="nb">float</span><span class="p">)</span><span class="o">.</span><span class="n">eps</span>
+    <span class="k">if</span> <span class="n">efficient</span><span class="p">:</span>
+        <span class="c1"># Row t of windows is x[t], x[t - 1], ..., x[t - nlags], with zeros</span>
+        <span class="c1"># before the start of the sample</span>
+        <span class="n">padded</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">nlags</span><span class="p">),</span> <span class="n">x</span><span class="p">])</span>
+        <span class="n">windows</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">lib</span><span class="o">.</span><span class="n">stride_tricks</span><span class="o">.</span><span class="n">sliding_window_view</span><span class="p">(</span><span class="n">padded</span><span class="p">,</span> <span class="n">nlags</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="n">windows</span> <span class="o">=</span> <span class="n">windows</span><span class="p">[:,</span> <span class="p">::</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+        <span class="n">res</span> <span class="o">=</span> <span class="n">nested_lag_ols</span><span class="p">(</span>
+            <span class="n">windows</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">],</span>
+            <span class="n">windows</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">:],</span>
+            <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">((</span><span class="n">nobs</span><span class="p">,</span> <span class="mi">1</span><span class="p">)),</span>
+            <span class="n">rcond</span><span class="o">=</span><span class="n">rcond</span><span class="p">,</span>
+            <span class="n">start</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">nlags</span> <span class="o">+</span> <span class="mi">1</span><span class="p">),</span>
+            <span class="n">check_fit</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="c1"># Row t of windows is x[t + nlags], x[t + nlags - 1], ..., x[t]</span>
+        <span class="n">windows</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">lib</span><span class="o">.</span><span class="n">stride_tricks</span><span class="o">.</span><span class="n">sliding_window_view</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">nlags</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)[:,</span> <span class="p">::</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+        <span class="n">res</span> <span class="o">=</span> <span class="n">nested_lag_ols</span><span class="p">(</span>
+            <span class="n">windows</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">],</span> <span class="n">windows</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">:],</span> <span class="n">rcond</span><span class="o">=</span><span class="n">rcond</span><span class="p">,</span> <span class="n">check_fit</span><span class="o">=</span><span class="kc">False</span>
+        <span class="p">)</span>
+    <span class="k">if</span> <span class="n">res</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span>
+    <span class="n">pacf</span> <span class="o">=</span> <span class="n">res</span><span class="o">.</span><span class="n">params_last</span>
+    <span class="n">pacf</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="mf">1.0</span>
+    <span class="k">return</span> <span class="n">pacf</span>
+
+
 <div class="viewcode-block" id="pacf_ols">
 <a class="viewcode-back" href="../../../../generated/statsmodels.tsa.stattools.pacf_ols.html#statsmodels.tsa.stattools.pacf_ols">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">pacf_ols</span><span class="p">(</span>
@@ -1977,8 +2080,10 @@
 
 <span class="sd">    Notes</span>
 <span class="sd">    -----</span>
-<span class="sd">    This solves a separate OLS estimation for each desired lag using method in</span>
-<span class="sd">    [1]_. Setting efficient to True has two effects. First, it uses</span>
+<span class="sd">    This estimates a separate OLS regression for each desired lag using</span>
+<span class="sd">    method in [1]_. The regressions share their regressors, so all of them</span>
+<span class="sd">    are computed from a single QR decomposition. Setting efficient to True</span>
+<span class="sd">    has two effects. First, it uses</span>
 <span class="sd">    `nobs - lag` observations of estimate each pacf.  Second, it re-estimates</span>
 <span class="sd">    the mean in each regression. If efficient is False, then the data are first</span>
 <span class="sd">    demeaned, and then `nobs - maxlag` observations are used to estimate each</span>
@@ -2005,6 +2110,18 @@
         <span class="n">nlags</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="nb">min</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="mi">10</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">log10</span><span class="p">(</span><span class="n">nobs</span><span class="p">)),</span> <span class="n">nobs</span> <span class="o">//</span> <span class="mi">2</span><span class="p">),</span> <span class="mi">1</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">nlags</span> <span class="o">&gt;</span> <span class="n">nobs</span> <span class="o">//</span> <span class="mi">2</span><span class="p">:</span>
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"nlags must be smaller than nobs // 2 (</span><span class="si">{</span><span class="n">nobs</span><span class="w"> </span><span class="o">//</span><span class="w"> </span><span class="mi">2</span><span class="si">}</span><span class="s2">)"</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">efficient</span><span class="p">:</span>
+        <span class="n">x</span> <span class="o">=</span> <span class="n">x</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+    <span class="n">pacf</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">x</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">1</span> <span class="ow">or</span> <span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span> <span class="o">==</span> <span class="p">(</span><span class="mi">1</span><span class="p">,))</span> <span class="ow">and</span> <span class="mi">0</span> <span class="o">&lt;</span> <span class="n">nlags</span><span class="p">:</span>
+        <span class="n">xd</span> <span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">efficient</span><span class="p">:</span>
+            <span class="n">xd</span> <span class="o">=</span> <span class="n">xd</span> <span class="o">-</span> <span class="n">xd</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span>
+        <span class="n">pacf</span> <span class="o">=</span> <span class="n">_pacf_ols_qr</span><span class="p">(</span><span class="n">xd</span><span class="p">,</span> <span class="n">nlags</span><span class="p">,</span> <span class="n">efficient</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">pacf</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">adjusted</span><span class="p">:</span>
+            <span class="n">pacf</span> <span class="o">*=</span> <span class="n">nobs</span> <span class="o">/</span> <span class="p">(</span><span class="n">nobs</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">nlags</span> <span class="o">+</span> <span class="mi">1</span><span class="p">))</span>
+        <span class="k">return</span> <span class="n">pacf</span>
     <span class="n">pacf</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">(</span><span class="n">nlags</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span>
     <span class="n">pacf</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="mf">1.0</span>
     <span class="k">if</span> <span class="n">efficient</span><span class="p">:</span>
@@ -2015,7 +2132,6 @@
             <span class="n">params</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">lstsq</span><span class="p">(</span><span class="n">xlags</span><span class="p">[</span><span class="n">k</span><span class="p">:,</span> <span class="p">:</span> <span class="n">k</span> <span class="o">+</span> <span class="mi">1</span><span class="p">],</span> <span class="n">x0</span><span class="p">[</span><span class="n">k</span><span class="p">:],</span> <span class="n">rcond</span><span class="o">=</span><span class="kc">None</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
             <span class="n">pacf</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">squeeze</span><span class="p">(</span><span class="n">params</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span>
     <span class="k">else</span><span class="p">:</span>
-        <span class="n">x</span> <span class="o">=</span> <span class="n">x</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
         <span class="c1"># Create a single set of lags for multivariate OLS</span>
         <span class="n">_lagmat_result</span> <span class="o">=</span> <span class="n">lagmat</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">nlags</span><span class="p">,</span> <span class="n">original</span><span class="o">=</span><span class="s2">"sep"</span><span class="p">,</span> <span class="n">trim</span><span class="o">=</span><span class="s2">"both"</span><span class="p">)</span>
         <span class="n">xlags</span><span class="p">,</span> <span class="n">x0</span> <span class="o">=</span> <span class="n">_lagmat_result</span><span class="o">.</span><span class="n">lags</span><span class="p">,</span> <span class="n">_lagmat_result</span><span class="o">.</span><span class="n">leads</span>

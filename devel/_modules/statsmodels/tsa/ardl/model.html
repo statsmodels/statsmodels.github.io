@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
-    <title>statsmodels.tsa.ardl.model &#8212; statsmodels 0.15.1 (+733)</title>
+    <title>statsmodels.tsa.ardl.model &#8212; statsmodels 0.15.1 (+747)</title>
   <link rel="icon" type="image/png" sizes="32x32" href="../../../../_static/icons/favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="../../../../_static/icons/favicon-16x16.png">
   <link rel="manifest" href="../../../../_static/icons/site.webmanifest">
@@ -71,7 +71,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="color-scheme" content="light dark"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="0.15.1 (+733)" />
+  <meta name="docsearch:version" content="0.15.1 (+747)" />
     <meta name="docbuild:last-update" content="Oct 25, 2026"/>
   
     
@@ -591,6 +591,7 @@
     <span class="n">int_like</span><span class="p">,</span>
     <span class="n">string_like</span><span class="p">,</span>
 <span class="p">)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.tsa._lagselect</span><span class="w"> </span><span class="kn">import</span> <span class="n">nested_lag_ols</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.tsa.ar_model</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
     <span class="n">AROrderSelectionResults</span><span class="p">,</span>
     <span class="n">AutoReg</span><span class="p">,</span>
@@ -2104,6 +2105,89 @@
 
 
 
+<span class="k">def</span><span class="w"> </span><span class="nf">_ardl_select_ssr</span><span class="p">(</span><span class="n">y</span><span class="p">,</span> <span class="n">always</span><span class="p">,</span> <span class="n">select</span><span class="p">,</span> <span class="n">glob</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""</span>
+<span class="sd">    Sum of squared residuals of all candidate ARDL models from one QR</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    y : ndarray</span>
+<span class="sd">        The dependent variable, (nobs,).</span>
+<span class="sd">    always : ndarray</span>
+<span class="sd">        The regressors included in every model, (nobs, k_always).</span>
+<span class="sd">    select : list[ndarray]</span>
+<span class="sd">        The blocks of lags of the endogenous and exogenous variables. A</span>
+<span class="sd">        model includes the first columns of each block, or any subset of</span>
+<span class="sd">        all columns if glob is True.</span>
+<span class="sd">    glob : bool</span>
+<span class="sd">        Whether all subsets of the columns of the blocks are considered.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    tuple[ndarray, ndarray] or None</span>
+<span class="sd">        The sums of squared residuals of the models and their numbers of</span>
+<span class="sd">        regressors from the blocks. If glob is False, the model that</span>
+<span class="sd">        includes the first ``i_j`` columns of block ``j`` is at</span>
+<span class="sd">        ``[i_0, i_1, ...]``. If glob is True, the models are in the order of</span>
+<span class="sd">        ``combinations(range(ncols), i) for i in range(ncols)``. None if</span>
+<span class="sd">        the regressors are close to singular, the largest model fits</span>
+<span class="sd">        (almost) perfectly, or the data are not finite.</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    If ``[always, X, y] = QR`` with ``X`` the columns of all blocks, then</span>
+<span class="sd">    the regression of ``y`` on ``always`` and any subset of the columns of</span>
+<span class="sd">    ``X`` has the same residual sum of squares as the regression of the</span>
+<span class="sd">    last column of ``B = R[k_always:, k_always:]`` on the same columns of</span>
+<span class="sd">    ``B``. So one QR of the data reduces every model to a problem with</span>
+<span class="sd">    ``ncols + 1`` rows. If glob is False, the models that differ only in</span>
+<span class="sd">    the number of columns of the last block form a nested sequence, which</span>
+<span class="sd">    ``nested_lag_ols`` solves from a single QR of these rows.</span>
+<span class="sd">    """</span>
+    <span class="n">nobs</span> <span class="o">=</span> <span class="n">y</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">widths</span> <span class="o">=</span> <span class="p">[</span><span class="n">block</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="k">for</span> <span class="n">block</span> <span class="ow">in</span> <span class="n">select</span><span class="p">]</span>
+    <span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">column_stack</span><span class="p">(</span><span class="n">select</span><span class="p">)</span> <span class="k">if</span> <span class="nb">sum</span><span class="p">(</span><span class="n">widths</span><span class="p">)</span> <span class="k">else</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">((</span><span class="n">nobs</span><span class="p">,</span> <span class="mi">0</span><span class="p">))</span>
+    <span class="c1"># lstsq treats singular values below max(nrows, ncols) * eps times the</span>
+    <span class="c1"># largest one as zero, and nobs &gt;= ncols</span>
+    <span class="n">res</span> <span class="o">=</span> <span class="n">nested_lag_ols</span><span class="p">(</span><span class="n">y</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">always</span><span class="p">,</span> <span class="n">rcond</span><span class="o">=</span><span class="n">nobs</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">finfo</span><span class="p">(</span><span class="nb">float</span><span class="p">)</span><span class="o">.</span><span class="n">eps</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">res</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span>
+    <span class="c1"># The regressors of every model are a subset of the columns that passed</span>
+    <span class="c1"># the rank check above, so the rows of the factor need no further checks</span>
+    <span class="n">k_always</span> <span class="o">=</span> <span class="n">always</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+    <span class="n">b</span> <span class="o">=</span> <span class="n">res</span><span class="o">.</span><span class="n">r</span><span class="p">[</span><span class="n">k_always</span><span class="p">:,</span> <span class="n">k_always</span><span class="p">:]</span>
+    <span class="n">rhs</span> <span class="o">=</span> <span class="n">b</span><span class="p">[:,</span> <span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">glob</span><span class="p">:</span>
+        <span class="n">ssr</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">nreg</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">ncols</span> <span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">ncols</span><span class="p">):</span>
+            <span class="n">perms</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">combinations</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="n">ncols</span><span class="p">),</span> <span class="n">i</span><span class="p">))</span>
+            <span class="n">perms</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">perms</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">int</span><span class="p">)</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">perms</span><span class="p">),</span> <span class="n">i</span><span class="p">)</span>
+            <span class="c1"># Batches of models with i regressors each</span>
+            <span class="k">for</span> <span class="n">start</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">perms</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="mi">1024</span><span class="p">):</span>
+                <span class="n">cols</span> <span class="o">=</span> <span class="n">perms</span><span class="p">[</span><span class="n">start</span> <span class="p">:</span> <span class="n">start</span> <span class="o">+</span> <span class="mi">1024</span><span class="p">]</span>
+                <span class="n">design</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">((</span><span class="n">cols</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">b</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">))</span>
+                <span class="n">design</span><span class="p">[:,</span> <span class="p">:,</span> <span class="p">:</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">moveaxis</span><span class="p">(</span><span class="n">b</span><span class="p">[:,</span> <span class="n">cols</span><span class="p">],</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+                <span class="n">design</span><span class="p">[:,</span> <span class="p">:,</span> <span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">rhs</span>
+                <span class="n">r</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">qr</span><span class="p">(</span><span class="n">design</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s2">"r"</span><span class="p">)</span>
+                <span class="n">ssr</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">r</span><span class="p">[:,</span> <span class="n">i</span><span class="p">,</span> <span class="n">i</span><span class="p">]</span> <span class="o">**</span> <span class="mi">2</span><span class="p">)</span>
+            <span class="n">nreg</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">full</span><span class="p">(</span><span class="n">perms</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">i</span><span class="p">))</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">ssr</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">int</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(</span><span class="n">ssr</span><span class="p">),</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(</span><span class="n">nreg</span><span class="p">)</span>
+
+    <span class="n">offsets</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">cumsum</span><span class="p">([</span><span class="mi">0</span><span class="p">]</span> <span class="o">+</span> <span class="n">widths</span><span class="p">)</span>
+    <span class="n">last</span> <span class="o">=</span> <span class="n">b</span><span class="p">[:,</span> <span class="n">offsets</span><span class="p">[</span><span class="o">-</span><span class="mi">2</span><span class="p">]</span> <span class="p">:</span> <span class="n">offsets</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]]</span>
+    <span class="n">ssr</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">([</span><span class="n">w</span> <span class="o">+</span> <span class="mi">1</span> <span class="k">for</span> <span class="n">w</span> <span class="ow">in</span> <span class="n">widths</span><span class="p">])</span>
+    <span class="k">for</span> <span class="n">prefix</span> <span class="ow">in</span> <span class="n">product</span><span class="p">(</span><span class="o">*</span><span class="p">[</span><span class="nb">range</span><span class="p">(</span><span class="n">w</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="k">for</span> <span class="n">w</span> <span class="ow">in</span> <span class="n">widths</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]]):</span>
+        <span class="n">cols</span> <span class="o">=</span> <span class="p">[</span><span class="n">offsets</span><span class="p">[</span><span class="n">j</span><span class="p">]</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">i</span><span class="p">)</span> <span class="k">for</span> <span class="n">j</span><span class="p">,</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">prefix</span><span class="p">)]</span>
+        <span class="n">cols</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">int</span><span class="p">)]</span> <span class="o">+</span> <span class="n">cols</span><span class="p">)</span>
+        <span class="n">nested</span> <span class="o">=</span> <span class="n">nested_lag_ols</span><span class="p">(</span><span class="n">rhs</span><span class="p">,</span> <span class="n">last</span><span class="p">,</span> <span class="n">b</span><span class="p">[:,</span> <span class="n">cols</span><span class="p">],</span> <span class="n">rcond</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">check_fit</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+        <span class="n">ssr</span><span class="p">[</span><span class="n">prefix</span><span class="p">]</span> <span class="o">=</span> <span class="n">nested</span><span class="o">.</span><span class="n">ssr</span>
+    <span class="k">return</span> <span class="n">ssr</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">indices</span><span class="p">(</span><span class="n">ssr</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+
+
 <div class="viewcode-block" id="ardl_select_order">
 <a class="viewcode-back" href="../../../../generated/statsmodels.tsa.ardl.ardl_select_order.html#statsmodels.tsa.ardl.ardl_select_order">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">ardl_select_order</span><span class="p">(</span>
@@ -2198,23 +2282,25 @@
     <span class="n">orig_hold_back</span> <span class="o">=</span> <span class="n">int_like</span><span class="p">(</span><span class="n">hold_back</span><span class="p">,</span> <span class="s2">"hold_back"</span><span class="p">,</span> <span class="n">optional</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
     <span class="n">ic</span> <span class="o">=</span> <span class="n">string_like</span><span class="p">(</span><span class="n">ic</span><span class="p">,</span> <span class="s2">"ic"</span><span class="p">,</span> <span class="n">options</span><span class="o">=</span><span class="p">(</span><span class="s2">"aic"</span><span class="p">,</span> <span class="s2">"bic"</span><span class="p">,</span> <span class="s2">"hqic"</span><span class="p">))</span>
 
+    <span class="k">def</span><span class="w"> </span><span class="nf">ics_from_ssr</span><span class="p">(</span><span class="n">ssr</span><span class="p">,</span> <span class="n">nobs</span><span class="p">,</span> <span class="n">df_model</span><span class="p">):</span>
+        <span class="n">sigma2</span> <span class="o">=</span> <span class="mf">1.0</span> <span class="o">/</span> <span class="n">nobs</span> <span class="o">*</span> <span class="n">ssr</span>
+        <span class="n">llf</span> <span class="o">=</span> <span class="o">-</span><span class="n">nobs</span> <span class="o">*</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">pi</span> <span class="o">*</span> <span class="n">sigma2</span><span class="p">)</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="o">/</span> <span class="mi">2</span>
+        <span class="n">res</span> <span class="o">=</span> <span class="n">SimpleNamespace</span><span class="p">(</span><span class="n">nobs</span><span class="o">=</span><span class="n">nobs</span><span class="p">,</span> <span class="n">df_model</span><span class="o">=</span><span class="n">df_model</span><span class="p">,</span> <span class="n">sigma2</span><span class="o">=</span><span class="n">sigma2</span><span class="p">,</span> <span class="n">llf</span><span class="o">=</span><span class="n">llf</span><span class="p">)</span>
+
+        <span class="n">aic</span> <span class="o">=</span> <span class="n">call_cached_func</span><span class="p">(</span><span class="n">ARDLResults</span><span class="o">.</span><span class="n">aic</span><span class="p">,</span> <span class="n">res</span><span class="p">)</span>
+        <span class="n">bic</span> <span class="o">=</span> <span class="n">call_cached_func</span><span class="p">(</span><span class="n">ARDLResults</span><span class="o">.</span><span class="n">bic</span><span class="p">,</span> <span class="n">res</span><span class="p">)</span>
+        <span class="n">hqic</span> <span class="o">=</span> <span class="n">call_cached_func</span><span class="p">(</span><span class="n">ARDLResults</span><span class="o">.</span><span class="n">hqic</span><span class="p">,</span> <span class="n">res</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">aic</span><span class="p">,</span> <span class="n">bic</span><span class="p">,</span> <span class="n">hqic</span>
+
     <span class="k">def</span><span class="w"> </span><span class="nf">compute_ics</span><span class="p">(</span><span class="n">y</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">df</span><span class="p">):</span>
         <span class="k">if</span> <span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]:</span>
             <span class="n">resid</span> <span class="o">=</span> <span class="n">y</span> <span class="o">-</span> <span class="n">x</span> <span class="o">@</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">lstsq</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">rcond</span><span class="o">=</span><span class="kc">None</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
         <span class="k">else</span><span class="p">:</span>
             <span class="n">resid</span> <span class="o">=</span> <span class="n">y</span>
         <span class="n">nobs</span> <span class="o">=</span> <span class="n">resid</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
-        <span class="n">sigma2</span> <span class="o">=</span> <span class="mf">1.0</span> <span class="o">/</span> <span class="n">nobs</span> <span class="o">*</span> <span class="n">sumofsq</span><span class="p">(</span><span class="n">resid</span><span class="p">)</span>
-        <span class="n">llf</span> <span class="o">=</span> <span class="o">-</span><span class="n">nobs</span> <span class="o">*</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">pi</span> <span class="o">*</span> <span class="n">sigma2</span><span class="p">)</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="o">/</span> <span class="mi">2</span>
-        <span class="n">res</span> <span class="o">=</span> <span class="n">SimpleNamespace</span><span class="p">(</span>
-            <span class="n">nobs</span><span class="o">=</span><span class="n">nobs</span><span class="p">,</span> <span class="n">df_model</span><span class="o">=</span><span class="n">df</span> <span class="o">+</span> <span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">sigma2</span><span class="o">=</span><span class="n">sigma2</span><span class="p">,</span> <span class="n">llf</span><span class="o">=</span><span class="n">llf</span>
-        <span class="p">)</span>
-
-        <span class="n">aic</span> <span class="o">=</span> <span class="n">call_cached_func</span><span class="p">(</span><span class="n">ARDLResults</span><span class="o">.</span><span class="n">aic</span><span class="p">,</span> <span class="n">res</span><span class="p">)</span>
-        <span class="n">bic</span> <span class="o">=</span> <span class="n">call_cached_func</span><span class="p">(</span><span class="n">ARDLResults</span><span class="o">.</span><span class="n">bic</span><span class="p">,</span> <span class="n">res</span><span class="p">)</span>
-        <span class="n">hqic</span> <span class="o">=</span> <span class="n">call_cached_func</span><span class="p">(</span><span class="n">ARDLResults</span><span class="o">.</span><span class="n">hqic</span><span class="p">,</span> <span class="n">res</span><span class="p">)</span>
-
-        <span class="k">return</span> <span class="n">InformationCriteria</span><span class="p">(</span><span class="n">aic</span><span class="p">,</span> <span class="n">bic</span><span class="p">,</span> <span class="n">hqic</span><span class="p">)</span>
+        <span class="n">ics</span> <span class="o">=</span> <span class="n">ics_from_ssr</span><span class="p">(</span><span class="n">sumofsq</span><span class="p">(</span><span class="n">resid</span><span class="p">),</span> <span class="n">nobs</span><span class="p">,</span> <span class="n">df</span> <span class="o">+</span> <span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+        <span class="k">return</span> <span class="n">InformationCriteria</span><span class="p">(</span><span class="o">*</span><span class="n">ics</span><span class="p">)</span>
 
     <span class="n">base</span> <span class="o">=</span> <span class="n">ARDL</span><span class="p">(</span>
         <span class="n">endog</span><span class="p">,</span>
@@ -2245,7 +2331,14 @@
         <span class="n">iter_orders</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="n">block</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)))</span>
         <span class="n">var_names</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">var</span><span class="p">)</span>
     <span class="n">y</span> <span class="o">=</span> <span class="n">base</span><span class="o">.</span><span class="n">_y</span>
-    <span class="k">if</span> <span class="n">always</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]:</span>
+    <span class="n">always_df</span> <span class="o">=</span> <span class="n">always</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+    <span class="c1"># All models from one QR decomposition, see _ardl_select_ssr</span>
+    <span class="n">fast_ics</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">fast</span> <span class="o">=</span> <span class="n">_ardl_select_ssr</span><span class="p">(</span><span class="n">y</span><span class="p">,</span> <span class="n">always</span><span class="p">,</span> <span class="n">select</span><span class="p">,</span> <span class="n">glob</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">fast</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">ssr</span><span class="p">,</span> <span class="n">nreg</span> <span class="o">=</span> <span class="n">fast</span>
+        <span class="n">fast_ics</span> <span class="o">=</span> <span class="n">ics_from_ssr</span><span class="p">(</span><span class="n">ssr</span><span class="p">,</span> <span class="n">y</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">always_df</span> <span class="o">+</span> <span class="n">nreg</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">always</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]:</span>
         <span class="n">pinv_always</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">pinv</span><span class="p">(</span><span class="n">always</span><span class="p">)</span>
         <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">select</span><span class="p">)):</span>
             <span class="n">x</span> <span class="o">=</span> <span class="n">select</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
@@ -2277,7 +2370,6 @@
                 <span class="n">d</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">d</span><span class="p">[</span><span class="n">key</span><span class="p">])</span>
         <span class="k">return</span> <span class="p">(</span><span class="n">y_lags</span><span class="p">,)</span> <span class="o">+</span> <span class="nb">tuple</span><span class="p">((</span><span class="n">k</span><span class="p">,</span> <span class="n">v</span><span class="p">)</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">d</span><span class="o">.</span><span class="n">items</span><span class="p">())</span>
 
-    <span class="n">always_df</span> <span class="o">=</span> <span class="n">always</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
     <span class="n">ics</span> <span class="o">=</span> <span class="p">{}</span>
     <span class="k">if</span> <span class="n">glob</span><span class="p">:</span>
         <span class="n">ar_lags</span> <span class="o">=</span> <span class="n">base</span><span class="o">.</span><span class="n">ar_lags</span> <span class="k">if</span> <span class="n">base</span><span class="o">.</span><span class="n">ar_lags</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="p">[]</span>
@@ -2286,13 +2378,17 @@
             <span class="n">keys</span> <span class="o">+=</span> <span class="p">[(</span><span class="n">k</span><span class="p">,</span> <span class="n">i</span><span class="p">)</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">v</span><span class="p">]</span>
         <span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">column_stack</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">select</span><span class="p">))</span>
         <span class="n">all_columns</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]))</span>
+        <span class="n">loc</span> <span class="o">=</span> <span class="mi">0</span>
         <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]):</span>
             <span class="k">for</span> <span class="n">perm</span> <span class="ow">in</span> <span class="n">combinations</span><span class="p">(</span><span class="n">all_columns</span><span class="p">,</span> <span class="n">i</span><span class="p">):</span>
                 <span class="n">key</span> <span class="o">=</span> <span class="n">perm_to_tuple</span><span class="p">(</span><span class="n">keys</span><span class="p">,</span> <span class="n">perm</span><span class="p">)</span>
-                <span class="n">ics</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">compute_ics</span><span class="p">(</span><span class="n">y</span><span class="p">,</span> <span class="n">x</span><span class="p">[:,</span> <span class="n">perm</span><span class="p">],</span> <span class="n">always_df</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">fast_ics</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                    <span class="n">ics</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">InformationCriteria</span><span class="p">(</span><span class="o">*</span><span class="p">(</span><span class="n">v</span><span class="p">[</span><span class="n">loc</span><span class="p">]</span> <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">fast_ics</span><span class="p">))</span>
+                    <span class="n">loc</span> <span class="o">+=</span> <span class="mi">1</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">ics</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">compute_ics</span><span class="p">(</span><span class="n">y</span><span class="p">,</span> <span class="n">x</span><span class="p">[:,</span> <span class="n">perm</span><span class="p">],</span> <span class="n">always_df</span><span class="p">)</span>
     <span class="k">else</span><span class="p">:</span>
         <span class="k">for</span> <span class="n">io</span> <span class="ow">in</span> <span class="n">product</span><span class="p">(</span><span class="o">*</span><span class="n">iter_orders</span><span class="p">):</span>
-            <span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">column_stack</span><span class="p">([</span><span class="n">a</span><span class="p">[:,</span> <span class="p">:</span> <span class="n">io</span><span class="p">[</span><span class="n">i</span><span class="p">]]</span> <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">a</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">select</span><span class="p">)])</span>
             <span class="n">key</span> <span class="o">=</span> <span class="p">[</span><span class="n">io</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="ow">or</span> <span class="kc">None</span><span class="p">]</span>
             <span class="k">for</span> <span class="n">j</span><span class="p">,</span> <span class="n">val</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">io</span><span class="p">[</span><span class="mi">1</span><span class="p">:]):</span>
                 <span class="n">var</span> <span class="o">=</span> <span class="n">var_names</span><span class="p">[</span><span class="n">j</span><span class="p">]</span>
@@ -2301,7 +2397,11 @@
                 <span class="k">else</span><span class="p">:</span>
                     <span class="n">key</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">var</span><span class="p">,</span> <span class="n">val</span> <span class="o">-</span> <span class="mi">1</span> <span class="k">if</span> <span class="n">val</span> <span class="o">-</span> <span class="mi">1</span> <span class="o">&gt;=</span> <span class="mi">0</span> <span class="k">else</span> <span class="kc">None</span><span class="p">))</span>
             <span class="n">key</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">key</span><span class="p">)</span>
-            <span class="n">ics</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">compute_ics</span><span class="p">(</span><span class="n">y</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">always_df</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">fast_ics</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">ics</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">InformationCriteria</span><span class="p">(</span><span class="o">*</span><span class="p">(</span><span class="n">v</span><span class="p">[</span><span class="n">io</span><span class="p">]</span> <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">fast_ics</span><span class="p">))</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">column_stack</span><span class="p">([</span><span class="n">a</span><span class="p">[:,</span> <span class="p">:</span> <span class="n">io</span><span class="p">[</span><span class="n">i</span><span class="p">]]</span> <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">a</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">select</span><span class="p">)])</span>
+                <span class="n">ics</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">compute_ics</span><span class="p">(</span><span class="n">y</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">always_df</span><span class="p">)</span>
     <span class="n">lowest</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span>
     <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">ics</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
         <span class="n">val</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">ic</span><span class="p">)</span>
