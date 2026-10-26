@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
-    <title>statsmodels.tsa.filters.hp_filter &#8212; statsmodels 0.15.1 (+878)</title>
+    <title>statsmodels.tsa.filters.hp_filter &#8212; statsmodels 0.15.1 (+882)</title>
   <link rel="icon" type="image/png" sizes="32x32" href="../../../../_static/icons/favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="../../../../_static/icons/favicon-16x16.png">
   <link rel="manifest" href="../../../../_static/icons/site.webmanifest">
@@ -71,7 +71,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="color-scheme" content="light dark"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="0.15.1 (+878)" />
+  <meta name="docsearch:version" content="0.15.1 (+882)" />
     <meta name="docbuild:last-update" content="Oct 26, 2026"/>
   
     
@@ -565,13 +565,19 @@
 <span class="kn">from</span><span class="w"> </span><span class="nn">scipy</span><span class="w"> </span><span class="kn">import</span> <span class="n">sparse</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">scipy.sparse.linalg</span><span class="w"> </span><span class="kn">import</span> <span class="n">spsolve</span>
 
-<span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.tools.validation</span><span class="w"> </span><span class="kn">import</span> <span class="n">PandasWrapper</span><span class="p">,</span> <span class="n">array_like</span><span class="p">,</span> <span class="n">float_like</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.tools.validation</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">PandasWrapper</span><span class="p">,</span>
+    <span class="n">array_like</span><span class="p">,</span>
+    <span class="n">bool_like</span><span class="p">,</span>
+    <span class="n">float_like</span><span class="p">,</span>
+<span class="p">)</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.tsa.filters.filtertools</span><span class="w"> </span><span class="kn">import</span> <span class="n">CycleTrendResult</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.tsa.statespace.kalman_filter</span><span class="w"> </span><span class="kn">import</span> <span class="n">KalmanFilter</span>
 
 
 <div class="viewcode-block" id="hpfilter">
 <a class="viewcode-back" href="../../../../generated/statsmodels.tsa.filters.hp_filter.hpfilter.html#statsmodels.tsa.filters.hp_filter.hpfilter">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">hpfilter</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">lamb</span><span class="o">=</span><span class="mi">1600</span><span class="p">):</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">hpfilter</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">lamb</span><span class="o">=</span><span class="mi">1600</span><span class="p">,</span> <span class="n">one_sided</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""</span>
 <span class="sd">    Hodrick-Prescott filter</span>
 
@@ -584,6 +590,15 @@
 <span class="sd">        suggested for quarterly data. Ravn and Uhlig suggest using a value</span>
 <span class="sd">        of 6.25 (1600/4**4) for annual data and 129600 (1600*3**4) for monthly</span>
 <span class="sd">        data.</span>
+<span class="sd">    one_sided : bool, optional</span>
+<span class="sd">        If True, use the one-sided HP filter where the trend at time t only</span>
+<span class="sd">        depends on the observations up to and including t. The default is the</span>
+<span class="sd">        usual two-sided filter. The first two observations are fit exactly,</span>
+<span class="sd">        so the trend is equal to x and the cycle is 0, and the first</span>
+<span class="sd">        non-trivial value of the cycle is at t=2. x must not contain NaN or</span>
+<span class="sd">        inf values.</span>
+
+<span class="sd">        .. versionadded:: 0.15.1</span>
 
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
@@ -625,6 +640,16 @@
 <span class="sd">    K[i,j] = -2 if i == j + 1</span>
 <span class="sd">    K[i,j] = 0 otherwise</span>
 
+<span class="sd">    The one-sided filter uses the state space form of the HP filter</span>
+
+<span class="sd">    x[t] = T[t] + c[t],                  c[t] ~ N(0, 1)</span>
+<span class="sd">    T[t] = 2*T[t-1] - T[t-2] + e[t],     e[t] ~ N(0, 1/lamb)</span>
+
+<span class="sd">    The trend is the filtered state of the Kalman filter with an exact diffuse</span>
+<span class="sd">    initialization. The one-sided trend at time t is identical to the last</span>
+<span class="sd">    value of the two-sided trend computed from x[:t+1] (Stock and Watson,</span>
+<span class="sd">    1999).</span>
+
 <span class="sd">    See the notebook `Time Series Filters</span>
 <span class="sd">    &lt;../examples/notebooks/generated/tsa_filters.html&gt;`__ for an overview.</span>
 
@@ -636,6 +661,8 @@
 <span class="sd">    Ravn, M.O and H. Uhlig. 2002. "On Adjusting the Hodrick-Prescott</span>
 <span class="sd">        Filter for the Frequency of Observations." *The Review of Economics</span>
 <span class="sd">        and Statistics*, 84(2), 371-80.</span>
+<span class="sd">    Stock, J.H. and M.W. Watson. 1999. "Forecasting inflation." *Journal of</span>
+<span class="sd">        Monetary Economics*, 44(2), 293-335.</span>
 
 <span class="sd">    Examples</span>
 <span class="sd">    --------</span>
@@ -666,6 +693,15 @@
         <span class="c1"># identical to the series and negative values solve a non-convex</span>
         <span class="c1"># system, so both silently degenerate</span>
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"lamb must be a positive number, got </span><span class="si">{</span><span class="n">lamb</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+    <span class="n">one_sided</span> <span class="o">=</span> <span class="n">bool_like</span><span class="p">(</span><span class="n">one_sided</span><span class="p">,</span> <span class="s2">"one_sided"</span><span class="p">,</span> <span class="n">strict</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">one_sided</span><span class="p">:</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">x</span><span class="p">)):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"x must not contain NaN or inf when one_sided is True"</span><span class="p">)</span>
+        <span class="n">trend</span> <span class="o">=</span> <span class="n">_hpfilter_one_sided</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">lamb</span><span class="p">)</span>
+        <span class="n">cycle</span> <span class="o">=</span> <span class="n">x</span> <span class="o">-</span> <span class="n">trend</span>
+        <span class="k">return</span> <span class="n">CycleTrendResult</span><span class="p">(</span>
+            <span class="n">pw</span><span class="o">.</span><span class="n">wrap</span><span class="p">(</span><span class="n">cycle</span><span class="p">,</span> <span class="n">append</span><span class="o">=</span><span class="s2">"cycle"</span><span class="p">),</span> <span class="n">pw</span><span class="o">.</span><span class="n">wrap</span><span class="p">(</span><span class="n">trend</span><span class="p">,</span> <span class="n">append</span><span class="o">=</span><span class="s2">"trend"</span><span class="p">)</span>
+        <span class="p">)</span>
     <span class="n">nobs</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
     <span class="n">offsets</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">])</span>
     <span class="n">data</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">repeat</span><span class="p">([[</span><span class="mf">1.</span><span class="p">],</span> <span class="p">[</span><span class="o">-</span><span class="mf">2.</span><span class="p">],</span> <span class="p">[</span><span class="mf">1.</span><span class="p">]],</span> <span class="n">nobs</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
@@ -685,6 +721,23 @@
         <span class="n">pw</span><span class="o">.</span><span class="n">wrap</span><span class="p">(</span><span class="n">cycle</span><span class="p">,</span> <span class="n">append</span><span class="o">=</span><span class="s2">"cycle"</span><span class="p">),</span> <span class="n">pw</span><span class="o">.</span><span class="n">wrap</span><span class="p">(</span><span class="n">trend</span><span class="p">,</span> <span class="n">append</span><span class="o">=</span><span class="s2">"trend"</span><span class="p">)</span>
     <span class="p">)</span></div>
 
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_hpfilter_one_sided</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">lamb</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""</span>
+<span class="sd">    One-sided HP trend from the Kalman filter of the state space form</span>
+<span class="sd">    """</span>
+    <span class="n">kfilter</span> <span class="o">=</span> <span class="n">KalmanFilter</span><span class="p">(</span><span class="n">k_endog</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">k_states</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">k_posdef</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+    <span class="c1"># bind reshapes 1-d input in place with older NumPy, so pass a 2-d copy</span>
+    <span class="c1"># to leave x unchanged</span>
+    <span class="n">kfilter</span><span class="o">.</span><span class="n">bind</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">x</span><span class="p">)[:,</span> <span class="kc">None</span><span class="p">])</span>
+    <span class="n">kfilter</span><span class="p">[</span><span class="s2">"design"</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">]])</span>
+    <span class="n">kfilter</span><span class="p">[</span><span class="s2">"obs_cov"</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="mf">1.0</span><span class="p">]])</span>
+    <span class="n">kfilter</span><span class="p">[</span><span class="s2">"transition"</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="mf">2.0</span><span class="p">,</span> <span class="o">-</span><span class="mf">1.0</span><span class="p">],</span> <span class="p">[</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">]])</span>
+    <span class="n">kfilter</span><span class="p">[</span><span class="s2">"selection"</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="mf">1.0</span><span class="p">],</span> <span class="p">[</span><span class="mf">0.0</span><span class="p">]])</span>
+    <span class="n">kfilter</span><span class="p">[</span><span class="s2">"state_cov"</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="mf">1.0</span> <span class="o">/</span> <span class="n">lamb</span><span class="p">]])</span>
+    <span class="n">kfilter</span><span class="o">.</span><span class="n">initialize_diffuse</span><span class="p">()</span>
+    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">kfilter</span><span class="o">.</span><span class="n">filter</span><span class="p">()</span><span class="o">.</span><span class="n">filtered_state</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
 </pre></div>
 
                 </article>
