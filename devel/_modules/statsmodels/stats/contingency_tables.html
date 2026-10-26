@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
-    <title>statsmodels.stats.contingency_tables &#8212; statsmodels 0.15.1 (+824)</title>
+    <title>statsmodels.stats.contingency_tables &#8212; statsmodels 0.15.1 (+831)</title>
   <link rel="icon" type="image/png" sizes="32x32" href="../../../_static/icons/favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="../../../_static/icons/favicon-16x16.png">
   <link rel="manifest" href="../../../_static/icons/site.webmanifest">
@@ -71,7 +71,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="color-scheme" content="light dark"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="0.15.1 (+824)" />
+  <meta name="docsearch:version" content="0.15.1 (+831)" />
     <meta name="docbuild:last-update" content="Oct 26, 2026"/>
   
     
@@ -586,6 +586,7 @@
 <span class="sd">identically distributed.</span>
 <span class="sd">"""</span>
 
+<span class="kn">from</span><span class="w"> </span><span class="nn">math</span><span class="w"> </span><span class="kn">import</span> <span class="n">fsum</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">NamedTuple</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">warnings</span>
 
@@ -1664,6 +1665,72 @@
 
 
 
+<span class="k">def</span><span class="w"> </span><span class="nf">_breslow_day_statistic</span><span class="p">(</span><span class="n">table</span><span class="p">,</span> <span class="n">odds</span><span class="p">,</span> <span class="n">adjust</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Stable finite-OR calculation, or None to retain the legacy path."""</span>
+    <span class="k">if</span> <span class="n">table</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">or</span> <span class="ow">not</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">odds</span><span class="p">)</span> <span class="ow">and</span> <span class="n">odds</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">):</span>
+        <span class="k">return</span> <span class="kc">None</span>
+    <span class="n">observed</span> <span class="o">=</span> <span class="n">table</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="mi">4</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+    <span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">,</span> <span class="n">c</span><span class="p">,</span> <span class="n">d</span> <span class="o">=</span> <span class="n">observed</span>
+
+    <span class="c1"># Fit each cell directly: subtracting large fitted cells can erase a</span>
+    <span class="c1"># small cell. All four quadratics share this nonnegative discriminant.</span>
+    <span class="c1"># Unsupported overflow/underflow falls back to the unchanged method.</span>
+    <span class="k">with</span> <span class="n">np</span><span class="o">.</span><span class="n">errstate</span><span class="p">(</span><span class="n">over</span><span class="o">=</span><span class="s2">"ignore"</span><span class="p">,</span> <span class="n">invalid</span><span class="o">=</span><span class="s2">"ignore"</span><span class="p">,</span> <span class="n">divide</span><span class="o">=</span><span class="s2">"ignore"</span><span class="p">,</span>
+                     <span class="n">under</span><span class="o">=</span><span class="s2">"ignore"</span><span class="p">):</span>
+        <span class="n">row</span><span class="p">,</span> <span class="n">col</span> <span class="o">=</span> <span class="n">a</span> <span class="o">+</span> <span class="n">b</span><span class="p">,</span> <span class="n">a</span> <span class="o">+</span> <span class="n">c</span>
+        <span class="n">row2</span><span class="p">,</span> <span class="n">col2</span> <span class="o">=</span> <span class="n">c</span> <span class="o">+</span> <span class="n">d</span><span class="p">,</span> <span class="n">b</span> <span class="o">+</span> <span class="n">d</span>
+        <span class="n">margins</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">row</span><span class="p">,</span> <span class="n">col</span><span class="p">,</span> <span class="n">row2</span><span class="p">,</span> <span class="n">col2</span><span class="p">])</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">margins</span><span class="p">))</span> <span class="ow">and</span> <span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">margins</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">)):</span>
+            <span class="k">return</span> <span class="kc">None</span>
+        <span class="n">root</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">((</span><span class="n">d</span> <span class="o">-</span> <span class="n">a</span> <span class="o">+</span> <span class="n">odds</span> <span class="o">*</span> <span class="p">(</span><span class="n">b</span> <span class="o">-</span> <span class="n">c</span><span class="p">))</span> <span class="o">**</span> <span class="mi">2</span>
+                       <span class="o">+</span> <span class="mi">4</span> <span class="o">*</span> <span class="n">odds</span> <span class="o">*</span> <span class="n">col</span> <span class="o">*</span> <span class="n">col2</span><span class="p">)</span>
+        <span class="n">quadratic</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">1</span> <span class="o">-</span> <span class="n">odds</span><span class="p">,</span> <span class="n">odds</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span> <span class="n">odds</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span> <span class="o">-</span> <span class="n">odds</span><span class="p">])[:,</span> <span class="kc">None</span><span class="p">]</span>
+        <span class="n">linear</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span>
+            <span class="n">d</span> <span class="o">-</span> <span class="n">a</span> <span class="o">+</span> <span class="n">odds</span> <span class="o">*</span> <span class="p">(</span><span class="n">row</span> <span class="o">+</span> <span class="n">col</span><span class="p">),</span>
+            <span class="n">odds</span> <span class="o">*</span> <span class="p">(</span><span class="n">c</span> <span class="o">-</span> <span class="n">b</span><span class="p">)</span> <span class="o">+</span> <span class="n">row</span> <span class="o">+</span> <span class="n">col2</span><span class="p">,</span>
+            <span class="n">odds</span> <span class="o">*</span> <span class="p">(</span><span class="n">b</span> <span class="o">-</span> <span class="n">c</span><span class="p">)</span> <span class="o">+</span> <span class="n">row2</span> <span class="o">+</span> <span class="n">col</span><span class="p">,</span>
+            <span class="n">a</span> <span class="o">-</span> <span class="n">d</span> <span class="o">+</span> <span class="n">odds</span> <span class="o">*</span> <span class="p">(</span><span class="n">row2</span> <span class="o">+</span> <span class="n">col2</span><span class="p">),</span>
+        <span class="p">])</span>
+        <span class="n">product</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">odds</span> <span class="o">*</span> <span class="n">row</span> <span class="o">*</span> <span class="n">col</span><span class="p">,</span> <span class="n">row</span> <span class="o">*</span> <span class="n">col2</span><span class="p">,</span>
+                            <span class="n">row2</span> <span class="o">*</span> <span class="n">col</span><span class="p">,</span> <span class="n">odds</span> <span class="o">*</span> <span class="n">row2</span> <span class="o">*</span> <span class="n">col2</span><span class="p">])</span>
+        <span class="n">positive</span> <span class="o">=</span> <span class="n">linear</span> <span class="o">&gt;=</span> <span class="mi">0</span>
+        <span class="n">roots</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">broadcast_to</span><span class="p">(</span><span class="n">root</span><span class="p">,</span> <span class="n">linear</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
+        <span class="n">quadratic</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">broadcast_to</span><span class="p">(</span><span class="n">quadratic</span><span class="p">,</span> <span class="n">linear</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
+        <span class="n">fitted</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty_like</span><span class="p">(</span><span class="n">linear</span><span class="p">)</span>
+        <span class="c1"># Rationalization includes the linear odds == 1 case. The other</span>
+        <span class="c1"># branch cannot have zero quadratic coefficient for positive odds.</span>
+        <span class="n">fitted</span><span class="p">[</span><span class="n">positive</span><span class="p">]</span> <span class="o">=</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">product</span><span class="p">[</span><span class="n">positive</span><span class="p">]</span> <span class="o">/</span> <span class="p">(</span>
+            <span class="n">linear</span><span class="p">[</span><span class="n">positive</span><span class="p">]</span> <span class="o">+</span> <span class="n">roots</span><span class="p">[</span><span class="n">positive</span><span class="p">]</span>
+        <span class="p">)</span>
+        <span class="n">fitted</span><span class="p">[</span><span class="o">~</span><span class="n">positive</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="o">-</span><span class="n">linear</span><span class="p">[</span><span class="o">~</span><span class="n">positive</span><span class="p">]</span> <span class="o">+</span> <span class="n">roots</span><span class="p">[</span><span class="o">~</span><span class="n">positive</span><span class="p">])</span> <span class="o">/</span> <span class="p">(</span>
+            <span class="mi">2</span> <span class="o">*</span> <span class="n">quadratic</span><span class="p">[</span><span class="o">~</span><span class="n">positive</span><span class="p">]</span>
+        <span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">fitted</span><span class="p">))</span> <span class="ow">and</span> <span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">fitted</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">)):</span>
+            <span class="k">return</span> <span class="kc">None</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">inverse_variance</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">fsum</span><span class="p">(</span><span class="mi">1</span> <span class="o">/</span> <span class="n">cells</span><span class="p">)</span> <span class="k">for</span> <span class="n">cells</span> <span class="ow">in</span> <span class="n">fitted</span><span class="o">.</span><span class="n">T</span><span class="p">])</span>
+        <span class="k">except</span> <span class="ne">OverflowError</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">None</span>
+        <span class="n">variance</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">/</span> <span class="n">inverse_variance</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">variance</span><span class="p">))</span> <span class="ow">and</span> <span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">variance</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">)):</span>
+            <span class="k">return</span> <span class="kc">None</span>
+
+        <span class="c1"># Fixed margins give residual signs (+, -, -, +). Select the</span>
+        <span class="c1"># smallest subtraction scale, not necessarily the first cell.</span>
+        <span class="n">corner</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argmin</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span><span class="n">observed</span><span class="p">,</span> <span class="n">fitted</span><span class="p">),</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+        <span class="n">residual</span> <span class="o">=</span> <span class="p">(</span><span class="n">observed</span> <span class="o">-</span> <span class="n">fitted</span><span class="p">)</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">])[:,</span> <span class="kc">None</span><span class="p">]</span>
+        <span class="n">delta</span> <span class="o">=</span> <span class="n">residual</span><span class="p">[</span><span class="n">corner</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">table</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">2</span><span class="p">])]</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">adjust</span><span class="p">:</span>
+                <span class="c1"># Algebraically identical to Tarone's subtraction, without</span>
+                <span class="c1"># subtracting two large, nearly equal sums of squares.</span>
+                <span class="n">delta</span> <span class="o">=</span> <span class="n">delta</span> <span class="o">-</span> <span class="p">(</span><span class="n">fsum</span><span class="p">(</span><span class="n">delta</span><span class="p">)</span> <span class="o">/</span> <span class="n">fsum</span><span class="p">(</span><span class="n">variance</span><span class="p">))</span> <span class="o">*</span> <span class="n">variance</span>
+            <span class="n">statistic</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">(</span><span class="n">fsum</span><span class="p">(</span><span class="n">delta</span> <span class="o">*</span> <span class="n">delta</span> <span class="o">/</span> <span class="n">variance</span><span class="p">))</span>
+        <span class="k">except</span> <span class="ne">OverflowError</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">None</span>
+        <span class="k">return</span> <span class="n">statistic</span> <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">statistic</span><span class="p">)</span> <span class="k">else</span> <span class="kc">None</span>
+
+
 <div class="viewcode-block" id="StratifiedTable">
 <a class="viewcode-back" href="../../../generated/statsmodels.stats.contingency_tables.StratifiedTable.html#statsmodels.stats.contingency_tables.StratifiedTable">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">StratifiedTable</span><span class="p">:</span>
@@ -1991,30 +2058,33 @@
         <span class="n">table</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">table</span>
 
         <span class="n">r</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">oddsratio_pooled</span>
-        <span class="n">a</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">-</span> <span class="n">r</span>
-        <span class="n">b</span> <span class="o">=</span> <span class="n">r</span> <span class="o">*</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_apb</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">_apc</span><span class="p">)</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">_dma</span>
-        <span class="n">c</span> <span class="o">=</span> <span class="o">-</span><span class="n">r</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">_apb</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">_apc</span>
+        <span class="n">statistic</span> <span class="o">=</span> <span class="n">_breslow_day_statistic</span><span class="p">(</span><span class="n">table</span><span class="p">,</span> <span class="n">r</span><span class="p">,</span> <span class="n">adjust</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">statistic</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="c1"># Preserve existing behavior outside the finite computable domain.</span>
+            <span class="n">a</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">-</span> <span class="n">r</span>
+            <span class="n">b</span> <span class="o">=</span> <span class="n">r</span> <span class="o">*</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_apb</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">_apc</span><span class="p">)</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">_dma</span>
+            <span class="n">c</span> <span class="o">=</span> <span class="o">-</span><span class="n">r</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">_apb</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">_apc</span>
 
-        <span class="c1"># Expected value of first cell</span>
-        <span class="n">dr</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">b</span><span class="o">**</span><span class="mi">2</span> <span class="o">-</span> <span class="mi">4</span> <span class="o">*</span> <span class="n">a</span> <span class="o">*</span> <span class="n">c</span><span class="p">)</span>
-        <span class="n">e11</span> <span class="o">=</span> <span class="p">(</span><span class="o">-</span><span class="n">b</span> <span class="o">+</span> <span class="n">dr</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">a</span><span class="p">)</span>
+            <span class="c1"># Expected value of first cell</span>
+            <span class="n">dr</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">b</span><span class="o">**</span><span class="mi">2</span> <span class="o">-</span> <span class="mi">4</span> <span class="o">*</span> <span class="n">a</span> <span class="o">*</span> <span class="n">c</span><span class="p">)</span>
+            <span class="n">e11</span> <span class="o">=</span> <span class="p">(</span><span class="o">-</span><span class="n">b</span> <span class="o">+</span> <span class="n">dr</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">a</span><span class="p">)</span>
 
-        <span class="c1"># Variance of the first cell</span>
-        <span class="n">v11</span> <span class="o">=</span> <span class="p">(</span>
-            <span class="mi">1</span> <span class="o">/</span> <span class="n">e11</span>
-            <span class="o">+</span> <span class="mi">1</span> <span class="o">/</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_apc</span> <span class="o">-</span> <span class="n">e11</span><span class="p">)</span>
-            <span class="o">+</span> <span class="mi">1</span> <span class="o">/</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_apb</span> <span class="o">-</span> <span class="n">e11</span><span class="p">)</span>
-            <span class="o">+</span> <span class="mi">1</span> <span class="o">/</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_dma</span> <span class="o">+</span> <span class="n">e11</span><span class="p">)</span>
-        <span class="p">)</span>
-        <span class="n">v11</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">/</span> <span class="n">v11</span>
+            <span class="c1"># Variance of the first cell</span>
+            <span class="n">v11</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="mi">1</span> <span class="o">/</span> <span class="n">e11</span>
+                <span class="o">+</span> <span class="mi">1</span> <span class="o">/</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_apc</span> <span class="o">-</span> <span class="n">e11</span><span class="p">)</span>
+                <span class="o">+</span> <span class="mi">1</span> <span class="o">/</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_apb</span> <span class="o">-</span> <span class="n">e11</span><span class="p">)</span>
+                <span class="o">+</span> <span class="mi">1</span> <span class="o">/</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_dma</span> <span class="o">+</span> <span class="n">e11</span><span class="p">)</span>
+            <span class="p">)</span>
+            <span class="n">v11</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">/</span> <span class="n">v11</span>
 
-        <span class="n">statistic</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">((</span><span class="n">table</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="p">:]</span> <span class="o">-</span> <span class="n">e11</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span> <span class="o">/</span> <span class="n">v11</span><span class="p">)</span>
+            <span class="n">statistic</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">((</span><span class="n">table</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="p">:]</span> <span class="o">-</span> <span class="n">e11</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span> <span class="o">/</span> <span class="n">v11</span><span class="p">)</span>
 
-        <span class="k">if</span> <span class="n">adjust</span><span class="p">:</span>
-            <span class="n">adj</span> <span class="o">=</span> <span class="n">table</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="p">:]</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span> <span class="o">-</span> <span class="n">e11</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
-            <span class="n">adj</span> <span class="o">=</span> <span class="n">adj</span><span class="o">**</span><span class="mi">2</span>
-            <span class="n">adj</span> <span class="o">/=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">v11</span><span class="p">)</span>
-            <span class="n">statistic</span> <span class="o">-=</span> <span class="n">adj</span>
+            <span class="k">if</span> <span class="n">adjust</span><span class="p">:</span>
+                <span class="n">adj</span> <span class="o">=</span> <span class="n">table</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="p">:]</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span> <span class="o">-</span> <span class="n">e11</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
+                <span class="n">adj</span> <span class="o">=</span> <span class="n">adj</span><span class="o">**</span><span class="mi">2</span>
+                <span class="n">adj</span> <span class="o">/=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">v11</span><span class="p">)</span>
+                <span class="n">statistic</span> <span class="o">-=</span> <span class="n">adj</span>
 
         <span class="c1"># 1 - stats.chi2.cdf(statistic, df) loses the upper tail</span>
         <span class="n">pvalue</span> <span class="o">=</span> <span class="n">stats</span><span class="o">.</span><span class="n">chi2</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="n">statistic</span><span class="p">,</span> <span class="n">table</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
