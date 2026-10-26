@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
-    <title>statsmodels.robust.covariance &#8212; statsmodels 0.15.1 (+794)</title>
+    <title>statsmodels.robust.covariance &#8212; statsmodels 0.15.1 (+818)</title>
   <link rel="icon" type="image/png" sizes="32x32" href="../../../_static/icons/favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="../../../_static/icons/favicon-16x16.png">
   <link rel="manifest" href="../../../_static/icons/site.webmanifest">
@@ -71,8 +71,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="color-scheme" content="light dark"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="0.15.1 (+794)" />
-    <meta name="docbuild:last-update" content="Oct 25, 2026"/>
+  <meta name="docsearch:version" content="0.15.1 (+818)" />
+    <meta name="docbuild:last-update" content="Oct 26, 2026"/>
   
     
     <script src="../../../_static/searchtools.js"></script>
@@ -596,7 +596,7 @@
 <span class="kn">import</span><span class="w"> </span><span class="nn">statsmodels.robust.scale</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">rscale</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">statsmodels.robust.tools</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">rtools</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.stats.covariance</span><span class="w"> </span><span class="kn">import</span> <span class="n">corr_normal_scores</span><span class="p">,</span> <span class="n">corr_rank</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.tools.validation</span><span class="w"> </span><span class="kn">import</span> <span class="n">string_like</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.tools.validation</span><span class="w"> </span><span class="kn">import</span> <span class="n">float_like</span><span class="p">,</span> <span class="n">string_like</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">.scale</span><span class="w"> </span><span class="kn">import</span> <span class="n">mad</span>
 
@@ -2993,11 +2993,62 @@
 
 
 
+<span class="k">def</span><span class="w"> </span><span class="nf">_tuning_s_biweight</span><span class="p">(</span><span class="n">k_vars</span><span class="p">,</span> <span class="n">breakdown_point</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""</span>
+<span class="sd">    Validate breakdown point and compute biweight tuning parameter for S</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    k_vars : int</span>
+<span class="sd">        Number of variables in the multivariate data.</span>
+<span class="sd">    breakdown_point : float</span>
+<span class="sd">        Breakdown point of the S-estimator. Needs to be in (0, 0.5].</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    float</span>
+<span class="sd">        Tuning parameter of the Tukey biweight norm for which the expected</span>
+<span class="sd">        rho at the multivariate normal distribution is ``breakdown_point``</span>
+<span class="sd">        times the maximum of rho.</span>
+
+<span class="sd">    Raises</span>
+<span class="sd">    ------</span>
+<span class="sd">    ValueError</span>
+<span class="sd">        If ``breakdown_point`` is not in (0, 0.5] or if the tuning parameter</span>
+<span class="sd">        cannot be found for the combination of ``breakdown_point`` and</span>
+<span class="sd">        ``k_vars``.</span>
+<span class="sd">    """</span>
+    <span class="n">bp</span> <span class="o">=</span> <span class="n">float_like</span><span class="p">(</span><span class="n">breakdown_point</span><span class="p">,</span> <span class="s2">"breakdown_point"</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="mi">0</span> <span class="o">&lt;</span> <span class="n">bp</span> <span class="o">&lt;=</span> <span class="mf">0.5</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"breakdown_point must be in (0, 0.5], got </span><span class="si">{</span><span class="n">bp</span><span class="si">}</span><span class="s2">."</span><span class="p">)</span>
+    <span class="c1"># The tuning parameter increases when the breakdown point decreases and</span>
+    <span class="c1"># it is approximately sqrt(3 * k_vars / breakdown_point) for a small</span>
+    <span class="c1"># breakdown point. The default upper limit of tuning_s_cov is too small</span>
+    <span class="c1"># for a small breakdown point in higher dimension.</span>
+    <span class="n">upper</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mf">30.0</span><span class="p">,</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="mi">3</span> <span class="o">*</span> <span class="n">k_vars</span> <span class="o">/</span> <span class="n">bp</span><span class="p">))</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">rtools</span><span class="o">.</span><span class="n">tuning_s_cov</span><span class="p">(</span>
+            <span class="n">rnorms</span><span class="o">.</span><span class="n">TukeyBiweight</span><span class="p">(),</span> <span class="n">k_vars</span><span class="p">,</span> <span class="n">breakdown_point</span><span class="o">=</span><span class="n">bp</span><span class="p">,</span> <span class="n">limits</span><span class="o">=</span><span class="p">(</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">upper</span><span class="p">)</span>
+        <span class="p">)</span>
+    <span class="k">except</span> <span class="ne">ValueError</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="s2">"Cannot find the tuning parameter of the S-estimator for "</span>
+            <span class="sa">f</span><span class="s2">"breakdown_point=</span><span class="si">{</span><span class="n">bp</span><span class="si">}</span><span class="s2"> and k_vars=</span><span class="si">{</span><span class="n">k_vars</span><span class="si">}</span><span class="s2">. Use a larger "</span>
+            <span class="s2">"breakdown_point or fewer variables."</span>
+        <span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">exc</span>
+
+
 <div class="viewcode-block" id="CovDetS">
 <a class="viewcode-back" href="../../../generated/statsmodels.robust.covariance.CovDetS.html#statsmodels.robust.covariance.CovDetS">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">CovDetS</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""</span>
 <span class="sd">    S-estimator for mean and covariance with deterministic starts</span>
+
+<span class="sd">    .. versionchanged:: 0.15.1</span>
+
+<span class="sd">       The ``breakdown_point`` argument is now used to compute the tuning</span>
+<span class="sd">       parameter of the S-estimator. Before, the tuning parameter for a</span>
+<span class="sd">       breakdown point of 0.5 was always used.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
@@ -3008,8 +3059,18 @@
 <span class="sd">        If None, then TukeyBiweight norm is used.</span>
 <span class="sd">        (Currently no other norms are supported for calling the initial</span>
 <span class="sd">        S-estimator)</span>
-<span class="sd">    breakdown_point : float in (0, 0.5], optional</span>
-<span class="sd">        Breakdown point for first stage S-estimator.</span>
+<span class="sd">    breakdown_point : float, optional</span>
+<span class="sd">        Breakdown point for first stage S-estimator. Must be in the interval</span>
+<span class="sd">        (0, 0.5]. The tuning parameter of the norm is chosen such that the</span>
+<span class="sd">        expected rho under the multivariate normal model equals</span>
+<span class="sd">        ``breakdown_point`` times the maximum of rho.</span>
+
+<span class="sd">    Raises</span>
+<span class="sd">    ------</span>
+<span class="sd">    ValueError</span>
+<span class="sd">        If ``breakdown_point`` is not in (0, 0.5], or if the tuning parameter</span>
+<span class="sd">        cannot be computed for the combination of ``breakdown_point`` and the</span>
+<span class="sd">        number of variables.</span>
 
 <span class="sd">    Notes</span>
 <span class="sd">    -----</span>
@@ -3041,7 +3102,7 @@
         <span class="c1"># self.scale_bias = scale_bias</span>
         <span class="k">if</span> <span class="n">norm</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
             <span class="n">norm</span> <span class="o">=</span> <span class="n">rnorms</span><span class="o">.</span><span class="n">TukeyBiweight</span><span class="p">()</span>
-            <span class="n">c</span> <span class="o">=</span> <span class="n">rtools</span><span class="o">.</span><span class="n">tuning_s_cov</span><span class="p">(</span><span class="n">norm</span><span class="p">,</span> <span class="n">k_vars</span><span class="p">,</span> <span class="n">breakdown_point</span><span class="o">=</span><span class="n">breakdown_point</span><span class="p">)</span>
+            <span class="n">c</span> <span class="o">=</span> <span class="n">_tuning_s_biweight</span><span class="p">(</span><span class="n">k_vars</span><span class="p">,</span> <span class="n">breakdown_point</span><span class="p">)</span>
             <span class="n">norm</span><span class="o">.</span><span class="n">_set_tuning_param</span><span class="p">(</span><span class="n">c</span><span class="p">,</span> <span class="n">inplace</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">scale_bias</span> <span class="o">=</span> <span class="n">rtools</span><span class="o">.</span><span class="n">scale_bias_cov_biw</span><span class="p">(</span><span class="n">c</span><span class="p">,</span> <span class="n">k_vars</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
         <span class="k">else</span><span class="p">:</span>
@@ -3239,6 +3300,12 @@
 <span class="sd">    efficiency. For other cases, the user has to provide the norm instance</span>
 <span class="sd">    with desired tuning parameter.</span>
 
+<span class="sd">    .. versionchanged:: 0.15.1</span>
+
+<span class="sd">       The ``breakdown_point`` argument is now used to compute the tuning</span>
+<span class="sd">       parameter of the first stage S-estimator. Before, the tuning parameter</span>
+<span class="sd">       for a breakdown point of 0.5 was always used.</span>
+
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
 <span class="sd">    data : array_like</span>
@@ -3251,10 +3318,20 @@
 <span class="sd">        If ``norm`` is an instance of TukeyBiweight, then it will be used in</span>
 <span class="sd">        the second stage M-estimation. The ``efficiency`` argument is ignored</span>
 <span class="sd">        and the tuning parameter of the user provided instance is not changed.</span>
-<span class="sd">    breakdown_point : float in (0, 0.5], optional</span>
-<span class="sd">        Breakdown point for first stage S-estimator.</span>
+<span class="sd">    breakdown_point : float, optional</span>
+<span class="sd">        Breakdown point for first stage S-estimator. Must be in the interval</span>
+<span class="sd">        (0, 0.5]. The tuning parameter of the norm of the first stage is</span>
+<span class="sd">        chosen such that the expected rho under the multivariate normal model</span>
+<span class="sd">        equals ``breakdown_point`` times the maximum of rho.</span>
 <span class="sd">    efficiency : float, optional</span>
 <span class="sd">        Asymptotic efficiency of second stage M estimator.</span>
+
+<span class="sd">    Raises</span>
+<span class="sd">    ------</span>
+<span class="sd">    ValueError</span>
+<span class="sd">        If ``breakdown_point`` is not in (0, 0.5], or if the tuning parameter</span>
+<span class="sd">        of the first stage cannot be computed for the combination of</span>
+<span class="sd">        ``breakdown_point`` and the number of variables.</span>
 
 <span class="sd">    Notes</span>
 <span class="sd">    -----</span>
@@ -3294,6 +3371,8 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span><span class="p">,</span> <span class="n">k_vars</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">shape</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">k_vars</span> <span class="o">=</span> <span class="n">k_vars</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">breakdown_point</span> <span class="o">=</span> <span class="n">breakdown_point</span>
+        <span class="c1"># fail early, the first stage is only created in fit</span>
+        <span class="n">_tuning_s_biweight</span><span class="p">(</span><span class="n">k_vars</span><span class="p">,</span> <span class="n">breakdown_point</span><span class="p">)</span>
 
         <span class="c1"># self.scale_bias = scale_bias</span>
         <span class="k">if</span> <span class="n">norm</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
