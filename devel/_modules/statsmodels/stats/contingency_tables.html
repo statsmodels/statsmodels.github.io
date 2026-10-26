@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
-    <title>statsmodels.stats.contingency_tables &#8212; statsmodels 0.15.1 (+854)</title>
+    <title>statsmodels.stats.contingency_tables &#8212; statsmodels 0.15.1 (+866)</title>
   <link rel="icon" type="image/png" sizes="32x32" href="../../../_static/icons/favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="../../../_static/icons/favicon-16x16.png">
   <link rel="manifest" href="../../../_static/icons/site.webmanifest">
@@ -71,7 +71,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="color-scheme" content="light dark"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="0.15.1 (+854)" />
+  <meta name="docsearch:version" content="0.15.1 (+866)" />
     <meta name="docbuild:last-update" content="Oct 26, 2026"/>
   
     
@@ -1708,11 +1708,9 @@
         <span class="p">)</span>
         <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">fitted</span><span class="p">))</span> <span class="ow">and</span> <span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">fitted</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">)):</span>
             <span class="k">return</span> <span class="kc">None</span>
-        <span class="k">try</span><span class="p">:</span>
-            <span class="n">inverse_variance</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">fsum</span><span class="p">(</span><span class="mi">1</span> <span class="o">/</span> <span class="n">cells</span><span class="p">)</span> <span class="k">for</span> <span class="n">cells</span> <span class="ow">in</span> <span class="n">fitted</span><span class="o">.</span><span class="n">T</span><span class="p">])</span>
-        <span class="k">except</span> <span class="ne">OverflowError</span><span class="p">:</span>
-            <span class="k">return</span> <span class="kc">None</span>
-        <span class="n">variance</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">/</span> <span class="n">inverse_variance</span>
+        <span class="c1"># All four terms are positive, so the plain sum is accurate to a few</span>
+        <span class="c1"># ulp. Only the sums over strata, which can cancel, use fsum.</span>
+        <span class="n">variance</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="mi">1</span> <span class="o">/</span> <span class="n">fitted</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
         <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">variance</span><span class="p">))</span> <span class="ow">and</span> <span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">variance</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">)):</span>
             <span class="k">return</span> <span class="kc">None</span>
 
@@ -1725,8 +1723,11 @@
             <span class="k">if</span> <span class="n">adjust</span><span class="p">:</span>
                 <span class="c1"># Algebraically identical to Tarone's subtraction, without</span>
                 <span class="c1"># subtracting two large, nearly equal sums of squares.</span>
-                <span class="n">delta</span> <span class="o">=</span> <span class="n">delta</span> <span class="o">-</span> <span class="p">(</span><span class="n">fsum</span><span class="p">(</span><span class="n">delta</span><span class="p">)</span> <span class="o">/</span> <span class="n">fsum</span><span class="p">(</span><span class="n">variance</span><span class="p">))</span> <span class="o">*</span> <span class="n">variance</span>
-            <span class="n">statistic</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">(</span><span class="n">fsum</span><span class="p">(</span><span class="n">delta</span> <span class="o">*</span> <span class="n">delta</span> <span class="o">/</span> <span class="n">variance</span><span class="p">))</span>
+                <span class="n">delta</span> <span class="o">=</span> <span class="n">delta</span> <span class="o">-</span> <span class="p">(</span>
+                    <span class="n">fsum</span><span class="p">(</span><span class="n">delta</span><span class="o">.</span><span class="n">tolist</span><span class="p">())</span> <span class="o">/</span> <span class="n">fsum</span><span class="p">(</span><span class="n">variance</span><span class="o">.</span><span class="n">tolist</span><span class="p">())</span>
+                <span class="p">)</span> <span class="o">*</span> <span class="n">variance</span>
+            <span class="c1"># tolist is faster than iterating over the array in fsum</span>
+            <span class="n">statistic</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">(</span><span class="n">fsum</span><span class="p">((</span><span class="n">delta</span> <span class="o">*</span> <span class="n">delta</span> <span class="o">/</span> <span class="n">variance</span><span class="p">)</span><span class="o">.</span><span class="n">tolist</span><span class="p">()))</span>
         <span class="k">except</span> <span class="ne">OverflowError</span><span class="p">:</span>
             <span class="k">return</span> <span class="kc">None</span>
         <span class="k">return</span> <span class="n">statistic</span> <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">statistic</span><span class="p">)</span> <span class="k">else</span> <span class="kc">None</span>
@@ -2066,6 +2067,23 @@
 <span class="sd">                The chi^2 test statistic.</span>
 <span class="sd">            * pvalue : float</span>
 <span class="sd">                The p-value for the test.</span>
+
+<span class="sd">        Notes</span>
+<span class="sd">        -----</span>
+<span class="sd">        The statistic is computed from the fitted cell counts of each stratum</span>
+<span class="sd">        given the pooled (Mantel-Haenszel) odds ratio.</span>
+
+<span class="sd">        If a stratum has a row or column total of zero, the statistic and the</span>
+<span class="sd">        p-value are NaN.</span>
+
+<span class="sd">        .. versionchanged:: 0.15.1</span>
+
+<span class="sd">           The test can be computed if the pooled odds ratio is exactly 1,</span>
+<span class="sd">           where it was NaN before. The fitted counts are computed in a way</span>
+<span class="sd">           that avoids a loss of precision if the pooled odds ratio is close</span>
+<span class="sd">           to 1 or some fitted counts are small. Results can differ from</span>
+<span class="sd">           those of earlier versions by a relative amount of about 1e-12, and</span>
+<span class="sd">           by more for tables where the earlier calculation lost precision.</span>
 <span class="sd">        """</span>
 
         <span class="n">table</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">table</span>
