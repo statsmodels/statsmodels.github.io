@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
-    <title>statsmodels.tsa.stattools._stattools &#8212; statsmodels 0.15.1 (+994)</title>
+    <title>statsmodels.tsa.stattools._stattools &#8212; statsmodels 0.15.1 (+1001)</title>
   <link rel="icon" type="image/png" sizes="32x32" href="../../../../_static/icons/favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="../../../../_static/icons/favicon-16x16.png">
   <link rel="manifest" href="../../../../_static/icons/site.webmanifest">
@@ -71,7 +71,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="color-scheme" content="light dark"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="0.15.1 (+994)" />
+  <meta name="docsearch:version" content="0.15.1 (+1001)" />
     <meta name="docbuild:last-update" content="Oct 27, 2026"/>
   
     
@@ -574,6 +574,7 @@
 <span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">scipy</span><span class="w"> </span><span class="kn">import</span> <span class="n">stats</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">scipy.interpolate</span><span class="w"> </span><span class="kn">import</span> <span class="n">interp1d</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">scipy.linalg</span><span class="w"> </span><span class="kn">import</span> <span class="n">solve_triangular</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">scipy.signal</span><span class="w"> </span><span class="kn">import</span> <span class="n">correlate</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.regression.linear_model</span><span class="w"> </span><span class="kn">import</span> <span class="n">OLS</span><span class="p">,</span> <span class="n">yule_walker</span>
@@ -4840,6 +4841,157 @@
             <span class="n">exog</span><span class="p">[(</span><span class="n">cutoff</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span> <span class="p">:,</span> <span class="mi">2</span><span class="p">]</span> <span class="o">=</span> <span class="n">trend</span><span class="p">[</span><span class="mi">0</span> <span class="p">:</span> <span class="p">(</span><span class="n">nobs</span> <span class="o">-</span> <span class="n">period</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)]</span>
         <span class="k">return</span> <span class="n">exog</span>
 
+    <span class="k">def</span><span class="w"> </span><span class="nf">_break_tvalues</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span> <span class="n">endog</span><span class="p">,</span> <span class="n">exog</span><span class="p">,</span> <span class="n">regression</span><span class="p">,</span> <span class="n">periods</span><span class="p">,</span> <span class="n">nobs</span><span class="p">,</span> <span class="n">const</span><span class="p">,</span> <span class="n">trend</span><span class="p">,</span> <span class="n">cols</span><span class="p">,</span> <span class="n">lags</span>
+    <span class="p">):</span>
+<span class="w">        </span><span class="sd">"""</span>
+<span class="sd">        t-statistics of the lagged level for all candidate break periods</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        endog : ndarray</span>
+<span class="sd">            The dependent variable of the auxiliary regressions.</span>
+<span class="sd">        exog : ndarray</span>
+<span class="sd">            The regressor matrix from ``_format_regression_data``. Only the</span>
+<span class="sd">            lagged level and the lagged differences are used.</span>
+<span class="sd">        regression : {"c", "t", "ct"}</span>
+<span class="sd">            The trend order to include in the regression.</span>
+<span class="sd">        periods : ndarray</span>
+<span class="sd">            The candidate break periods, increasing integers.</span>
+<span class="sd">        nobs : int</span>
+<span class="sd">            The number of observations in series.</span>
+<span class="sd">        const : float</span>
+<span class="sd">            The normalized constant term value to use in exog.</span>
+<span class="sd">        trend : ndarray</span>
+<span class="sd">            The normalized trend values to use in exog.</span>
+<span class="sd">        cols : int</span>
+<span class="sd">            The number of non-lag columns in exog.</span>
+<span class="sd">        lags : int</span>
+<span class="sd">            The number of lagged difference terms included in exog.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        ndarray or None</span>
+<span class="sd">            The t-statistic of the lagged level in the regression of each</span>
+<span class="sd">            period. None if the data are not finite, the regressors of a</span>
+<span class="sd">            period are close to singular or a regression fits almost</span>
+<span class="sd">            perfectly. The regressions are then fit one period at a time.</span>
+
+<span class="sd">        Notes</span>
+<span class="sd">        -----</span>
+<span class="sd">        The regressors of every period are ``X = [const, trend, lagged</span>
+<span class="sd">        differences, lagged level]`` and the break dummies ``D``, which are</span>
+<span class="sd">        zero before the first affected row ``f``: the level shift</span>
+<span class="sd">        ``1(i &gt;= f)`` ("c"), the trend shift ``(i - f + 1) 1(i &gt;= f)`` ("t")</span>
+<span class="sd">        or both ("ct"). They span the same space as the dummies that</span>
+<span class="sd">        ``_update_regression_exog`` sets, so the t-statistic of the level is</span>
+<span class="sd">        the same.</span>
+
+<span class="sd">        ``nested_lag_ols`` gives ``[X, endog] = QR``. The cross products</span>
+<span class="sd">        ``[X, endog]' D`` are sums over the rows from ``f`` on, which reverse</span>
+<span class="sd">        cumulative sums give for all periods at once, and ``C = Q' D``</span>
+<span class="sd">        solves ``R' C = [X, endog]' D``. Let ``C_a`` and ``C_b`` be the rows</span>
+<span class="sd">        of ``C`` for the regressors other than the level and for</span>
+<span class="sd">        ``[level, endog]``, and ``R_b`` the corresponding block of ``R``. The</span>
+<span class="sd">        Schur complement ``S = D' D - C_a' C_a`` is the cross product of the</span>
+<span class="sd">        part of ``D`` orthogonal to the other regressors. By the</span>
+<span class="sd">        Frisch-Waugh-Lovell theorem, the cross product of the level and endog</span>
+<span class="sd">        after partialling out the other regressors and ``D`` is</span>
+
+<span class="sd">            G = R_b' R_b - W' S^{-1} W,  W = C_b' R_b,</span>
+
+<span class="sd">        and the t-statistic of the level follows from ``G``. This costs</span>
+<span class="sd">        O(nobs k^2) for ``k`` regressors, instead of O(nobs^2 k^2) for one</span>
+<span class="sd">        fit per period.</span>
+<span class="sd">        """</span>
+        <span class="n">nreg</span> <span class="o">=</span> <span class="n">exog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">nper</span> <span class="o">=</span> <span class="n">periods</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">k_fixed</span> <span class="o">=</span> <span class="n">lags</span> <span class="o">+</span> <span class="mi">2</span>
+        <span class="n">ndummy</span> <span class="o">=</span> <span class="mi">2</span> <span class="k">if</span> <span class="n">regression</span> <span class="o">==</span> <span class="s2">"ct"</span> <span class="k">else</span> <span class="mi">1</span>
+        <span class="c1"># The first row of each regression where the dummies are not zero</span>
+        <span class="n">first</span> <span class="o">=</span> <span class="n">periods</span> <span class="o">-</span> <span class="p">(</span><span class="n">lags</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">regression</span> <span class="o">==</span> <span class="s2">"t"</span><span class="p">:</span>
+            <span class="n">first</span> <span class="o">=</span> <span class="n">first</span> <span class="o">-</span> <span class="mi">1</span>
+        <span class="k">if</span> <span class="p">(</span>
+            <span class="n">nper</span> <span class="o">==</span> <span class="mi">0</span>
+            <span class="ow">or</span> <span class="n">nreg</span> <span class="o">&lt;=</span> <span class="n">k_fixed</span> <span class="o">+</span> <span class="n">ndummy</span> <span class="o">+</span> <span class="mi">1</span>
+            <span class="ow">or</span> <span class="n">first</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">&lt;</span> <span class="mi">0</span>
+            <span class="ow">or</span> <span class="n">first</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">&gt;=</span> <span class="n">nreg</span>
+        <span class="p">):</span>
+            <span class="c1"># No residual degrees of freedom, or a dummy that is zero or</span>
+            <span class="c1"># wraps around the start of the sample</span>
+            <span class="k">return</span> <span class="kc">None</span>
+        <span class="n">fixed</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">((</span><span class="n">nreg</span><span class="p">,</span> <span class="n">k_fixed</span><span class="p">))</span>
+        <span class="n">fixed</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">const</span>
+        <span class="n">fixed</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">trend</span><span class="p">[(</span><span class="n">lags</span> <span class="o">+</span> <span class="mi">2</span><span class="p">)</span> <span class="p">:</span> <span class="p">(</span><span class="n">nobs</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)]</span>
+        <span class="n">fixed</span><span class="p">[:,</span> <span class="mi">2</span><span class="p">:]</span> <span class="o">=</span> <span class="n">exog</span><span class="p">[:,</span> <span class="n">cols</span><span class="p">:]</span>
+        <span class="n">level</span> <span class="o">=</span> <span class="n">exog</span><span class="p">[:,</span> <span class="n">cols</span> <span class="o">-</span> <span class="mi">1</span> <span class="p">:</span> <span class="n">cols</span><span class="p">]</span>
+        <span class="c1"># Ill-conditioned problems are left to the per-period loop. The cross</span>
+        <span class="c1"># product inverse of _quick_ols loses about cond(exog)**2 * eps, so</span>
+        <span class="c1"># the cutoff is sqrt(eps) rather than the k * eps of the other</span>
+        <span class="c1"># callers. The same constant bounds the cancellation in S and G</span>
+        <span class="c1"># below (the Schur diagonal, the pivot, the level and the ssr), so</span>
+        <span class="c1"># the accepted designs give t-values good to about 1e-8 rather than</span>
+        <span class="c1"># 1e-12.</span>
+        <span class="n">tol</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">finfo</span><span class="p">(</span><span class="nb">float</span><span class="p">)</span><span class="o">.</span><span class="n">eps</span><span class="p">)</span>
+        <span class="n">res</span> <span class="o">=</span> <span class="n">nested_lag_ols</span><span class="p">(</span><span class="n">endog</span><span class="p">,</span> <span class="n">level</span><span class="p">,</span> <span class="n">fixed</span><span class="p">,</span> <span class="n">rcond</span><span class="o">=</span><span class="n">tol</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">res</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">None</span>
+        <span class="n">r</span> <span class="o">=</span> <span class="n">res</span><span class="o">.</span><span class="n">r</span>
+
+        <span class="c1"># r belongs to the data after nested_lag_ols subtracts res.offset (the</span>
+        <span class="c1"># means of the level and endog, as fixed has a constant column), so</span>
+        <span class="c1"># the cross products below use the same columns. The shift adds</span>
+        <span class="c1"># multiples of the constant, which changes no t-statistic.</span>
+        <span class="n">data</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">column_stack</span><span class="p">([</span><span class="n">fixed</span><span class="p">,</span> <span class="n">level</span><span class="p">,</span> <span class="n">endog</span><span class="p">])</span> <span class="o">-</span> <span class="n">res</span><span class="o">.</span><span class="n">offset</span>
+        <span class="c1"># tail[f] is the sum of the rows f, f + 1, ... of data, the cross</span>
+        <span class="c1"># product with the level shift. The sum of tail[f:] is the cross</span>
+        <span class="c1"># product with the trend shift.</span>
+        <span class="n">tail</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">cumsum</span><span class="p">(</span><span class="n">data</span><span class="p">[::</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)[::</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+        <span class="n">length</span> <span class="o">=</span> <span class="p">(</span><span class="n">nreg</span> <span class="o">-</span> <span class="n">first</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">float</span><span class="p">)</span>
+        <span class="n">ncols</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+        <span class="n">xd</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">((</span><span class="n">ncols</span><span class="p">,</span> <span class="n">nper</span><span class="p">,</span> <span class="n">ndummy</span><span class="p">))</span>
+        <span class="n">dd</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">((</span><span class="n">nper</span><span class="p">,</span> <span class="n">ndummy</span><span class="p">,</span> <span class="n">ndummy</span><span class="p">))</span>
+        <span class="k">if</span> <span class="n">regression</span> <span class="o">!=</span> <span class="s2">"t"</span><span class="p">:</span>
+            <span class="n">xd</span><span class="p">[:,</span> <span class="p">:,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">tail</span><span class="p">[</span><span class="n">first</span><span class="p">]</span><span class="o">.</span><span class="n">T</span>
+            <span class="n">dd</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">length</span>
+        <span class="k">if</span> <span class="n">regression</span> <span class="o">!=</span> <span class="s2">"c"</span><span class="p">:</span>
+            <span class="n">xd</span><span class="p">[:,</span> <span class="p">:,</span> <span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">cumsum</span><span class="p">(</span><span class="n">tail</span><span class="p">[::</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)[::</span><span class="o">-</span><span class="mi">1</span><span class="p">][</span><span class="n">first</span><span class="p">]</span><span class="o">.</span><span class="n">T</span>
+            <span class="n">dd</span><span class="p">[:,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">length</span> <span class="o">*</span> <span class="p">(</span><span class="n">length</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">length</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="o">/</span> <span class="mi">6</span>
+        <span class="k">if</span> <span class="n">regression</span> <span class="o">==</span> <span class="s2">"ct"</span><span class="p">:</span>
+            <span class="n">dd</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">dd</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">length</span> <span class="o">*</span> <span class="p">(</span><span class="n">length</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="o">/</span> <span class="mi">2</span>
+
+        <span class="n">c</span> <span class="o">=</span> <span class="n">solve_triangular</span><span class="p">(</span><span class="n">r</span><span class="p">,</span> <span class="n">xd</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">ncols</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">),</span> <span class="n">trans</span><span class="o">=</span><span class="s2">"T"</span><span class="p">)</span>
+        <span class="n">c</span> <span class="o">=</span> <span class="n">c</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">ncols</span><span class="p">,</span> <span class="n">nper</span><span class="p">,</span> <span class="n">ndummy</span><span class="p">)</span><span class="o">.</span><span class="n">transpose</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span>
+        <span class="n">c_a</span> <span class="o">=</span> <span class="n">c</span><span class="p">[:,</span> <span class="p">:</span><span class="n">k_fixed</span><span class="p">]</span>
+        <span class="n">s</span> <span class="o">=</span> <span class="n">dd</span> <span class="o">-</span> <span class="n">c_a</span><span class="o">.</span><span class="n">transpose</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span> <span class="o">@</span> <span class="n">c_a</span>
+        <span class="c1"># The dummies must not be (almost) in the span of the regressors</span>
+        <span class="c1"># before them. The squared diagonal of chol(s) is s[0, 0] and</span>
+        <span class="c1"># s[1, 1] - s[0, 1] ** 2 / s[0, 0].</span>
+        <span class="n">full_rank</span> <span class="o">=</span> <span class="n">s</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">&gt;</span> <span class="n">tol</span> <span class="o">*</span> <span class="n">dd</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">ndummy</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
+            <span class="k">with</span> <span class="n">np</span><span class="o">.</span><span class="n">errstate</span><span class="p">(</span><span class="n">divide</span><span class="o">=</span><span class="s2">"ignore"</span><span class="p">,</span> <span class="n">invalid</span><span class="o">=</span><span class="s2">"ignore"</span><span class="p">):</span>
+                <span class="n">pivot</span> <span class="o">=</span> <span class="n">s</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">-</span> <span class="n">s</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">**</span> <span class="mi">2</span> <span class="o">/</span> <span class="n">s</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span>
+            <span class="n">full_rank</span> <span class="o">&amp;=</span> <span class="n">pivot</span> <span class="o">&gt;</span> <span class="n">tol</span> <span class="o">*</span> <span class="n">dd</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">full_rank</span><span class="p">):</span>
+            <span class="k">return</span> <span class="kc">None</span>
+        <span class="n">chol</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">cholesky</span><span class="p">(</span><span class="n">s</span><span class="p">)</span>
+        <span class="n">r_b</span> <span class="o">=</span> <span class="n">r</span><span class="p">[</span><span class="n">k_fixed</span><span class="p">:,</span> <span class="n">k_fixed</span><span class="p">:]</span>
+        <span class="n">v</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">solve</span><span class="p">(</span><span class="n">chol</span><span class="p">,</span> <span class="n">c</span><span class="p">[:,</span> <span class="n">k_fixed</span><span class="p">:]</span><span class="o">.</span><span class="n">transpose</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span> <span class="o">@</span> <span class="n">r_b</span><span class="p">)</span>
+        <span class="n">g</span> <span class="o">=</span> <span class="n">r_b</span><span class="o">.</span><span class="n">T</span> <span class="o">@</span> <span class="n">r_b</span> <span class="o">-</span> <span class="n">v</span><span class="o">.</span><span class="n">transpose</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span> <span class="o">@</span> <span class="n">v</span>
+        <span class="n">g_level</span> <span class="o">=</span> <span class="n">g</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span>
+        <span class="k">with</span> <span class="n">np</span><span class="o">.</span><span class="n">errstate</span><span class="p">(</span><span class="n">divide</span><span class="o">=</span><span class="s2">"ignore"</span><span class="p">,</span> <span class="n">invalid</span><span class="o">=</span><span class="s2">"ignore"</span><span class="p">):</span>
+            <span class="n">r_level_endog</span> <span class="o">=</span> <span class="n">g</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">g_level</span><span class="p">)</span>
+        <span class="n">ssr</span> <span class="o">=</span> <span class="n">g</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">-</span> <span class="n">r_level_endog</span><span class="o">**</span><span class="mi">2</span>
+        <span class="c1"># Nor may the level, or endog (an almost perfect fit)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span>
+            <span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">g_level</span> <span class="o">&gt;</span> <span class="n">tol</span> <span class="o">*</span> <span class="n">r_b</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">**</span> <span class="mi">2</span><span class="p">)</span>
+            <span class="ow">and</span> <span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">ssr</span> <span class="o">&gt;</span> <span class="n">tol</span> <span class="o">*</span> <span class="n">r_b</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">**</span> <span class="mi">2</span><span class="p">)</span>
+        <span class="p">):</span>
+            <span class="k">return</span> <span class="kc">None</span>
+        <span class="n">df_resid</span> <span class="o">=</span> <span class="n">nreg</span> <span class="o">-</span> <span class="p">(</span><span class="n">k_fixed</span> <span class="o">+</span> <span class="n">ndummy</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">r_level_endog</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">ssr</span> <span class="o">/</span> <span class="n">df_resid</span><span class="p">)</span>
+
     <span class="k">def</span><span class="w"> </span><span class="nf">run</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">trim</span><span class="o">=</span><span class="mf">0.15</span><span class="p">,</span> <span class="n">maxlag</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">regression</span><span class="o">=</span><span class="s2">"c"</span><span class="p">,</span> <span class="n">autolag</span><span class="o">=</span><span class="s2">"AIC"</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">"""</span>
 <span class="sd">        Zivot-Andrews structural-break unit-root test</span>
@@ -4955,31 +5107,47 @@
         <span class="n">endog</span><span class="p">,</span> <span class="n">exog</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_format_regression_data</span><span class="p">(</span>
             <span class="n">x</span><span class="p">,</span> <span class="n">nobs</span><span class="p">,</span> <span class="n">c_const</span><span class="p">,</span> <span class="n">t_const</span><span class="p">,</span> <span class="n">basecols</span><span class="p">,</span> <span class="n">baselags</span>
         <span class="p">)</span>
-        <span class="c1"># iterate through the time periods</span>
         <span class="n">stats</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">full</span><span class="p">(</span><span class="n">end_period</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">)</span>
-        <span class="k">for</span> <span class="n">bp</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">start_period</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="n">end_period</span> <span class="o">+</span> <span class="mi">1</span><span class="p">):</span>
-            <span class="c1"># update intercept dummy / trend / trend dummy</span>
-            <span class="n">exog</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_update_regression_exog</span><span class="p">(</span>
-                <span class="n">exog</span><span class="p">,</span>
-                <span class="n">regression</span><span class="p">,</span>
-                <span class="n">bp</span><span class="p">,</span>
-                <span class="n">nobs</span><span class="p">,</span>
-                <span class="n">c_const</span><span class="p">,</span>
-                <span class="n">t_const</span><span class="p">,</span>
-                <span class="n">basecols</span><span class="p">,</span>
-                <span class="n">baselags</span><span class="p">,</span>
-            <span class="p">)</span>
-            <span class="c1"># check exog rank on first iteration</span>
-            <span class="k">if</span> <span class="n">bp</span> <span class="o">==</span> <span class="n">start_period</span> <span class="o">+</span> <span class="mi">1</span><span class="p">:</span>
-                <span class="n">o</span> <span class="o">=</span> <span class="n">OLS</span><span class="p">(</span><span class="n">endog</span><span class="p">[</span><span class="n">baselags</span><span class="p">:],</span> <span class="n">exog</span><span class="p">,</span> <span class="n">hasconst</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">fit</span><span class="p">()</span>
-                <span class="k">if</span> <span class="n">o</span><span class="o">.</span><span class="n">df_model</span> <span class="o">&lt;</span> <span class="n">exog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">-</span> <span class="mi">1</span><span class="p">:</span>
-                    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-                        <span class="s2">"ZA: auxiliary exog matrix is not full rank.</span><span class="se">\n</span><span class="s2">"</span>
-                        <span class="sa">f</span><span class="s2">"  cols (exc intercept) = </span><span class="si">{</span><span class="n">exog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="mi">1</span><span class="si">}</span><span class="s2">  rank = </span><span class="si">{</span><span class="n">o</span><span class="o">.</span><span class="n">df_model</span><span class="si">}</span><span class="s2">"</span>
-                    <span class="p">)</span>
-                <span class="n">stats</span><span class="p">[</span><span class="n">bp</span><span class="p">]</span> <span class="o">=</span> <span class="n">o</span><span class="o">.</span><span class="n">tvalues</span><span class="p">[</span><span class="n">basecols</span> <span class="o">-</span> <span class="mi">1</span><span class="p">]</span>
-            <span class="k">else</span><span class="p">:</span>
-                <span class="n">stats</span><span class="p">[</span><span class="n">bp</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_quick_ols</span><span class="p">(</span><span class="n">endog</span><span class="p">[</span><span class="n">baselags</span><span class="p">:],</span> <span class="n">exog</span><span class="p">)[</span><span class="n">basecols</span> <span class="o">-</span> <span class="mi">1</span><span class="p">]</span>
+        <span class="n">periods</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">start_period</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="n">end_period</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="n">tvalues</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_break_tvalues</span><span class="p">(</span>
+            <span class="n">endog</span><span class="p">[</span><span class="n">baselags</span><span class="p">:],</span>
+            <span class="n">exog</span><span class="p">,</span>
+            <span class="n">regression</span><span class="p">,</span>
+            <span class="n">periods</span><span class="p">,</span>
+            <span class="n">nobs</span><span class="p">,</span>
+            <span class="n">c_const</span><span class="p">,</span>
+            <span class="n">t_const</span><span class="p">,</span>
+            <span class="n">basecols</span><span class="p">,</span>
+            <span class="n">baselags</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="k">if</span> <span class="n">tvalues</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">stats</span><span class="p">[</span><span class="n">periods</span><span class="p">]</span> <span class="o">=</span> <span class="n">tvalues</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># iterate through the time periods</span>
+            <span class="k">for</span> <span class="n">bp</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">start_period</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="n">end_period</span> <span class="o">+</span> <span class="mi">1</span><span class="p">):</span>
+                <span class="c1"># update intercept dummy / trend / trend dummy</span>
+                <span class="n">exog</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_update_regression_exog</span><span class="p">(</span>
+                    <span class="n">exog</span><span class="p">,</span>
+                    <span class="n">regression</span><span class="p">,</span>
+                    <span class="n">bp</span><span class="p">,</span>
+                    <span class="n">nobs</span><span class="p">,</span>
+                    <span class="n">c_const</span><span class="p">,</span>
+                    <span class="n">t_const</span><span class="p">,</span>
+                    <span class="n">basecols</span><span class="p">,</span>
+                    <span class="n">baselags</span><span class="p">,</span>
+                <span class="p">)</span>
+                <span class="c1"># check exog rank on first iteration</span>
+                <span class="k">if</span> <span class="n">bp</span> <span class="o">==</span> <span class="n">start_period</span> <span class="o">+</span> <span class="mi">1</span><span class="p">:</span>
+                    <span class="n">o</span> <span class="o">=</span> <span class="n">OLS</span><span class="p">(</span><span class="n">endog</span><span class="p">[</span><span class="n">baselags</span><span class="p">:],</span> <span class="n">exog</span><span class="p">,</span> <span class="n">hasconst</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">fit</span><span class="p">()</span>
+                    <span class="k">if</span> <span class="n">o</span><span class="o">.</span><span class="n">df_model</span> <span class="o">&lt;</span> <span class="n">exog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">-</span> <span class="mi">1</span><span class="p">:</span>
+                        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                            <span class="s2">"ZA: auxiliary exog matrix is not full rank.</span><span class="se">\n</span><span class="s2">"</span>
+                            <span class="sa">f</span><span class="s2">"  cols (exc intercept) = </span><span class="si">{</span><span class="n">exog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="mi">1</span><span class="si">}</span><span class="s2">"</span>
+                            <span class="sa">f</span><span class="s2">"  rank = </span><span class="si">{</span><span class="n">o</span><span class="o">.</span><span class="n">df_model</span><span class="si">}</span><span class="s2">"</span>
+                        <span class="p">)</span>
+                    <span class="n">stats</span><span class="p">[</span><span class="n">bp</span><span class="p">]</span> <span class="o">=</span> <span class="n">o</span><span class="o">.</span><span class="n">tvalues</span><span class="p">[</span><span class="n">basecols</span> <span class="o">-</span> <span class="mi">1</span><span class="p">]</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">stats</span><span class="p">[</span><span class="n">bp</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_quick_ols</span><span class="p">(</span><span class="n">endog</span><span class="p">[</span><span class="n">baselags</span><span class="p">:],</span> <span class="n">exog</span><span class="p">)[</span><span class="n">basecols</span> <span class="o">-</span> <span class="mi">1</span><span class="p">]</span>
         <span class="c1"># return best seen</span>
         <span class="n">zastat</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">stats</span><span class="p">)</span>
         <span class="n">bpidx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argmin</span><span class="p">(</span><span class="n">stats</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span>
