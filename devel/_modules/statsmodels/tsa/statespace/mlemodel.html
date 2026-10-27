@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
-    <title>statsmodels.tsa.statespace.mlemodel &#8212; statsmodels 0.15.1 (+923)</title>
+    <title>statsmodels.tsa.statespace.mlemodel &#8212; statsmodels 0.15.1 (+926)</title>
   <link rel="icon" type="image/png" sizes="32x32" href="../../../../_static/icons/favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="../../../../_static/icons/favicon-16x16.png">
   <link rel="manifest" href="../../../../_static/icons/site.webmanifest">
@@ -71,7 +71,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="color-scheme" content="light dark"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="0.15.1 (+923)" />
+  <meta name="docsearch:version" content="0.15.1 (+926)" />
     <meta name="docbuild:last-update" content="Oct 27, 2026"/>
   
     
@@ -596,7 +596,7 @@
 <span class="kn">import</span><span class="w"> </span><span class="nn">statsmodels.tsa.base.tsa_model</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">tsbase</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.tsa.stattools._stattools</span><span class="w"> </span><span class="kn">import</span> <span class="n">breakvar_heteroskedasticity_test</span>
 
-<span class="kn">from</span><span class="w"> </span><span class="nn">.initialization</span><span class="w"> </span><span class="kn">import</span> <span class="n">Initialization</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.initialization</span><span class="w"> </span><span class="kn">import</span> <span class="n">Initialization</span><span class="p">,</span> <span class="n">_StationaryInitializationError</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">.kalman_filter</span><span class="w"> </span><span class="kn">import</span> <span class="n">INVERT_UNIVARIATE</span><span class="p">,</span> <span class="n">MEMORY_CONSERVE</span><span class="p">,</span> <span class="n">SOLVE_LU</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">.kalman_smoother</span><span class="w"> </span><span class="kn">import</span> <span class="n">SmootherResults</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">.news</span><span class="w"> </span><span class="kn">import</span> <span class="n">NewsResults</span>
@@ -1659,6 +1659,10 @@
 <span class="sd">        [1]_ recommend maximizing the average likelihood to avoid scale issues;</span>
 <span class="sd">        this is done automatically by the base Model fit method.</span>
 
+<span class="sd">        The loglikelihood is -inf if the states are initialized as stationary</span>
+<span class="sd">        and the transition matrix has a unit root, so that the stationary</span>
+<span class="sd">        covariance of the initial state does not exist.</span>
+
 <span class="sd">        References</span>
 <span class="sd">        ----------</span>
 <span class="sd">        .. [1] Koopman, Siem Jan, Neil Shephard, and Jurgen A. Doornik. 1999.</span>
@@ -1682,7 +1686,14 @@
         <span class="k">if</span> <span class="n">complex_step</span><span class="p">:</span>
             <span class="n">kwargs</span><span class="p">[</span><span class="s2">"inversion_method"</span><span class="p">]</span> <span class="o">=</span> <span class="n">INVERT_UNIVARIATE</span> <span class="o">|</span> <span class="n">SOLVE_LU</span>
 
-        <span class="n">loglike</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ssm</span><span class="o">.</span><span class="n">loglike</span><span class="p">(</span><span class="n">complex_step</span><span class="o">=</span><span class="n">complex_step</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">loglike</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ssm</span><span class="o">.</span><span class="n">loglike</span><span class="p">(</span><span class="n">complex_step</span><span class="o">=</span><span class="n">complex_step</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="k">except</span> <span class="n">_StationaryInitializationError</span><span class="p">:</span>
+            <span class="c1"># The transition matrix has a unit root, which can happen at the</span>
+            <span class="c1"># boundary of the stationary region, for example in the line</span>
+            <span class="c1"># search of a derivative free optimizer. The variance of the</span>
+            <span class="c1"># initial state is infinite there, and so the loglikelihood is -inf.</span>
+            <span class="k">return</span> <span class="o">-</span><span class="n">np</span><span class="o">.</span><span class="n">inf</span>
 
         <span class="c1"># Koopman, Shephard, and Doornik recommend maximizing the average</span>
         <span class="c1"># likelihood to avoid scale issues, but the averaging is done</span>
