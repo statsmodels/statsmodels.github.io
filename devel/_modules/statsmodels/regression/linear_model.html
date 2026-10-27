@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
-    <title>statsmodels.regression.linear_model &#8212; statsmodels 0.15.1 (+887)</title>
+    <title>statsmodels.regression.linear_model &#8212; statsmodels 0.15.1 (+918)</title>
   <link rel="icon" type="image/png" sizes="32x32" href="../../../_static/icons/favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="../../../_static/icons/favicon-16x16.png">
   <link rel="manifest" href="../../../_static/icons/site.webmanifest">
@@ -71,8 +71,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="color-scheme" content="light dark"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="0.15.1 (+887)" />
-    <meta name="docbuild:last-update" content="Oct 26, 2026"/>
+  <meta name="docsearch:version" content="0.15.1 (+918)" />
+    <meta name="docbuild:last-update" content="Oct 27, 2026"/>
   
     
     <script src="../../../_static/searchtools.js"></script>
@@ -614,6 +614,7 @@
 <span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.tools.docstring_helpers</span><span class="w"> </span><span class="kn">import</span> <span class="n">Appender</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.tools.sm_exceptions</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
     <span class="n">InvalidTestWarning</span><span class="p">,</span>
+    <span class="n">MissingDataError</span><span class="p">,</span>
     <span class="n">SingularMatrixWarning</span><span class="p">,</span>
     <span class="n">ValueWarning</span><span class="p">,</span>
 <span class="p">)</span>
@@ -815,6 +816,22 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">sigma</span><span class="p">:</span> <span class="n">Float64Array</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
         <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">endog</span><span class="p">,</span> <span class="n">exog</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_data_attr</span><span class="o">.</span><span class="n">extend</span><span class="p">([</span><span class="s2">"pinv_wexog"</span><span class="p">,</span> <span class="s2">"wendog"</span><span class="p">,</span> <span class="s2">"wexog"</span><span class="p">,</span> <span class="s2">"weights"</span><span class="p">])</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_check_finite</span><span class="p">()</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_check_finite</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">"""</span>
+<span class="sd">        Raise a MissingDataError if the data contain inf or nan</span>
+
+<span class="sd">        The check is made on the data that the model uses, so that rows with</span>
+<span class="sd">        nan that were removed by ``missing="drop"`` are not checked. inf is</span>
+<span class="sd">        never removed. Without the check a non-finite value does not raise</span>
+<span class="sd">        until the model is fit, where it raises a LinAlgError or returns</span>
+<span class="sd">        parameters that are all nan.</span>
+<span class="sd">        """</span>
+        <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">"endog"</span><span class="p">,</span> <span class="s2">"exog"</span><span class="p">,</span> <span class="s2">"weights"</span><span class="p">,</span> <span class="s2">"sigma"</span><span class="p">):</span>
+            <span class="n">value</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">value</span><span class="p">)</span><span class="o">.</span><span class="n">all</span><span class="p">():</span>
+                <span class="k">raise</span> <span class="n">MissingDataError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2"> contains inf or nans"</span><span class="p">)</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">initialize</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">"""Initialize model components"""</span>
@@ -1133,6 +1150,12 @@
 <span class="s2">    If sigma is a function of the data making one of the regressors</span>
 <span class="s2">    a constant, then the current postestimation statistics will not be correct.</span>
 
+<span class="s2">    .. versionchanged:: 0.15.1</span>
+
+<span class="s2">       A ``MissingDataError`` is raised if ``endog``, ``exog`` or ``sigma`` contain inf or nan after</span>
+<span class="s2">       missing values are handled. Before, ``-inf`` in exog, and inf or nan in</span>
+<span class="s2">       the other arrays, were not detected until the model was fit.</span>
+
 <span class="s2">    Examples</span>
 <span class="s2">    --------</span>
 <span class="s2">    &gt;&gt;&gt; import statsmodels.api as sm</span>
@@ -1398,6 +1421,12 @@
 <span class="s2">    statistics such as fvalue and mse_model might not be correct, as the</span>
 <span class="s2">    package does not yet support no-constant regression.</span>
 
+<span class="s2">    .. versionchanged:: 0.15.1</span>
+
+<span class="s2">       A ``MissingDataError`` is raised if ``endog``, ``exog`` or ``weights`` contain inf or nan after</span>
+<span class="s2">       missing values are handled. Before, ``-inf`` in exog, and inf or nan in</span>
+<span class="s2">       the other arrays, were not detected until the model was fit.</span>
+
 <span class="s2">    Examples</span>
 <span class="s2">    --------</span>
 <span class="s2">    &gt;&gt;&gt; import statsmodels.api as sm</span>
@@ -1602,6 +1631,12 @@
 <span class="s2">    Notes</span>
 <span class="s2">    -----</span>
 <span class="s2">    No constant is added by the model unless you are using formulas.</span>
+
+<span class="s2">    .. versionchanged:: 0.15.1</span>
+
+<span class="s2">       A ``MissingDataError`` is raised if ``endog`` or ``exog`` contain inf or nan after</span>
+<span class="s2">       missing values are handled. Before, ``-inf`` in exog, and inf or nan in</span>
+<span class="s2">       the other arrays, were not detected until the model was fit.</span>
 
 <span class="s2">    Examples</span>
 <span class="s2">    --------</span>
@@ -2037,6 +2072,12 @@
 <span class="s2">    GLSAR is considered to be experimental.</span>
 <span class="s2">    The linear autoregressive process of order p--AR(p)--is defined as:</span>
 <span class="s2">    TODO</span>
+
+<span class="s2">    .. versionchanged:: 0.15.1</span>
+
+<span class="s2">       A ``MissingDataError`` is raised if ``endog`` or ``exog`` contain inf or nan after</span>
+<span class="s2">       missing values are handled. Before, ``-inf`` in exog, and inf or nan in</span>
+<span class="s2">       the other arrays, were not detected until the model was fit.</span>
 
 <span class="s2">    Examples</span>
 <span class="s2">    --------</span>

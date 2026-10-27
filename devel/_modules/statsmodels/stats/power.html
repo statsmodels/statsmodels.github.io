@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
-    <title>statsmodels.stats.power &#8212; statsmodels 0.15.1 (+887)</title>
+    <title>statsmodels.stats.power &#8212; statsmodels 0.15.1 (+918)</title>
   <link rel="icon" type="image/png" sizes="32x32" href="../../../_static/icons/favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="../../../_static/icons/favicon-16x16.png">
   <link rel="manifest" href="../../../_static/icons/site.webmanifest">
@@ -71,8 +71,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="color-scheme" content="light dark"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="0.15.1 (+887)" />
-    <meta name="docbuild:last-update" content="Oct 26, 2026"/>
+  <meta name="docsearch:version" content="0.15.1 (+918)" />
+    <meta name="docbuild:last-update" content="Oct 27, 2026"/>
   
     
     <script src="../../../_static/searchtools.js"></script>
@@ -607,13 +607,93 @@
 <span class="c1"># the documented spelling.</span>
 <span class="n">_ALTERNATIVE_ALIASES</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"2s"</span><span class="p">:</span> <span class="s2">"two-sided"</span><span class="p">}</span>
 
+<span class="c1"># Largest absolute value of the power equation, ``power(x) - target``, at which</span>
+<span class="c1"># ``Power.solve_power`` accepts a root. It must exceed the roughly 1e-5</span>
+<span class="c1"># accuracy of the CDFLIB functions in scipy.special, which are used to compute</span>
+<span class="c1"># the power, or valid roots are rejected.</span>
+<span class="n">_POWER_ROOT_TOL</span> <span class="o">=</span> <span class="mf">1e-4</span>
+
 
 <span class="k">def</span><span class="w"> </span><span class="nf">nct_cdf</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">df</span><span class="p">,</span> <span class="n">nc</span><span class="p">):</span>
-    <span class="k">return</span> <span class="n">special</span><span class="o">.</span><span class="n">nctdtr</span><span class="p">(</span><span class="n">df</span><span class="p">,</span> <span class="n">nc</span><span class="p">,</span> <span class="n">x</span><span class="p">)</span>
+<span class="w">    </span><span class="sd">"""</span>
+<span class="sd">    Cumulative distribution function of the noncentral t distribution</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    x : array_like</span>
+<span class="sd">        Quantiles.</span>
+<span class="sd">    df : array_like</span>
+<span class="sd">        Degrees of freedom.</span>
+<span class="sd">    nc : array_like</span>
+<span class="sd">        Noncentrality parameter.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    cdf : float or ndarray</span>
+<span class="sd">        The cdf at ``x``, with the type of the input if it is a pandas Series.</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    This uses ``scipy.special.nctdtr``. Its absolute accuracy is about 1e-15</span>
+<span class="sd">    and it can return nan far in the tail opposite to the sign of ``nc``. The</span>
+<span class="sd">    reflection ``cdf(x; nc) = 1 - cdf(-x; -nc)`` is tried for those values. If</span>
+<span class="sd">    that is nan too, then the probability is below the resolution of the</span>
+<span class="sd">    function and 0 (``x &lt; 0 &lt; nc``) or 1 (``nc &lt; 0 &lt; x``) is returned.</span>
+<span class="sd">    Values in the tails are therefore not accurate in a relative sense.</span>
+<span class="sd">    """</span>
+    <span class="n">res</span> <span class="o">=</span> <span class="n">special</span><span class="o">.</span><span class="n">nctdtr</span><span class="p">(</span><span class="n">df</span><span class="p">,</span> <span class="n">nc</span><span class="p">,</span> <span class="n">x</span><span class="p">)</span>
+    <span class="n">nan</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">res</span><span class="p">))</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">nan</span><span class="o">.</span><span class="n">any</span><span class="p">():</span>
+        <span class="k">return</span> <span class="n">res</span>
+    <span class="c1"># CDFLIB can return nan far in the tail opposite to the sign of ``nc``.</span>
+    <span class="c1"># Retry with the reflection cdf(x; nc) = 1 - cdf(-x; -nc), which leaves</span>
+    <span class="c1"># already finite values unchanged.</span>
+    <span class="n">x_</span><span class="p">,</span> <span class="n">df_</span><span class="p">,</span> <span class="n">nc_</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">broadcast_arrays</span><span class="p">(</span>
+        <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">),</span>
+        <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">df</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">),</span>
+        <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">nc</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">),</span>
+    <span class="p">)</span>
+    <span class="n">alt</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">-</span> <span class="n">special</span><span class="o">.</span><span class="n">nctdtr</span><span class="p">(</span><span class="n">df_</span><span class="p">,</span> <span class="o">-</span><span class="n">nc_</span><span class="p">,</span> <span class="o">-</span><span class="n">x_</span><span class="p">)</span>
+    <span class="c1"># If the reflection is nan too, the probability is below the resolution</span>
+    <span class="c1"># of CDFLIB (absolute error of about 1e-15; the exact values in all such</span>
+    <span class="c1"># cases we checked are smaller than 1e-17), so use the limit 0 or 1.</span>
+    <span class="c1"># Invalid arguments stay nan.</span>
+    <span class="n">valid</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">x_</span><span class="p">)</span> <span class="o">&amp;</span> <span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">nc_</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">df_</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">)</span>
+    <span class="n">alt</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">alt</span><span class="p">)</span> <span class="o">&amp;</span> <span class="n">valid</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">x_</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">nc_</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">),</span> <span class="mf">0.0</span><span class="p">,</span> <span class="n">alt</span><span class="p">)</span>
+    <span class="n">alt</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">alt</span><span class="p">)</span> <span class="o">&amp;</span> <span class="n">valid</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">x_</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">nc_</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">),</span> <span class="mf">1.0</span><span class="p">,</span> <span class="n">alt</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">ndim</span><span class="p">(</span><span class="n">res</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">nan</span><span class="p">,</span> <span class="n">alt</span><span class="p">,</span> <span class="n">res</span><span class="p">))[()]</span>
+    <span class="c1"># assign in place to keep the type of the input, e.g. a pandas Series</span>
+    <span class="n">res</span><span class="p">[</span><span class="n">nan</span><span class="p">]</span> <span class="o">=</span> <span class="n">alt</span><span class="p">[</span><span class="n">nan</span><span class="p">]</span>
+    <span class="k">return</span> <span class="n">res</span>
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">nct_sf</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">df</span><span class="p">,</span> <span class="n">nc</span><span class="p">):</span>
-    <span class="k">return</span> <span class="mi">1</span> <span class="o">-</span> <span class="n">special</span><span class="o">.</span><span class="n">nctdtr</span><span class="p">(</span><span class="n">df</span><span class="p">,</span> <span class="n">nc</span><span class="p">,</span> <span class="n">x</span><span class="p">)</span>
+<span class="w">    </span><span class="sd">"""</span>
+<span class="sd">    Survival function of the noncentral t distribution</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    x : array_like</span>
+<span class="sd">        Quantiles.</span>
+<span class="sd">    df : array_like</span>
+<span class="sd">        Degrees of freedom.</span>
+<span class="sd">    nc : array_like</span>
+<span class="sd">        Noncentrality parameter.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    sf : float or ndarray</span>
+<span class="sd">        The survival function at ``x``, with the type of the input if it is a</span>
+<span class="sd">        pandas Series.</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    This is ``nct_cdf(-x, df, -nc)``, which keeps the relative accuracy in the</span>
+<span class="sd">    upper tail, where ``1 - nct_cdf(x, df, nc)`` cancels most digits. See</span>
+<span class="sd">    `nct_cdf` for the handling of nan in the far tail.</span>
+<span class="sd">    """</span>
+    <span class="k">return</span> <span class="n">nct_cdf</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">negative</span><span class="p">(</span><span class="n">x</span><span class="p">),</span> <span class="n">df</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">negative</span><span class="p">(</span><span class="n">nc</span><span class="p">))</span>
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">ncf_cdf</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">dfn</span><span class="p">,</span> <span class="n">dfd</span><span class="p">,</span> <span class="n">nc</span><span class="p">):</span>
@@ -1079,7 +1159,12 @@
         <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">"ratio"</span><span class="p">]:</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">start_bqexp</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"low"</span><span class="p">:</span> <span class="mf">1e-8</span><span class="p">,</span> <span class="s2">"start_upp"</span><span class="p">:</span> <span class="mi">2</span><span class="p">}</span>
         <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">"alpha"</span><span class="p">]:</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">start_bqexp</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"low"</span><span class="p">:</span> <span class="mf">1e-12</span><span class="p">,</span> <span class="s2">"upp"</span><span class="p">:</span> <span class="mi">1</span> <span class="o">-</span> <span class="mf">1e-12</span><span class="p">}</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">start_bqexp</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+                <span class="s2">"low"</span><span class="p">:</span> <span class="mf">1e-12</span><span class="p">,</span>
+                <span class="s2">"upp"</span><span class="p">:</span> <span class="mi">1</span> <span class="o">-</span> <span class="mf">1e-12</span><span class="p">,</span>
+                <span class="c1"># roots can be far below the default xtol of 1e-5 of brentq_expanding</span>
+                <span class="s2">"xtol"</span><span class="p">:</span> <span class="mf">1e-18</span><span class="p">,</span>
+            <span class="p">}</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">power</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwds</span><span class="p">):</span>
         <span class="k">raise</span> <span class="ne">NotImplementedError</span>
@@ -1121,6 +1206,10 @@
 <span class="sd">            The first element is the success indicator, one if successful.</span>
 <span class="sd">            The remaining elements contain the return information of the up to</span>
 <span class="sd">            three solvers that have been tried.</span>
+
+<span class="sd">        If no solver finds a value that solves the power equation, for example</span>
+<span class="sd">        because the equation has no solution, a ``ConvergenceWarning`` is</span>
+<span class="sd">        issued and ``nan`` is returned.</span>
 
 <span class="sd">        """</span>
         <span class="c1"># TODO: maybe use explicit kwds,</span>
@@ -1226,7 +1315,7 @@
             <span class="n">fit_res</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>
 
         <span class="n">success</span> <span class="o">=</span> <span class="kc">None</span>
-        <span class="k">if</span> <span class="p">(</span><span class="ow">not</span> <span class="n">failed</span><span class="p">)</span> <span class="ow">and</span> <span class="n">res</span><span class="o">.</span><span class="n">converged</span><span class="p">:</span>
+        <span class="k">if</span> <span class="p">(</span><span class="ow">not</span> <span class="n">failed</span><span class="p">)</span> <span class="ow">and</span> <span class="n">res</span><span class="o">.</span><span class="n">converged</span> <span class="ow">and</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">func</span><span class="p">(</span><span class="n">val</span><span class="p">))</span> <span class="o">&lt;</span> <span class="n">_POWER_ROOT_TOL</span><span class="p">:</span>
             <span class="n">success</span> <span class="o">=</span> <span class="mi">1</span>
         <span class="k">else</span><span class="p">:</span>
             <span class="c1"># try backup</span>
@@ -1251,15 +1340,26 @@
                 <span class="n">fval</span> <span class="o">=</span> <span class="mi">1</span>
                 <span class="n">fit_res</span><span class="o">.</span><span class="n">append</span><span class="p">([</span><span class="kc">None</span><span class="p">])</span>
 
-            <span class="k">if</span> <span class="n">ier</span> <span class="o">==</span> <span class="mi">1</span> <span class="ow">and</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">fval</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mf">1e-4</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">ier</span> <span class="o">==</span> <span class="mi">1</span> <span class="ow">and</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">fval</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">_POWER_ROOT_TOL</span><span class="p">:</span>
                 <span class="n">success</span> <span class="o">=</span> <span class="mi">1</span>
             <span class="c1"># print infodict</span>
             <span class="k">elif</span> <span class="n">key</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">"alpha"</span><span class="p">,</span> <span class="s2">"power"</span><span class="p">,</span> <span class="s2">"effect_size"</span><span class="p">]:</span>
-                <span class="n">val</span><span class="p">,</span> <span class="n">r</span> <span class="o">=</span> <span class="n">optimize</span><span class="o">.</span><span class="n">brentq</span><span class="p">(</span>
-                    <span class="n">func</span><span class="p">,</span> <span class="mf">1e-8</span><span class="p">,</span> <span class="mi">1</span> <span class="o">-</span> <span class="mf">1e-8</span><span class="p">,</span> <span class="n">full_output</span><span class="o">=</span><span class="kc">True</span>
-                <span class="p">)</span>  <span class="c1"># scalar</span>
-                <span class="n">success</span> <span class="o">=</span> <span class="mi">1</span> <span class="k">if</span> <span class="n">r</span><span class="o">.</span><span class="n">converged</span> <span class="k">else</span> <span class="mi">0</span>
-                <span class="n">fit_res</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">r</span><span class="p">)</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="n">val</span><span class="p">,</span> <span class="n">r</span> <span class="o">=</span> <span class="n">optimize</span><span class="o">.</span><span class="n">brentq</span><span class="p">(</span>
+                        <span class="n">func</span><span class="p">,</span> <span class="mf">1e-8</span><span class="p">,</span> <span class="mi">1</span> <span class="o">-</span> <span class="mf">1e-8</span><span class="p">,</span> <span class="n">full_output</span><span class="o">=</span><span class="kc">True</span>
+                    <span class="p">)</span>  <span class="c1"># scalar</span>
+                <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+                    <span class="c1"># func has the same sign at both bounds, so the bracket</span>
+                    <span class="c1"># contains no root, or an even number of them</span>
+                    <span class="n">success</span> <span class="o">=</span> <span class="mi">0</span>
+                    <span class="n">fit_res</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="c1"># brentq also "converges" to a jump of func, e.g. to the</span>
+                    <span class="c1"># boundary where power returns nan (mapped to inf above),</span>
+                    <span class="c1"># so require that val actually solves the power equation</span>
+                    <span class="n">solved</span> <span class="o">=</span> <span class="n">r</span><span class="o">.</span><span class="n">converged</span> <span class="ow">and</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">func</span><span class="p">(</span><span class="n">val</span><span class="p">))</span> <span class="o">&lt;</span> <span class="n">_POWER_ROOT_TOL</span>
+                    <span class="n">success</span> <span class="o">=</span> <span class="mi">1</span> <span class="k">if</span> <span class="n">solved</span> <span class="k">else</span> <span class="mi">0</span>
+                    <span class="n">fit_res</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">r</span><span class="p">)</span>
             <span class="k">else</span><span class="p">:</span>
                 <span class="n">success</span> <span class="o">=</span> <span class="mi">0</span>
 
@@ -1520,8 +1620,9 @@
 <span class="sd">        the power equation. It first uses ``brentq`` with a prior search for</span>
 <span class="sd">        bounds. If this fails to find a root, ``fsolve`` is used. If ``fsolve``</span>
 <span class="sd">        also fails, then, for ``alpha``, ``power`` and ``effect_size``,</span>
-<span class="sd">        ``brentq`` with fixed bounds is used. However, there can still be cases</span>
-<span class="sd">        where this fails.</span>
+<span class="sd">        ``brentq`` with fixed bounds is used. If these also fail to find a solution</span>
+<span class="sd">        of the power equation, for example because it has no solution, a</span>
+<span class="sd">        ``ConvergenceWarning`` is issued and ``nan`` is returned.</span>
 
 <span class="sd">        """</span>
         <span class="c1"># for debugging</span>
@@ -1535,6 +1636,24 @@
         <span class="p">)</span></div>
 </div>
 
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_validate_ratio</span><span class="p">(</span><span class="n">ratio</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""</span>
+<span class="sd">    Check that ``ratio`` of ``TTestIndPower`` is non-negative and not NaN.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    ratio : float or array_like</span>
+<span class="sd">        Ratio of the number of observations in sample 2 relative to sample 1.</span>
+
+<span class="sd">    Raises</span>
+<span class="sd">    ------</span>
+<span class="sd">    ValueError</span>
+<span class="sd">        If any element of ``ratio`` is negative or NaN.</span>
+<span class="sd">    """</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">greater_equal</span><span class="p">(</span><span class="n">ratio</span><span class="p">,</span> <span class="mi">0</span><span class="p">)):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"ratio must be non-negative and not NaN, got </span><span class="si">{</span><span class="n">ratio</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
 
 
 <div class="viewcode-block" id="TTestIndPower">
@@ -1567,12 +1686,21 @@
 <span class="sd">        alpha : float in interval (0,1)</span>
 <span class="sd">            significance level, e.g., 0.05, is the probability of a type I</span>
 <span class="sd">            error, that is wrong rejections if the Null Hypothesis is true.</span>
-<span class="sd">        ratio : float, optional</span>
+<span class="sd">        ratio : float or array_like, optional</span>
 <span class="sd">            ratio of the number of observations in sample 2 relative to</span>
-<span class="sd">            sample 1. see description of nobs1</span>
+<span class="sd">            sample 1. see description of nobs1. ``ratio`` must be</span>
+<span class="sd">            non-negative and not NaN.</span>
+<span class="sd">            ``ratio`` can be set to zero in order to get the power of the</span>
+<span class="sd">            one sample t-test with ``nobs1`` observations, in which case the</span>
+<span class="sd">            default degrees of freedom are ``df = nobs1 - 1``. This is a</span>
+<span class="sd">            convention and not the limit of ``ratio`` going to zero: a ratio</span>
+<span class="sd">            close to zero, e.g. ``1e-9``, means that sample 2 has almost no</span>
+<span class="sd">            observations and the power is close to alpha, while ``ratio=0``</span>
+<span class="sd">            returns the one sample power.</span>
 <span class="sd">        df : int or float, optional</span>
 <span class="sd">            degrees of freedom. By default this is None, and the df from the</span>
 <span class="sd">            ttest with pooled variance is used, ``df = (nobs1 - 1 + nobs2 - 1)``</span>
+<span class="sd">            or ``df = nobs1 - 1`` if ``ratio=0``.</span>
 <span class="sd">        alternative : {'two-sided', 'larger', 'smaller'}, optional</span>
 <span class="sd">            extra argument to choose whether the power is calculated for a</span>
 <span class="sd">            two-sided (default) or one sided test. The one-sided test can be</span>
@@ -1580,24 +1708,55 @@
 
 <span class="sd">        Returns</span>
 <span class="sd">        -------</span>
-<span class="sd">        power : float</span>
+<span class="sd">        power : float or ndarray</span>
 <span class="sd">            Power of the test, e.g., 0.8, is one minus the probability of a</span>
 <span class="sd">            type II error. Power is the probability that the test correctly</span>
 <span class="sd">            rejects the Null Hypothesis if the Alternative Hypothesis is true.</span>
+<span class="sd">            The result is a float for scalar arguments and an array if</span>
+<span class="sd">            ``ratio`` or another argument is array_like.</span>
+
+<span class="sd">        Raises</span>
+<span class="sd">        ------</span>
+<span class="sd">        ValueError</span>
+<span class="sd">            If any element of ``ratio`` is negative or NaN.</span>
+
+<span class="sd">        Notes</span>
+<span class="sd">        -----</span>
+<span class="sd">        If ``ratio`` is an array_like, then the one sample convention for</span>
+<span class="sd">        ``ratio=0`` is applied to the elements that are zero.</span>
+
+<span class="sd">        .. versionchanged:: 0.15.1</span>
+
+<span class="sd">           ``ratio=0`` returns the power of the one sample t-test, it used to</span>
+<span class="sd">           raise a ``ZeroDivisionError`` or to return alpha with a</span>
+<span class="sd">           ``RuntimeWarning``. A negative or NaN ``ratio`` raises a</span>
+<span class="sd">           ``ValueError``.</span>
 
 <span class="sd">        """</span>
 
-        <span class="k">if</span> <span class="n">ratio</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">:</span>
-            <span class="c1"># the docstring documents ratio=0 for a one-sample test; negative</span>
-            <span class="c1"># ratios have no sample-size interpretation and used to crash</span>
-            <span class="c1"># with a bare ZeroDivisionError</span>
-            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"ratio must be non-negative, got </span><span class="si">{</span><span class="n">ratio</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
-        <span class="k">if</span> <span class="n">ratio</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
-            <span class="c1"># one-sample test, no second sample contributes</span>
+        <span class="c1"># negative ratios have no sample-size interpretation and used to</span>
+        <span class="c1"># crash with a bare ZeroDivisionError or return nan</span>
+        <span class="n">_validate_ratio</span><span class="p">(</span><span class="n">ratio</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">ratio</span><span class="p">,</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">)):</span>
+            <span class="n">ratio</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">ratio</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+
+        <span class="n">is_one_sample</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">equal</span><span class="p">(</span><span class="n">ratio</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">is_one_sample</span><span class="p">):</span>
+            <span class="c1"># ratio == 0 is the convention for the one-sample t-test with nobs1</span>
+            <span class="c1"># observations (see the docstring), applied elementwise. It is not</span>
+            <span class="c1"># the limit of ratio -&gt; 0, where nobs2 -&gt; 0 and the power -&gt; alpha.</span>
+            <span class="c1"># asarray, so that division by zero gives inf instead of an</span>
+            <span class="c1"># exception for Python scalars</span>
+            <span class="n">nobs2</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">nobs1</span> <span class="o">*</span> <span class="n">ratio</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+            <span class="k">with</span> <span class="n">np</span><span class="o">.</span><span class="n">errstate</span><span class="p">(</span><span class="n">divide</span><span class="o">=</span><span class="s2">"ignore"</span><span class="p">):</span>
+                <span class="n">nobs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span>
+                    <span class="n">is_one_sample</span><span class="p">,</span> <span class="n">nobs1</span><span class="p">,</span> <span class="mf">1.0</span> <span class="o">/</span> <span class="p">(</span><span class="mf">1.0</span> <span class="o">/</span> <span class="n">nobs1</span> <span class="o">+</span> <span class="mf">1.0</span> <span class="o">/</span> <span class="n">nobs2</span><span class="p">)</span>
+                <span class="p">)</span>
             <span class="k">if</span> <span class="n">df</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-                <span class="n">df</span> <span class="o">=</span> <span class="n">nobs1</span> <span class="o">-</span> <span class="mi">1</span>
-            <span class="n">nobs</span> <span class="o">=</span> <span class="n">nobs1</span>
-            <span class="k">return</span> <span class="n">ttest_power</span><span class="p">(</span><span class="n">effect_size</span><span class="p">,</span> <span class="n">nobs</span><span class="p">,</span> <span class="n">alpha</span><span class="p">,</span> <span class="n">df</span><span class="o">=</span><span class="n">df</span><span class="p">,</span> <span class="n">alternative</span><span class="o">=</span><span class="n">alternative</span><span class="p">)</span>
+                <span class="n">df</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">is_one_sample</span><span class="p">,</span> <span class="n">nobs1</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span> <span class="n">nobs1</span> <span class="o">-</span> <span class="mi">1</span> <span class="o">+</span> <span class="n">nobs2</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
+            <span class="n">res</span> <span class="o">=</span> <span class="n">ttest_power</span><span class="p">(</span><span class="n">effect_size</span><span class="p">,</span> <span class="n">nobs</span><span class="p">,</span> <span class="n">alpha</span><span class="p">,</span> <span class="n">df</span><span class="o">=</span><span class="n">df</span><span class="p">,</span> <span class="n">alternative</span><span class="o">=</span><span class="n">alternative</span><span class="p">)</span>
+            <span class="c1"># return a scalar for scalar input</span>
+            <span class="k">return</span> <span class="n">res</span><span class="p">[()]</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">res</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="k">else</span> <span class="n">res</span>
 
         <span class="n">nobs2</span> <span class="o">=</span> <span class="n">nobs1</span> <span class="o">*</span> <span class="n">ratio</span>
         <span class="c1"># pooled variance</span>
@@ -1647,7 +1806,13 @@
 <span class="sd">            rejects the Null Hypothesis if the Alternative Hypothesis is true.</span>
 <span class="sd">        ratio : None or float, optional</span>
 <span class="sd">            ratio of the number of observations in sample 2 relative to</span>
-<span class="sd">            sample 1. see description of nobs1</span>
+<span class="sd">            sample 1. see description of nobs1. ``ratio`` must be</span>
+<span class="sd">            non-negative and not NaN.</span>
+<span class="sd">            ``ratio`` can be set to zero in order to get the power of the</span>
+<span class="sd">            one sample t-test with ``nobs1`` observations (``df = nobs1 - 1``).</span>
+<span class="sd">            This is a convention and not the limit of ``ratio`` going to</span>
+<span class="sd">            zero: a ratio close to zero, e.g. ``1e-9``, means that sample 2</span>
+<span class="sd">            has almost no observations and the power is close to alpha.</span>
 <span class="sd">            The default for ratio is 1; to solve for ratio given the other</span>
 <span class="sd">            arguments it has to be explicitly set to None.</span>
 <span class="sd">        alternative : {'two-sided', 'larger', 'smaller'}, optional</span>
@@ -1661,6 +1826,10 @@
 <span class="sd">            The value of the parameter that was set to None in the call. The</span>
 <span class="sd">            value solves the power equation given the remaining parameters.</span>
 
+<span class="sd">        Raises</span>
+<span class="sd">        ------</span>
+<span class="sd">        ValueError</span>
+<span class="sd">            If ``ratio`` is negative or NaN.</span>
 
 <span class="sd">        Notes</span>
 <span class="sd">        -----</span>
@@ -1668,10 +1837,22 @@
 <span class="sd">        the power equation. It first uses ``brentq`` with a prior search for</span>
 <span class="sd">        bounds. If this fails to find a root, ``fsolve`` is used. If ``fsolve``</span>
 <span class="sd">        also fails, then, for ``alpha``, ``power`` and ``effect_size``,</span>
-<span class="sd">        ``brentq`` with fixed bounds is used. However, there can still be cases</span>
-<span class="sd">        where this fails.</span>
+<span class="sd">        ``brentq`` with fixed bounds is used. If these also fail to find a solution</span>
+<span class="sd">        of the power equation, for example because it has no solution, a</span>
+<span class="sd">        ``ConvergenceWarning`` is issued and ``nan`` is returned.</span>
+
+<span class="sd">        .. versionchanged:: 0.15.1</span>
+
+<span class="sd">           ``ratio=0`` solves the power equation of the one sample t-test, it</span>
+<span class="sd">           used to raise a ``ZeroDivisionError`` or to give wrong results. A</span>
+<span class="sd">           negative or NaN ``ratio`` raises a ``ValueError``, it used to</span>
+<span class="sd">           return nan with a ``ConvergenceWarning``.</span>
 
 <span class="sd">        """</span>
+        <span class="k">if</span> <span class="n">ratio</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="c1"># validate before the root finding, which swallows ValueError and</span>
+            <span class="c1"># returns nan with a ConvergenceWarning instead</span>
+            <span class="n">_validate_ratio</span><span class="p">(</span><span class="n">ratio</span><span class="p">)</span>
         <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">solve_power</span><span class="p">(</span>
             <span class="n">effect_size</span><span class="o">=</span><span class="n">effect_size</span><span class="p">,</span>
             <span class="n">nobs1</span><span class="o">=</span><span class="n">nobs1</span><span class="p">,</span>
@@ -1821,8 +2002,9 @@
 <span class="sd">        the power equation. It first uses ``brentq`` with a prior search for</span>
 <span class="sd">        bounds. If this fails to find a root, ``fsolve`` is used. If ``fsolve``</span>
 <span class="sd">        also fails, then, for ``alpha``, ``power`` and ``effect_size``,</span>
-<span class="sd">        ``brentq`` with fixed bounds is used. However, there can still be cases</span>
-<span class="sd">        where this fails.</span>
+<span class="sd">        ``brentq`` with fixed bounds is used. If these also fail to find a solution</span>
+<span class="sd">        of the power equation, for example because it has no solution, a</span>
+<span class="sd">        ``ConvergenceWarning`` is issued and ``nan`` is returned.</span>
 
 <span class="sd">        """</span>
         <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">solve_power</span><span class="p">(</span>
@@ -2012,8 +2194,9 @@
 <span class="sd">        the power equation. It first uses ``brentq`` with a prior search for</span>
 <span class="sd">        bounds. If this fails to find a root, ``fsolve`` is used. If ``fsolve``</span>
 <span class="sd">        also fails, then, for ``alpha``, ``power`` and ``effect_size``,</span>
-<span class="sd">        ``brentq`` with fixed bounds is used. However, there can still be cases</span>
-<span class="sd">        where this fails.</span>
+<span class="sd">        ``brentq`` with fixed bounds is used. If these also fail to find a solution</span>
+<span class="sd">        of the power equation, for example because it has no solution, a</span>
+<span class="sd">        ``ConvergenceWarning`` is issued and ``nan`` is returned.</span>
 
 <span class="sd">        """</span>
         <span class="k">if</span> <span class="n">kwargs</span><span class="p">:</span>
@@ -2177,8 +2360,9 @@
 <span class="sd">        the power equation. It first uses ``brentq`` with a prior search for</span>
 <span class="sd">        bounds. If this fails to find a root, ``fsolve`` is used. If ``fsolve``</span>
 <span class="sd">        also fails, then, for ``alpha``, ``power`` and ``effect_size``,</span>
-<span class="sd">        ``brentq`` with fixed bounds is used. However, there can still be cases</span>
-<span class="sd">        where this fails.</span>
+<span class="sd">        ``brentq`` with fixed bounds is used. If these also fail to find a solution</span>
+<span class="sd">        of the power equation, for example because it has no solution, a</span>
+<span class="sd">        ``ConvergenceWarning`` is issued and ``nan`` is returned.</span>
 
 <span class="sd">        """</span>
 
@@ -2281,8 +2465,9 @@
 <span class="sd">        the power equation. It first uses ``brentq`` with a prior search for</span>
 <span class="sd">        bounds. If this fails to find a root, ``fsolve`` is used. If ``fsolve``</span>
 <span class="sd">        also fails, then, for ``alpha``, ``power`` and ``effect_size``,</span>
-<span class="sd">        ``brentq`` with fixed bounds is used. However, there can still be cases</span>
-<span class="sd">        where this fails.</span>
+<span class="sd">        ``brentq`` with fixed bounds is used. If these also fail to find a solution</span>
+<span class="sd">        of the power equation, for example because it has no solution, a</span>
+<span class="sd">        ``ConvergenceWarning`` is issued and ``nan`` is returned.</span>
 
 <span class="sd">        """</span>
         <span class="c1"># update start values for root finding</span>
@@ -2420,8 +2605,9 @@
 <span class="sd">        the power equation. It first uses ``brentq`` with a prior search for</span>
 <span class="sd">        bounds. If this fails to find a root, ``fsolve`` is used. If ``fsolve``</span>
 <span class="sd">        also fails, then, for ``alpha``, ``power`` and ``effect_size``,</span>
-<span class="sd">        ``brentq`` with fixed bounds is used. However, there can still be cases</span>
-<span class="sd">        where this fails.</span>
+<span class="sd">        ``brentq`` with fixed bounds is used. If these also fail to find a solution</span>
+<span class="sd">        of the power equation, for example because it has no solution, a</span>
+<span class="sd">        ``ConvergenceWarning`` is issued and ``nan`` is returned.</span>
 
 <span class="sd">        """</span>
         <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">solve_power</span><span class="p">(</span>
@@ -2538,8 +2724,9 @@
 <span class="sd">        the power equation. It first uses ``brentq`` with a prior search for</span>
 <span class="sd">        bounds. If this fails to find a root, ``fsolve`` is used. If ``fsolve``</span>
 <span class="sd">        also fails, then, for ``alpha``, ``power`` and ``effect_size``,</span>
-<span class="sd">        ``brentq`` with fixed bounds is used. However, there can still be cases</span>
-<span class="sd">        where this fails.</span>
+<span class="sd">        ``brentq`` with fixed bounds is used. If these also fail to find a solution</span>
+<span class="sd">        of the power equation, for example because it has no solution, a</span>
+<span class="sd">        ``ConvergenceWarning`` is issued and ``nan`` is returned.</span>
 
 <span class="sd">        """</span>
         <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">solve_power</span><span class="p">(</span>
