@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
-    <title>statsmodels.imputation.mice &#8212; statsmodels 0.15.1 (+1053)</title>
+    <title>statsmodels.imputation.mice &#8212; statsmodels 0.15.1 (+1069)</title>
   <link rel="icon" type="image/png" sizes="32x32" href="../../../_static/icons/favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="../../../_static/icons/favicon-16x16.png">
   <link rel="manifest" href="../../../_static/icons/site.webmanifest">
@@ -71,7 +71,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="color-scheme" content="light dark"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="0.15.1 (+1053)" />
+  <meta name="docsearch:version" content="0.15.1 (+1069)" />
     <meta name="docbuild:last-update" content="Oct 28, 2026"/>
   
     
@@ -740,6 +740,18 @@
 <span class="s2">    `history_callback` can be implemented to have side effects such as</span>
 <span class="s2">    saving the current imputed data set to disk.</span>
 
+<span class="s2">    The index of `data` is kept: the imputed data set in the attribute</span>
+<span class="s2">    `data`, which is also what `next_sample`, iteration and</span>
+<span class="s2">    `history_callback` provide, is a copy of the input with the missing</span>
+<span class="s2">    values filled in and has the same index and column order, so imputed</span>
+<span class="s2">    values can be matched to the rows of the input by label.  The index can</span>
+<span class="s2">    be of any type and can contain duplicate labels.  The only change to the</span>
+<span class="s2">    rows is that rows in which all variables are missing are dropped before</span>
+<span class="s2">    imputation.  `MICEData.data` then has fewer rows than the input, and</span>
+<span class="s2">    their labels are missing from its index.  The input is not modified.</span>
+<span class="s2">    `MICE` fits its analysis model to `MICEData.data`, so the data of the</span>
+<span class="s2">    analysis model have this index.</span>
+
 <span class="s2">    Examples</span>
 <span class="s2">    --------</span>
 <span class="s2">    Draw 20 imputations from a data set called `data` and save them in</span>
@@ -774,9 +786,12 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">rng</span> <span class="o">=</span> <span class="n">check_random_state</span><span class="p">(</span><span class="n">rng</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">regularized</span> <span class="o">=</span> <span class="p">{}</span>
 
-        <span class="c1"># Drop observations where all variables are missing.  This</span>
-        <span class="c1"># also has the effect of copying the data frame.</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">data</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">dropna</span><span class="p">(</span><span class="n">how</span><span class="o">=</span><span class="s2">"all"</span><span class="p">)</span><span class="o">.</span><span class="n">reset_index</span><span class="p">(</span><span class="n">drop</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="c1"># Drop observations where all variables are missing.  ``copy()``</span>
+        <span class="c1"># ensures we never modify the user's frame in place (see the</span>
+        <span class="c1"># ``self.data.iloc[...] = ...`` writes below).  The original index</span>
+        <span class="c1"># is preserved so imputed values can be related back to the input</span>
+        <span class="c1"># (#6532).</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">data</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">dropna</span><span class="p">(</span><span class="n">how</span><span class="o">=</span><span class="s2">"all"</span><span class="p">)</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
 
         <span class="bp">self</span><span class="o">.</span><span class="n">history_callback</span> <span class="o">=</span> <span class="n">history_callback</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">history</span> <span class="o">=</span> <span class="p">[]</span>
@@ -887,8 +902,12 @@
         <span class="k">for</span> <span class="n">col</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
             <span class="n">di</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">[</span><span class="n">col</span><span class="p">]</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">[</span><span class="n">col</span><span class="p">]</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span>
             <span class="n">di</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">di</span><span class="p">)</span>
-            <span class="n">ix</span> <span class="o">=</span> <span class="n">di</span><span class="o">.</span><span class="n">idxmin</span><span class="p">()</span>
-            <span class="n">imp_values</span><span class="p">[</span><span class="n">col</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">[</span><span class="n">col</span><span class="p">]</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">ix</span><span class="p">]</span>
+            <span class="c1"># Positional selection: the original index is preserved and</span>
+            <span class="c1"># may contain duplicate labels, which idxmin/loc would trip</span>
+            <span class="c1"># over.  nanargmin returns the first occurrence of the</span>
+            <span class="c1"># minimum, exactly like idxmin would on a unique index.</span>
+            <span class="n">ix</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">nanargmin</span><span class="p">(</span><span class="n">di</span><span class="o">.</span><span class="n">to_numpy</span><span class="p">()))</span>
+            <span class="n">imp_values</span><span class="p">[</span><span class="n">col</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">[</span><span class="n">col</span><span class="p">]</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="n">ix</span><span class="p">]</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">data</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">fillna</span><span class="p">(</span><span class="n">imp_values</span><span class="p">)</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">_split_indices</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">vec</span><span class="p">):</span>
