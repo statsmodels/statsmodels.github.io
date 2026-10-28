@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
-    <title>statsmodels.discrete.discrete_model &#8212; statsmodels 0.15.1 (+1080)</title>
+    <title>statsmodels.discrete.discrete_model &#8212; statsmodels 0.15.1 (+1085)</title>
   <link rel="icon" type="image/png" sizes="32x32" href="../../../_static/icons/favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="../../../_static/icons/favicon-16x16.png">
   <link rel="manifest" href="../../../_static/icons/site.webmanifest">
@@ -71,7 +71,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="color-scheme" content="light dark"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="0.15.1 (+1080)" />
+  <meta name="docsearch:version" content="0.15.1 (+1085)" />
     <meta name="docbuild:last-update" content="Oct 28, 2026"/>
   
     
@@ -592,7 +592,7 @@
 <span class="kn">import</span><span class="w"> </span><span class="nn">warnings</span>
 
 <span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="kn">import</span> <span class="n">DataFrame</span><span class="p">,</span> <span class="n">Index</span><span class="p">,</span> <span class="n">MultiIndex</span><span class="p">,</span> <span class="n">get_dummies</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="kn">import</span> <span class="n">Categorical</span><span class="p">,</span> <span class="n">DataFrame</span><span class="p">,</span> <span class="n">Index</span><span class="p">,</span> <span class="n">MultiIndex</span><span class="p">,</span> <span class="n">Series</span><span class="p">,</span> <span class="n">get_dummies</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">scipy</span><span class="w"> </span><span class="kn">import</span> <span class="n">special</span><span class="p">,</span> <span class="n">stats</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">scipy.special</span><span class="w"> </span><span class="kn">import</span> <span class="n">digamma</span><span class="p">,</span> <span class="n">gammaln</span><span class="p">,</span> <span class="n">loggamma</span><span class="p">,</span> <span class="n">polygamma</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">scipy.stats</span><span class="w"> </span><span class="kn">import</span> <span class="n">nbinom</span>
@@ -606,6 +606,7 @@
 <span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.base.model</span><span class="w"> </span><span class="kn">import</span> <span class="n">LikelihoodModel</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">statsmodels.base.wrapper</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">wrap</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.distributions</span><span class="w"> </span><span class="kn">import</span> <span class="n">genpoisson_p</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.formula._manager</span><span class="w"> </span><span class="kn">import</span> <span class="n">FormulaManager</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">statsmodels.regression.linear_model</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">lm</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.tools</span><span class="w"> </span><span class="kn">import</span> <span class="n">data</span> <span class="k">as</span> <span class="n">data_tools</span><span class="p">,</span> <span class="n">tools</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.tools._decorators</span><span class="w"> </span><span class="kn">import</span> <span class="n">cache_readonly</span>
@@ -725,6 +726,46 @@
     <span class="n">ynames</span> <span class="o">=</span> <span class="n">endog_dummies</span><span class="o">.</span><span class="n">columns</span><span class="o">.</span><span class="n">tolist</span><span class="p">()</span>
 
     <span class="k">return</span> <span class="n">endog_dummies</span><span class="p">,</span> <span class="n">ynames</span><span class="p">,</span> <span class="n">yname</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_formula_endog_to_categorical</span><span class="p">(</span><span class="n">endog</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""</span>
+<span class="sd">    Convert the multi-column endog of a formula to a categorical Series</span>
+
+<span class="sd">    A categorical response in a formula, e.g., a str, bool or ``C(y)``, is</span>
+<span class="sd">    expanded by the formula engine to one indicator column per category.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    endog : DataFrame</span>
+<span class="sd">        The endog with more than one column that is created from a formula.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    Series</span>
+<span class="sd">        The categorical response, which is named using the term in the</span>
+<span class="sd">        formula and has the categories of the response as categories.</span>
+
+<span class="sd">    Raises</span>
+<span class="sd">    ------</span>
+<span class="sd">    ValueError</span>
+<span class="sd">        If the response is not a single categorical variable.</span>
+<span class="sd">    """</span>
+    <span class="n">mgr</span> <span class="o">=</span> <span class="n">FormulaManager</span><span class="p">()</span>
+    <span class="n">spec</span> <span class="o">=</span> <span class="n">mgr</span><span class="o">.</span><span class="n">get_model_spec</span><span class="p">(</span><span class="n">endog</span><span class="p">,</span> <span class="n">optional</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">factors</span> <span class="o">=</span> <span class="p">[]</span> <span class="k">if</span> <span class="n">spec</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">mgr</span><span class="o">.</span><span class="n">get_factors</span><span class="p">(</span><span class="n">spec</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">factors</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">1</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">mgr</span><span class="o">.</span><span class="n">is_categorical</span><span class="p">(</span><span class="n">spec</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="s2">"endog has evaluated to an array with multiple columns that has "</span>
+            <span class="sa">f</span><span class="s2">"shape </span><span class="si">{</span><span class="n">endog</span><span class="o">.</span><span class="n">shape</span><span class="si">}</span><span class="s2">. A formula for MNLogit can have multiple "</span>
+            <span class="s2">"columns in the response only if it is a single categorical "</span>
+            <span class="s2">"variable (e.g., bool or str)."</span>
+        <span class="p">)</span>
+    <span class="n">factor</span> <span class="o">=</span> <span class="n">factors</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">categories</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">mgr</span><span class="o">.</span><span class="n">get_factor_categories</span><span class="p">(</span><span class="n">factor</span><span class="p">,</span> <span class="n">spec</span><span class="p">))</span>
+    <span class="n">codes</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">endog</span><span class="p">)</span><span class="o">.</span><span class="n">argmax</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+    <span class="n">values</span> <span class="o">=</span> <span class="n">Categorical</span><span class="o">.</span><span class="n">from_codes</span><span class="p">(</span><span class="n">codes</span><span class="p">,</span> <span class="n">categories</span><span class="o">=</span><span class="n">categories</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">Series</span><span class="p">(</span><span class="n">values</span><span class="p">,</span> <span class="n">index</span><span class="o">=</span><span class="n">endog</span><span class="o">.</span><span class="n">index</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="n">mgr</span><span class="o">.</span><span class="n">get_term_name</span><span class="p">(</span><span class="n">factor</span><span class="p">))</span>
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">_validate_l1_method</span><span class="p">(</span><span class="n">method</span><span class="p">):</span>
@@ -1370,6 +1411,12 @@
             <span class="n">endog_dummies</span><span class="p">,</span> <span class="n">ynames</span> <span class="o">=</span> <span class="n">_numpy_to_dummies</span><span class="p">(</span><span class="n">endog</span><span class="p">)</span>
             <span class="n">yname</span> <span class="o">=</span> <span class="s2">"y"</span>
         <span class="k">elif</span> <span class="n">data_tools</span><span class="o">.</span><span class="n">_is_using_pandas</span><span class="p">(</span><span class="n">endog</span><span class="p">,</span> <span class="kc">None</span><span class="p">):</span>
+            <span class="k">if</span> <span class="p">(</span>
+                <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"formula"</span><span class="p">)</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+                <span class="ow">and</span> <span class="n">endog</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">2</span>
+                <span class="ow">and</span> <span class="n">endog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mi">1</span>
+            <span class="p">):</span>
+                <span class="n">endog</span> <span class="o">=</span> <span class="n">_formula_endog_to_categorical</span><span class="p">(</span><span class="n">endog</span><span class="p">)</span>
             <span class="n">endog_dummies</span><span class="p">,</span> <span class="n">ynames</span><span class="p">,</span> <span class="n">yname</span> <span class="o">=</span> <span class="n">_pandas_to_dummies</span><span class="p">(</span><span class="n">endog</span><span class="p">)</span>
         <span class="k">else</span><span class="p">:</span>
             <span class="n">endog</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">endog</span><span class="p">)</span>
@@ -4126,7 +4173,18 @@
 <span class="s2">    Notes</span>
 <span class="s2">    -----</span>
 <span class="s2">    See developer notes for further information on `MNLogit` internals.</span>
+
+<span class="s2">    If the model is created using ``from_formula``, the response can be a</span>
+<span class="s2">    single categorical variable, for example, a str, bool or ``C(y)``. It is</span>
+<span class="s2">    treated like the corresponding `endog`, so that the categories label the</span>
+<span class="s2">    equations. A response with more than one variable raises a ``ValueError``.</span>
 <span class="s2">    """</span>
+
+    <span class="c1"># The formula engine dummy-codes a categorical response into one column</span>
+    <span class="c1"># per category. This is converted back to the labels in</span>
+    <span class="c1"># MultinomialModel._handle_data, which also rejects other multi-column</span>
+    <span class="c1"># responses, so the generic check of Model.from_formula is skipped.</span>
+    <span class="n">_formula_max_endog</span> <span class="o">=</span> <span class="kc">None</span>
 
     <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">endog</span><span class="p">,</span> <span class="n">exog</span><span class="p">,</span> <span class="n">check_rank</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
         <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">endog</span><span class="p">,</span> <span class="n">exog</span><span class="p">,</span> <span class="n">check_rank</span><span class="o">=</span><span class="n">check_rank</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
