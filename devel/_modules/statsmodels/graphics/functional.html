@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
-    <title>statsmodels.graphics.functional &#8212; statsmodels 0.15.1 (+1099)</title>
+    <title>statsmodels.graphics.functional &#8212; statsmodels 0.15.1 (+1103)</title>
   <link rel="icon" type="image/png" sizes="32x32" href="../../../_static/icons/favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="../../../_static/icons/favicon-16x16.png">
   <link rel="manifest" href="../../../_static/icons/site.webmanifest">
@@ -71,7 +71,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="color-scheme" content="light dark"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="0.15.1 (+1099)" />
+  <meta name="docsearch:version" content="0.15.1 (+1103)" />
     <meta name="docbuild:last-update" content="Oct 29, 2026"/>
   
     
@@ -574,7 +574,7 @@
 <span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.multivariate.pca</span><span class="w"> </span><span class="kn">import</span> <span class="n">PCA</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.nonparametric.kernel_density</span><span class="w"> </span><span class="kn">import</span> <span class="n">KDEMultivariate</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.tools.rng_qrng</span><span class="w"> </span><span class="kn">import</span> <span class="n">check_random_state</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.tools.validation</span><span class="w"> </span><span class="kn">import</span> <span class="n">string_like</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.tools.validation</span><span class="w"> </span><span class="kn">import</span> <span class="n">array_like</span><span class="p">,</span> <span class="n">string_like</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">.</span><span class="w"> </span><span class="kn">import</span> <span class="n">utils</span>
 
@@ -1453,7 +1453,7 @@
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
-<span class="sd">    data : ndarray</span>
+<span class="sd">    data : array_like</span>
 <span class="sd">        The vectors of functions to create a functional boxplot from.</span>
 <span class="sd">        The first axis is the function index, the second axis the one along</span>
 <span class="sd">        which the function is defined.  So ``data[0, :]`` is the first</span>
@@ -1481,7 +1481,17 @@
 <span class="sd">    The method 'MBD' is similar to 'BD2', but checks the fraction of the curve</span>
 <span class="sd">    falling within the bands.  It therefore generates very few ties.</span>
 
-<span class="sd">    The algorithm uses the efficient implementation proposed in [3]_.</span>
+<span class="sd">    The method 'MBD' uses the rank-based implementation proposed in [3]_. The</span>
+<span class="sd">    ranks at each point are not sufficient for 'BD2', since the same two curves</span>
+<span class="sd">    have to bound the curve at all points. The method 'BD2' therefore compares</span>
+<span class="sd">    each curve with all other curves at all sampled points. A value equal to a</span>
+<span class="sd">    value of a bounding curve counts as inside the band, so that a curve is</span>
+<span class="sd">    inside every band that has a curve equal to it as a boundary.</span>
+
+<span class="sd">    Both methods only use the values at the sampled points. The curves are not</span>
+<span class="sd">    interpolated, and curves that cross between two sampled points do not</span>
+<span class="sd">    change the depth. 'BD2' is slower than 'MBD', and its cost increases with</span>
+<span class="sd">    the number of points at which a curve is equal to other curves.</span>
 
 <span class="sd">    References</span>
 <span class="sd">    ----------</span>
@@ -1495,18 +1505,65 @@
 <span class="sd">           million curves be ranked?", Journal for the Rapid Dissemination</span>
 <span class="sd">           of Statistics Research, vol. 1, pp. 68-74, 2012.</span>
 <span class="sd">    """</span>
+    <span class="n">data</span> <span class="o">=</span> <span class="n">array_like</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="s2">"data"</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">double</span><span class="p">,</span> <span class="n">ndim</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
     <span class="n">n</span><span class="p">,</span> <span class="n">p</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">shape</span>
-    <span class="n">rv</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
-    <span class="n">rmat</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">rv</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span> <span class="o">+</span> <span class="mi">1</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_row_keys</span><span class="p">(</span><span class="n">patterns</span><span class="p">):</span>
+        <span class="c1"># Pack boolean rows into bytes and view each row as a single item</span>
+        <span class="n">packed</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">packbits</span><span class="p">(</span><span class="n">patterns</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">bitorder</span><span class="o">=</span><span class="s2">"little"</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">ascontiguousarray</span><span class="p">(</span><span class="n">packed</span><span class="p">)</span><span class="o">.</span><span class="n">view</span><span class="p">(</span><span class="sa">f</span><span class="s2">"V</span><span class="si">{</span><span class="n">packed</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span><span class="o">.</span><span class="n">ravel</span><span class="p">()</span>
 
     <span class="c1"># band depth</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">_fbd2</span><span class="p">():</span>
-        <span class="n">down</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">rmat</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span>
-        <span class="n">up</span> <span class="o">=</span> <span class="n">n</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">rmat</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
-        <span class="k">return</span> <span class="p">(</span><span class="n">up</span> <span class="o">*</span> <span class="n">down</span> <span class="o">+</span> <span class="n">n</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span> <span class="o">/</span> <span class="n">comb</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span>
+        <span class="n">depth</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">(</span><span class="n">n</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">curve</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">data</span><span class="p">):</span>
+            <span class="n">above</span> <span class="o">=</span> <span class="n">data</span> <span class="o">&gt;</span> <span class="n">curve</span>
+            <span class="n">below</span> <span class="o">=</span> <span class="n">data</span> <span class="o">&lt;</span> <span class="n">curve</span>
+            <span class="n">neither</span> <span class="o">=</span> <span class="o">~</span><span class="p">(</span><span class="n">above</span> <span class="o">|</span> <span class="n">below</span><span class="p">)</span>
+            <span class="n">equal</span> <span class="o">=</span> <span class="n">neither</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+            <span class="n">strict</span> <span class="o">=</span> <span class="o">~</span><span class="n">neither</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+            <span class="n">tied</span> <span class="o">=</span> <span class="o">~</span><span class="p">(</span><span class="n">equal</span> <span class="o">|</span> <span class="n">strict</span><span class="p">)</span>
+
+            <span class="c1"># Any band with an endpoint identical to the target contains it.</span>
+            <span class="n">n_equal</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">equal</span><span class="o">.</span><span class="n">sum</span><span class="p">())</span>
+            <span class="n">total</span> <span class="o">=</span> <span class="n">n_equal</span> <span class="o">*</span> <span class="p">(</span><span class="n">n</span> <span class="o">-</span> <span class="n">n_equal</span><span class="p">)</span> <span class="o">+</span> <span class="n">n_equal</span> <span class="o">*</span> <span class="p">(</span><span class="n">n_equal</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span> <span class="o">//</span> <span class="mi">2</span>
+
+            <span class="c1"># Curves strictly above or below the target at every point enclose</span>
+            <span class="c1"># it only in pairs with complementary comparison patterns.</span>
+            <span class="n">keys</span> <span class="o">=</span> <span class="n">_row_keys</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">above</span><span class="p">[</span><span class="n">strict</span><span class="p">],</span> <span class="n">below</span><span class="p">[</span><span class="n">strict</span><span class="p">]]))</span>
+            <span class="n">found</span><span class="p">,</span> <span class="n">inverse</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">unique</span><span class="p">(</span><span class="n">keys</span><span class="p">,</span> <span class="n">return_inverse</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+            <span class="n">counts</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">bincount</span><span class="p">(</span><span class="n">inverse</span><span class="p">[:</span> <span class="n">strict</span><span class="o">.</span><span class="n">sum</span><span class="p">()],</span> <span class="n">minlength</span><span class="o">=</span><span class="nb">len</span><span class="p">(</span><span class="n">found</span><span class="p">))</span>
+            <span class="c1"># Each pair is counted from both of its curves.</span>
+            <span class="n">total</span> <span class="o">+=</span> <span class="nb">int</span><span class="p">(</span><span class="n">counts</span><span class="p">[</span><span class="n">inverse</span><span class="p">[</span><span class="n">strict</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span> <span class="p">:]]</span><span class="o">.</span><span class="n">sum</span><span class="p">())</span> <span class="o">//</span> <span class="mi">2</span>
+
+            <span class="c1"># Curves equal to the target at some, but not all, points enclose</span>
+            <span class="c1"># it in a pair unless both are strictly on the same side of it at</span>
+            <span class="c1"># some point.</span>
+            <span class="k">if</span> <span class="n">tied</span><span class="o">.</span><span class="n">any</span><span class="p">():</span>
+                <span class="n">sides</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">hstack</span><span class="p">([</span><span class="n">above</span><span class="p">,</span> <span class="n">below</span><span class="p">])</span>
+                <span class="n">_</span><span class="p">,</span> <span class="n">first</span><span class="p">,</span> <span class="n">weight</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">unique</span><span class="p">(</span>
+                    <span class="n">_row_keys</span><span class="p">(</span><span class="n">sides</span><span class="p">[</span><span class="n">tied</span><span class="p">]),</span> <span class="n">return_index</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">return_counts</span><span class="o">=</span><span class="kc">True</span>
+                <span class="p">)</span>
+                <span class="n">patterns</span> <span class="o">=</span> <span class="n">sides</span><span class="p">[</span><span class="n">tied</span><span class="p">][</span><span class="n">first</span><span class="p">]</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span>
+                <span class="n">strict_sides</span> <span class="o">=</span> <span class="n">sides</span><span class="p">[</span><span class="n">strict</span><span class="p">]</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span>
+                <span class="n">step</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="o">**</span><span class="mi">22</span> <span class="o">//</span> <span class="nb">max</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">strict_sides</span><span class="p">),</span> <span class="nb">len</span><span class="p">(</span><span class="n">patterns</span><span class="p">)))</span>
+                <span class="n">tied_pairs</span> <span class="o">=</span> <span class="mi">0</span>
+                <span class="k">for</span> <span class="n">start</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">patterns</span><span class="p">),</span> <span class="n">step</span><span class="p">):</span>
+                    <span class="n">block</span> <span class="o">=</span> <span class="n">patterns</span><span class="p">[</span><span class="n">start</span> <span class="p">:</span> <span class="n">start</span> <span class="o">+</span> <span class="n">step</span><span class="p">]</span>
+                    <span class="n">count</span> <span class="o">=</span> <span class="n">weight</span><span class="p">[</span><span class="n">start</span> <span class="p">:</span> <span class="n">start</span> <span class="o">+</span> <span class="n">step</span><span class="p">]</span>
+                    <span class="n">disjoint</span> <span class="o">=</span> <span class="p">(</span><span class="n">block</span> <span class="o">@</span> <span class="n">strict_sides</span><span class="o">.</span><span class="n">T</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span>
+                    <span class="n">total</span> <span class="o">+=</span> <span class="nb">int</span><span class="p">(</span><span class="n">count</span> <span class="o">@</span> <span class="n">disjoint</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">))</span>
+                    <span class="n">disjoint</span> <span class="o">=</span> <span class="p">(</span><span class="n">block</span> <span class="o">@</span> <span class="n">patterns</span><span class="o">.</span><span class="n">T</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span>
+                    <span class="n">tied_pairs</span> <span class="o">+=</span> <span class="nb">int</span><span class="p">(</span><span class="n">count</span> <span class="o">@</span> <span class="p">(</span><span class="n">disjoint</span> <span class="o">@</span> <span class="n">weight</span><span class="p">))</span>
+                <span class="c1"># Each pair is counted from both of its curves.</span>
+                <span class="n">total</span> <span class="o">+=</span> <span class="n">tied_pairs</span> <span class="o">//</span> <span class="mi">2</span>
+            <span class="n">depth</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">total</span>
+        <span class="k">return</span> <span class="n">depth</span> <span class="o">/</span> <span class="n">comb</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span>
 
     <span class="c1"># modified band depth</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">_fmbd</span><span class="p">():</span>
+        <span class="n">rv</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+        <span class="n">rmat</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">rv</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span> <span class="o">+</span> <span class="mi">1</span>
         <span class="n">down</span> <span class="o">=</span> <span class="n">rmat</span> <span class="o">-</span> <span class="mi">1</span>
         <span class="n">up</span> <span class="o">=</span> <span class="n">n</span> <span class="o">-</span> <span class="n">rmat</span>
         <span class="k">return</span> <span class="p">((</span><span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">up</span> <span class="o">*</span> <span class="n">down</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span> <span class="o">/</span> <span class="n">p</span><span class="p">)</span> <span class="o">+</span> <span class="n">n</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span> <span class="o">/</span> <span class="n">comb</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span>
