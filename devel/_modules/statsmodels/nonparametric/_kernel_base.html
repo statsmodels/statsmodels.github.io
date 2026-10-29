@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
-    <title>statsmodels.nonparametric._kernel_base &#8212; statsmodels 0.15.1 (+1103)</title>
+    <title>statsmodels.nonparametric._kernel_base &#8212; statsmodels 0.15.1 (+1108)</title>
   <link rel="icon" type="image/png" sizes="32x32" href="../../../_static/icons/favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="../../../_static/icons/favicon-16x16.png">
   <link rel="manifest" href="../../../_static/icons/site.webmanifest">
@@ -71,7 +71,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="color-scheme" content="light dark"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="0.15.1 (+1103)" />
+  <meta name="docsearch:version" content="0.15.1 (+1108)" />
     <meta name="docbuild:last-update" content="Oct 29, 2026"/>
   
     
@@ -1002,14 +1002,74 @@
 
 <span class="sd">        where ``n`` is the number of observations and ``q`` is the number of</span>
 <span class="sd">        variables.</span>
+
+<span class="sd">        The rule of thumb is defined for continuous variables, so the</span>
+<span class="sd">        bandwidths of the discrete variables are passed through</span>
+<span class="sd">        :meth:`_set_bw_bounds` to keep them inside the range in which the</span>
+<span class="sd">        discrete kernels are defined.  Otherwise the bandwidth of a discrete</span>
+<span class="sd">        variable scales with its arbitrary numeric codes and the density</span>
+<span class="sd">        estimate is no longer valid.</span>
 <span class="sd">        """</span>
         <span class="n">X</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">std</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
-        <span class="k">return</span> <span class="mf">1.06</span> <span class="o">*</span> <span class="n">X</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span> <span class="o">**</span> <span class="p">(</span><span class="o">-</span><span class="mf">1.0</span> <span class="o">/</span> <span class="p">(</span><span class="mi">4</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]))</span>
+        <span class="n">bw</span> <span class="o">=</span> <span class="mf">1.06</span> <span class="o">*</span> <span class="n">X</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span> <span class="o">**</span> <span class="p">(</span><span class="o">-</span><span class="mf">1.0</span> <span class="o">/</span> <span class="p">(</span><span class="mi">4</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]))</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_set_bw_bounds</span><span class="p">(</span><span class="n">bw</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_get_bw_bounds</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">"""</span>
+<span class="sd">        The range of bandwidths in which the kernels of the variables are defined</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        lower : ndarray</span>
+<span class="sd">            The lower bound of the bandwidth of each variable, effectively</span>
+<span class="sd">            zero (1e-10).</span>
+<span class="sd">        upper : ndarray</span>
+<span class="sd">            The upper bound of the bandwidth of each variable, infinite for</span>
+<span class="sd">            continuous variables.</span>
+
+<span class="sd">        Notes</span>
+<span class="sd">        -----</span>
+<span class="sd">        The bandwidth of an unordered variable is the smoothing probability of</span>
+<span class="sd">        the Aitchison-Aitken kernel, which is a probability mass function</span>
+<span class="sd">        only for ``bw &lt;= (levels - 1) / levels``.  This upper end is the fully</span>
+<span class="sd">        smoothed, uniform kernel, while a larger value puts less weight on an</span>
+<span class="sd">        observed level than on the unobserved ones.  The number of levels is</span>
+<span class="sd">        the number of distinct values in the data.  A variable with a single</span>
+<span class="sd">        level has no such bound and is bounded by 1.</span>
+
+<span class="sd">        The bandwidth of an ordered variable enters the Wang-Ryzin kernel as</span>
+<span class="sd">        ``1 - bw``, so the kernel is zero at ``bw = 1``.  The upper bound is</span>
+<span class="sd">        ``1 - 1e-10``.</span>
+
+<span class="sd">        The kernels of the regression estimators, ``aitchison_aitken_reg``</span>
+<span class="sd">        and ``wangryzin_reg``, are weights that are 1 for the same value and</span>
+<span class="sd">        less than 1 for other values.  Their upper bound is 1, for which the</span>
+<span class="sd">        variable has no effect.</span>
+
+<span class="sd">        The variables are in the last columns of ``data``, ``KernelReg``</span>
+<span class="sd">        puts the dependent variable in front of them.</span>
+<span class="sd">        """</span>
+        <span class="n">_</span><span class="p">,</span> <span class="n">ix_ord</span><span class="p">,</span> <span class="n">ix_unord</span> <span class="o">=</span> <span class="n">_get_type_pos</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">data_type</span><span class="p">)</span>
+        <span class="n">k_vars</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">data_type</span><span class="p">)</span>
+        <span class="n">lower</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">full</span><span class="p">(</span><span class="n">k_vars</span><span class="p">,</span> <span class="mf">1e-10</span><span class="p">)</span>
+        <span class="n">upper</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">full</span><span class="p">(</span><span class="n">k_vars</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">)</span>
+        <span class="n">okertype</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">"okertype"</span><span class="p">,</span> <span class="s2">"wangryzin"</span><span class="p">)</span>
+        <span class="n">ukertype</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">"ukertype"</span><span class="p">,</span> <span class="s2">"aitchisonaitken"</span><span class="p">)</span>
+        <span class="n">upper</span><span class="p">[</span><span class="n">ix_ord</span><span class="p">]</span> <span class="o">=</span> <span class="mf">1.0</span> <span class="k">if</span> <span class="n">okertype</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">"_reg"</span><span class="p">)</span> <span class="k">else</span> <span class="mf">1.0</span> <span class="o">-</span> <span class="mf">1e-10</span>
+        <span class="n">upper</span><span class="p">[</span><span class="n">ix_unord</span><span class="p">]</span> <span class="o">=</span> <span class="mf">1.0</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">ukertype</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">"_reg"</span><span class="p">):</span>
+            <span class="n">data</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">data</span><span class="p">[:,</span> <span class="o">-</span><span class="n">k_vars</span><span class="p">:]</span>
+            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">np</span><span class="o">.</span><span class="n">flatnonzero</span><span class="p">(</span><span class="n">ix_unord</span><span class="p">):</span>
+                <span class="n">levels</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">unique</span><span class="p">(</span><span class="n">data</span><span class="p">[:,</span> <span class="n">i</span><span class="p">])</span><span class="o">.</span><span class="n">size</span>
+                <span class="k">if</span> <span class="n">levels</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+                    <span class="n">upper</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">levels</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span> <span class="o">/</span> <span class="n">levels</span>
+        <span class="k">return</span> <span class="n">lower</span><span class="p">,</span> <span class="n">upper</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">_set_bw_bounds</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">bw</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">"""</span>
 <span class="sd">        Sets bandwidth lower bound to effectively zero (1e-10), and for</span>
-<span class="sd">        discrete values upper bound to 1</span>
+<span class="sd">        discrete values upper bound to the largest value the kernel is</span>
+<span class="sd">        defined for</span>
 
 <span class="sd">        Parameters</span>
 <span class="sd">        ----------</span>
@@ -1020,13 +1080,66 @@
 <span class="sd">        -------</span>
 <span class="sd">        ndarray</span>
 <span class="sd">            The bounded bandwidth values.</span>
+
+<span class="sd">        See Also</span>
+<span class="sd">        --------</span>
+<span class="sd">        _get_bw_bounds : The range of the bandwidths.</span>
 <span class="sd">        """</span>
         <span class="n">bw</span><span class="p">[</span><span class="n">bw</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="mf">1e-10</span>
-        <span class="n">_</span><span class="p">,</span> <span class="n">ix_ord</span><span class="p">,</span> <span class="n">ix_unord</span> <span class="o">=</span> <span class="n">_get_type_pos</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">data_type</span><span class="p">)</span>
-        <span class="n">bw</span><span class="p">[</span><span class="n">ix_ord</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">minimum</span><span class="p">(</span><span class="n">bw</span><span class="p">[</span><span class="n">ix_ord</span><span class="p">],</span> <span class="mf">1.0</span><span class="p">)</span>
-        <span class="n">bw</span><span class="p">[</span><span class="n">ix_unord</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">minimum</span><span class="p">(</span><span class="n">bw</span><span class="p">[</span><span class="n">ix_unord</span><span class="p">],</span> <span class="mf">1.0</span><span class="p">)</span>
+        <span class="n">_</span><span class="p">,</span> <span class="n">upper</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_bw_bounds</span><span class="p">()</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">minimum</span><span class="p">(</span><span class="n">bw</span><span class="p">,</span> <span class="n">upper</span><span class="p">)</span>
 
-        <span class="k">return</span> <span class="n">bw</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_minimize_bw</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">func</span><span class="p">,</span> <span class="n">x0</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="p">(),</span> <span class="n">xtol</span><span class="o">=</span><span class="mf">1e-4</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">"""</span>
+<span class="sd">        Minimizes a cross-validation criterion inside the bandwidth bounds</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        func : callable</span>
+<span class="sd">            The criterion, called as ``func(bw, *args)``.</span>
+<span class="sd">        x0 : ndarray</span>
+<span class="sd">            The starting value, it is moved inside the bounds if necessary.</span>
+<span class="sd">        args : tuple, optional</span>
+<span class="sd">            Extra arguments passed to `func`.</span>
+<span class="sd">        xtol : float, optional</span>
+<span class="sd">            Absolute error in the bandwidth that is acceptable for convergence.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        ndarray</span>
+<span class="sd">            The bandwidth that minimizes `func` inside the bounds.</span>
+
+<span class="sd">        Notes</span>
+<span class="sd">        -----</span>
+<span class="sd">        Clipping the minimizer of an unconstrained search does not give the</span>
+<span class="sd">        minimizer inside the bounds when there is more than one variable.  The</span>
+<span class="sd">        search is the Nelder-Mead algorithm of ``optimize.fmin`` applied to</span>
+<span class="sd">        the criterion at the bandwidth that is reflected at the bounds of</span>
+<span class="sd">        ``_get_bw_bounds``, which is the bandwidth itself if it is inside the</span>
+<span class="sd">        bounds.  The result is the one of ``fmin`` if the bounds do not bind.</span>
+<span class="sd">        Unlike clipping, the reflection keeps the criterion continuous at a</span>
+<span class="sd">        bound, so that the search does not stop there if the minimum is</span>
+<span class="sd">        close to the bound.</span>
+<span class="sd">        """</span>
+        <span class="n">lower</span><span class="p">,</span> <span class="n">upper</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_bw_bounds</span><span class="p">()</span>
+        <span class="n">width</span> <span class="o">=</span> <span class="n">upper</span> <span class="o">-</span> <span class="n">lower</span>
+
+        <span class="k">def</span><span class="w"> </span><span class="nf">reflect</span><span class="p">(</span><span class="n">bw</span><span class="p">):</span>
+            <span class="c1"># fold bw into [lower, upper], the upper end can be infinite</span>
+            <span class="n">dist</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">bw</span> <span class="o">-</span> <span class="n">lower</span><span class="p">)</span>
+            <span class="n">period</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">width</span><span class="p">),</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">width</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">)</span>
+            <span class="n">folded</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">mod</span><span class="p">(</span><span class="n">dist</span><span class="p">,</span> <span class="n">period</span><span class="p">)</span>
+            <span class="n">folded</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">folded</span> <span class="o">&gt;</span> <span class="n">width</span><span class="p">,</span> <span class="n">period</span> <span class="o">-</span> <span class="n">folded</span><span class="p">,</span> <span class="n">folded</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">lower</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">width</span><span class="p">),</span> <span class="n">folded</span><span class="p">,</span> <span class="n">dist</span><span class="p">)</span>
+
+        <span class="n">res</span> <span class="o">=</span> <span class="n">optimize</span><span class="o">.</span><span class="n">minimize</span><span class="p">(</span>
+            <span class="k">lambda</span> <span class="n">bw</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">:</span> <span class="n">func</span><span class="p">(</span><span class="n">reflect</span><span class="p">(</span><span class="n">bw</span><span class="p">),</span> <span class="o">*</span><span class="n">args</span><span class="p">),</span>
+            <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">x0</span><span class="p">,</span> <span class="n">lower</span><span class="p">,</span> <span class="n">upper</span><span class="p">),</span>
+            <span class="n">args</span><span class="o">=</span><span class="n">args</span><span class="p">,</span>
+            <span class="n">method</span><span class="o">=</span><span class="s2">"Nelder-Mead"</span><span class="p">,</span>
+            <span class="n">options</span><span class="o">=</span><span class="p">{</span><span class="s2">"xatol"</span><span class="p">:</span> <span class="n">xtol</span><span class="p">,</span> <span class="s2">"maxiter"</span><span class="p">:</span> <span class="mf">1e3</span><span class="p">,</span> <span class="s2">"maxfev"</span><span class="p">:</span> <span class="mf">1e3</span><span class="p">},</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="n">reflect</span><span class="p">(</span><span class="n">res</span><span class="o">.</span><span class="n">x</span><span class="p">)</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">_cv_ml</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
 <span class="w">        </span><span class="sa">r</span><span class="sd">"""</span>
@@ -1059,17 +1172,7 @@
 <span class="sd">        """</span>
         <span class="c1"># the initial value for the optimization is the normal_reference</span>
         <span class="n">h0</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_normal_reference</span><span class="p">()</span>
-        <span class="n">bw</span> <span class="o">=</span> <span class="n">optimize</span><span class="o">.</span><span class="n">fmin</span><span class="p">(</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">loo_likelihood</span><span class="p">,</span>
-            <span class="n">x0</span><span class="o">=</span><span class="n">h0</span><span class="p">,</span>
-            <span class="n">args</span><span class="o">=</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">,),</span>
-            <span class="n">maxiter</span><span class="o">=</span><span class="mf">1e3</span><span class="p">,</span>
-            <span class="n">maxfun</span><span class="o">=</span><span class="mf">1e3</span><span class="p">,</span>
-            <span class="n">disp</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
-            <span class="n">xtol</span><span class="o">=</span><span class="mf">1e-3</span><span class="p">,</span>
-        <span class="p">)</span>
-        <span class="n">bw</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_set_bw_bounds</span><span class="p">(</span><span class="n">bw</span><span class="p">)</span>  <span class="c1"># bound bw if necessary</span>
-        <span class="k">return</span> <span class="n">bw</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_minimize_bw</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">loo_likelihood</span><span class="p">,</span> <span class="n">h0</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">,),</span> <span class="n">xtol</span><span class="o">=</span><span class="mf">1e-3</span><span class="p">)</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">_cv_ls</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
 <span class="w">        </span><span class="sa">r</span><span class="sd">"""</span>
@@ -1095,9 +1198,7 @@
 <span class="sd">        (``KDEMultivariate``) kernel density estimation.</span>
 <span class="sd">        """</span>
         <span class="n">h0</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_normal_reference</span><span class="p">()</span>
-        <span class="n">bw</span> <span class="o">=</span> <span class="n">optimize</span><span class="o">.</span><span class="n">fmin</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">imse</span><span class="p">,</span> <span class="n">x0</span><span class="o">=</span><span class="n">h0</span><span class="p">,</span> <span class="n">maxiter</span><span class="o">=</span><span class="mf">1e3</span><span class="p">,</span> <span class="n">maxfun</span><span class="o">=</span><span class="mf">1e3</span><span class="p">,</span> <span class="n">disp</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">xtol</span><span class="o">=</span><span class="mf">1e-3</span><span class="p">)</span>
-        <span class="n">bw</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_set_bw_bounds</span><span class="p">(</span><span class="n">bw</span><span class="p">)</span>  <span class="c1"># bound bw if necessary</span>
-        <span class="k">return</span> <span class="n">bw</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_minimize_bw</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">imse</span><span class="p">,</span> <span class="n">h0</span><span class="p">,</span> <span class="n">xtol</span><span class="o">=</span><span class="mf">1e-3</span><span class="p">)</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">loo_likelihood</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">"""</span>
