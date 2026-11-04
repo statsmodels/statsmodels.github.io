@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
-    <title>statsmodels.stats.proportion &#8212; statsmodels 0.15.1 (+1184)</title>
+    <title>statsmodels.stats.proportion &#8212; statsmodels 0.15.1 (+1190)</title>
   <link rel="icon" type="image/png" sizes="32x32" href="../../../_static/icons/favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="../../../_static/icons/favicon-16x16.png">
   <link rel="manifest" href="../../../_static/icons/site.webmanifest">
@@ -71,7 +71,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="color-scheme" content="light dark"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="0.15.1 (+1184)" />
+  <meta name="docsearch:version" content="0.15.1 (+1190)" />
     <meta name="docbuild:last-update" content="Nov 04, 2026"/>
   
     
@@ -2440,10 +2440,17 @@
             <span class="n">upp</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">ratio_</span><span class="p">)</span> <span class="o">+</span> <span class="n">d_log</span><span class="p">)</span>
 
         <span class="k">elif</span> <span class="n">method</span> <span class="o">==</span> <span class="s2">"score"</span><span class="p">:</span>
-            <span class="n">res</span> <span class="o">=</span> <span class="n">_confint_riskratio_koopman</span><span class="p">(</span>
-                <span class="n">count1</span><span class="p">,</span> <span class="n">nobs1</span><span class="p">,</span> <span class="n">count2</span><span class="p">,</span> <span class="n">nobs2</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="n">alpha</span><span class="p">,</span> <span class="n">correction</span><span class="o">=</span><span class="n">correction</span>
-            <span class="p">)</span>
-            <span class="n">low</span><span class="p">,</span> <span class="n">upp</span> <span class="o">=</span> <span class="n">res</span><span class="o">.</span><span class="n">confint</span>
+            <span class="k">if</span> <span class="n">count1</span> <span class="o">==</span> <span class="n">nobs1</span> <span class="ow">or</span> <span class="n">count2</span> <span class="o">==</span> <span class="n">nobs2</span><span class="p">:</span>
+                <span class="c1"># The closed form of Koopman/Nam picks the wrong roots of the</span>
+                <span class="c1"># cubic, or complex ones, if a count is equal to nobs.</span>
+                <span class="n">low</span><span class="p">,</span> <span class="n">upp</span> <span class="o">=</span> <span class="n">_score_confint_inversion_ratio</span><span class="p">(</span>
+                    <span class="n">count1</span><span class="p">,</span> <span class="n">nobs1</span><span class="p">,</span> <span class="n">count2</span><span class="p">,</span> <span class="n">nobs2</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="n">alpha</span><span class="p">,</span> <span class="n">correction</span><span class="o">=</span><span class="n">correction</span>
+                <span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">res</span> <span class="o">=</span> <span class="n">_confint_riskratio_koopman</span><span class="p">(</span>
+                    <span class="n">count1</span><span class="p">,</span> <span class="n">nobs1</span><span class="p">,</span> <span class="n">count2</span><span class="p">,</span> <span class="n">nobs2</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="n">alpha</span><span class="p">,</span> <span class="n">correction</span><span class="o">=</span><span class="n">correction</span>
+                <span class="p">)</span>
+                <span class="n">low</span><span class="p">,</span> <span class="n">upp</span> <span class="o">=</span> <span class="n">res</span><span class="o">.</span><span class="n">confint</span>
 
         <span class="k">else</span><span class="p">:</span>
             <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"method not recognized"</span><span class="p">)</span>
@@ -3832,6 +3839,96 @@
     <span class="n">low</span> <span class="o">=</span> <span class="n">optimize</span><span class="o">.</span><span class="n">brentq</span><span class="p">(</span><span class="n">func</span><span class="p">,</span> <span class="n">lb</span><span class="p">,</span> <span class="n">param</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">low</span><span class="p">,</span> <span class="n">upp</span></div>
 
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_score_confint_inversion_ratio</span><span class="p">(</span>
+    <span class="n">count1</span><span class="p">,</span> <span class="n">nobs1</span><span class="p">,</span> <span class="n">count2</span><span class="p">,</span> <span class="n">nobs2</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="mf">0.05</span><span class="p">,</span> <span class="n">correction</span><span class="o">=</span><span class="kc">True</span>
+<span class="p">):</span>
+<span class="w">    </span><span class="sd">"""</span>
+<span class="sd">    Compute score confidence interval of the risk ratio by inverting the test</span>
+
+<span class="sd">    This is used if a count is equal to nobs. Then the closed form of</span>
+<span class="sd">    Koopman/Nam in `_confint_riskratio_koopman` does not apply, because the</span>
+<span class="sd">    constrained estimate is on the boundary of the parameter space for</span>
+<span class="sd">    part of the range of the ratio.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    count1, nobs1 : int</span>
+<span class="sd">        Count and sample size for first sample.</span>
+<span class="sd">    count2, nobs2 : int</span>
+<span class="sd">        Count and sample size for the second sample.</span>
+<span class="sd">    alpha : float in interval (0,1), optional</span>
+<span class="sd">        Significance level, e.g., 0.05, is the probability of a type I</span>
+<span class="sd">        error, that is wrong rejections if the Null Hypothesis is true.</span>
+<span class="sd">    correction : bool, optional</span>
+<span class="sd">        If correction is True (default), then the Miettinen and Nurminen</span>
+<span class="sd">        small sample correction to the variance nobs / (nobs - 1) is used.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    low : float</span>
+<span class="sd">        Lower confidence bound, it is 0 if count1 is 0.</span>
+<span class="sd">    upp : float</span>
+<span class="sd">        Upper confidence bound, it is inf if count2 is 0.</span>
+<span class="sd">    """</span>
+    <span class="k">if</span> <span class="n">count1</span> <span class="o">==</span> <span class="n">nobs1</span> <span class="ow">and</span> <span class="n">count2</span> <span class="o">==</span> <span class="n">nobs2</span><span class="p">:</span>
+        <span class="c1"># The estimate is ratio=1, where the score test is 0 / 0. For ratio &gt; 1</span>
+        <span class="c1"># the constrained estimate is p1 = 1, p2 = 1 / ratio, and for ratio &lt; 1</span>
+        <span class="c1"># it is p1 = ratio, p2 = 1. The squared score statistic is then</span>
+        <span class="c1"># (ratio - 1) * nobs2 / c and (1 - ratio) * nobs1 / (c * ratio), with</span>
+        <span class="c1"># c = nobs / (nobs - 1) if correction is True, else 1.</span>
+        <span class="n">nobs</span> <span class="o">=</span> <span class="n">nobs1</span> <span class="o">+</span> <span class="n">nobs2</span>
+        <span class="n">c_z2</span> <span class="o">=</span> <span class="n">stats</span><span class="o">.</span><span class="n">norm</span><span class="o">.</span><span class="n">isf</span><span class="p">(</span><span class="n">alpha</span> <span class="o">/</span> <span class="mi">2</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span>
+        <span class="k">if</span> <span class="n">correction</span><span class="p">:</span>
+            <span class="n">c_z2</span> <span class="o">*=</span> <span class="n">nobs</span> <span class="o">/</span> <span class="p">(</span><span class="n">nobs</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">nobs1</span> <span class="o">/</span> <span class="p">(</span><span class="n">nobs1</span> <span class="o">+</span> <span class="n">c_z2</span><span class="p">),</span> <span class="mi">1</span> <span class="o">+</span> <span class="n">c_z2</span> <span class="o">/</span> <span class="n">nobs2</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">func</span><span class="p">(</span><span class="n">log_ratio</span><span class="p">):</span>
+        <span class="n">res</span> <span class="o">=</span> <span class="n">score_test_proportions_2indep</span><span class="p">(</span>
+            <span class="n">count1</span><span class="p">,</span>
+            <span class="n">nobs1</span><span class="p">,</span>
+            <span class="n">count2</span><span class="p">,</span>
+            <span class="n">nobs2</span><span class="p">,</span>
+            <span class="n">value</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">log_ratio</span><span class="p">),</span>
+            <span class="n">compare</span><span class="o">=</span><span class="s2">"ratio"</span><span class="p">,</span>
+            <span class="n">correction</span><span class="o">=</span><span class="n">correction</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="n">res</span><span class="o">.</span><span class="n">pvalue</span> <span class="o">-</span> <span class="n">alpha</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">limit</span><span class="p">(</span><span class="n">log_inside</span><span class="p">,</span> <span class="n">sign</span><span class="p">):</span>
+        <span class="c1"># The p-value is above alpha at log_inside and goes to 0, so that it</span>
+        <span class="c1"># is below alpha at some point in the direction sign. Expand the</span>
+        <span class="c1"># bracket until it contains the limit.</span>
+        <span class="n">step</span> <span class="o">=</span> <span class="mf">1.0</span>
+        <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">9</span><span class="p">):</span>
+            <span class="n">log_outside</span> <span class="o">=</span> <span class="n">log_inside</span> <span class="o">+</span> <span class="n">sign</span> <span class="o">*</span> <span class="n">step</span>
+            <span class="k">if</span> <span class="n">func</span><span class="p">(</span><span class="n">log_outside</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="k">break</span>
+            <span class="n">log_inside</span> <span class="o">=</span> <span class="n">log_outside</span>
+            <span class="n">step</span> <span class="o">*=</span> <span class="mi">2</span>
+        <span class="n">bracket</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">((</span><span class="n">log_inside</span><span class="p">,</span> <span class="n">log_outside</span><span class="p">))</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">optimize</span><span class="o">.</span><span class="n">brentq</span><span class="p">(</span><span class="n">func</span><span class="p">,</span> <span class="o">*</span><span class="n">bracket</span><span class="p">))</span>
+
+    <span class="k">if</span> <span class="n">count1</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">count2</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="c1"># The p-value is 1 at the estimate</span>
+        <span class="n">log_inside</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">count1</span> <span class="o">/</span> <span class="n">nobs1</span> <span class="o">*</span> <span class="n">nobs2</span> <span class="o">/</span> <span class="n">count2</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="c1"># The estimate is 0 or inf. Start at the log-adjusted estimate and move</span>
+        <span class="c1"># to the side where the p-value goes to 1.</span>
+        <span class="n">log_inside</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span>
+            <span class="p">(</span><span class="n">count1</span> <span class="o">+</span> <span class="mf">0.5</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="n">nobs1</span> <span class="o">+</span> <span class="mf">0.5</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="n">nobs2</span> <span class="o">+</span> <span class="mf">0.5</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="n">count2</span> <span class="o">+</span> <span class="mf">0.5</span><span class="p">)</span>
+        <span class="p">)</span>
+        <span class="k">for</span> <span class="n">step</span> <span class="ow">in</span> <span class="mf">2.0</span> <span class="o">**</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="mi">9</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">func</span><span class="p">(</span><span class="n">log_inside</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="k">break</span>
+            <span class="n">log_inside</span> <span class="o">+=</span> <span class="n">step</span> <span class="k">if</span> <span class="n">count2</span> <span class="o">==</span> <span class="mi">0</span> <span class="k">else</span> <span class="o">-</span><span class="n">step</span>
+
+    <span class="c1"># The p-value stays above alpha towards a ratio of 0 if count1 is 0, and</span>
+    <span class="c1"># towards a ratio of inf if count2 is 0. Then the limit is 0 or inf.</span>
+    <span class="n">low</span> <span class="o">=</span> <span class="mf">0.0</span> <span class="k">if</span> <span class="n">count1</span> <span class="o">==</span> <span class="mi">0</span> <span class="k">else</span> <span class="n">limit</span><span class="p">(</span><span class="n">log_inside</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+    <span class="n">upp</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span> <span class="k">if</span> <span class="n">count2</span> <span class="o">==</span> <span class="mi">0</span> <span class="k">else</span> <span class="n">limit</span><span class="p">(</span><span class="n">log_inside</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">low</span><span class="p">,</span> <span class="n">upp</span>
 
 
 <span class="k">class</span><span class="w"> </span><span class="nc">KoopmanConfintResult</span><span class="p">(</span><span class="n">NamedTuple</span><span class="p">):</span>
