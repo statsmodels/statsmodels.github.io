@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
-    <title>statsmodels.tsa.exponential_smoothing.ets &#8212; statsmodels 0.15.1 (+1260)</title>
+    <title>statsmodels.tsa.exponential_smoothing.ets &#8212; statsmodels 0.15.1 (+1269)</title>
   <link rel="icon" type="image/png" sizes="32x32" href="../../../../_static/icons/favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="../../../../_static/icons/favicon-16x16.png">
   <link rel="manifest" href="../../../../_static/icons/site.webmanifest">
@@ -71,7 +71,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="color-scheme" content="light dark"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="0.15.1 (+1260)" />
+  <meta name="docsearch:version" content="0.15.1 (+1269)" />
     <meta name="docbuild:last-update" content="Nov 10, 2026"/>
   
     
@@ -717,7 +717,7 @@
 <span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.iolib.tableformatting</span><span class="w"> </span><span class="kn">import</span> <span class="n">fmt_params</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.tools._decorators</span><span class="w"> </span><span class="kn">import</span> <span class="n">cache_readonly</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.tools.rng_qrng</span><span class="w"> </span><span class="kn">import</span> <span class="n">check_random_state</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.tools.tools</span><span class="w"> </span><span class="kn">import</span> <span class="n">Bunch</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.tools.tools</span><span class="w"> </span><span class="kn">import</span> <span class="n">Bunch</span><span class="p">,</span> <span class="n">pinv_extended</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.tools.validation</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
     <span class="n">array_like</span><span class="p">,</span>
     <span class="n">bool_like</span><span class="p">,</span>
@@ -760,13 +760,24 @@
 <span class="c1"># * Since the traditional bounds are nonlinear for beta and gamma, if no bounds</span>
 <span class="c1">#   are given, we internally use beta_star and gamma_star for fitting</span>
 <span class="c1"># * When estimating initial level and initial seasonal values, one of them has</span>
-<span class="c1">#   to be removed in order to have a well posed problem. I am solving this by</span>
-<span class="c1">#   fixing the last initial seasonal value to 0 (for additive seasonality) or 1</span>
-<span class="c1">#   (for multiplicative seasonality).</span>
-<span class="c1">#   For the additive models, this means I have to subtract the last initial</span>
-<span class="c1">#   seasonal value from all initial seasonal values and add it to the initial</span>
-<span class="c1">#   level; for the multiplicative models I do the same with division and</span>
-<span class="c1">#   multiplication</span>
+<span class="c1">#   to be removed in order to have a well posed problem. As in Hyndman et al.</span>
+<span class="c1">#   (2008) and R's forecast::ets, the initial seasonals are normalized to sum</span>
+<span class="c1">#   to 0 (additive) or to m (multiplicative) over the first season: the first</span>
+<span class="c1">#   m - 1 initial seasonals are estimated and the last one (s[-m], the one</span>
+<span class="c1">#   used for the first observation) is computed from them in every likelihood</span>
+<span class="c1">#   evaluation. The model parameter vector still contains all m initial</span>
+<span class="c1">#   seasonals.</span>
+<span class="c1">#   For multiplicative seasonality, and for additive seasonality with an</span>
+<span class="c1">#   additive or no trend, this is only an identification: multiplying the</span>
+<span class="c1">#   level (and an additive trend) by a constant and dividing all seasonals by</span>
+<span class="c1">#   it, or adding a constant to the level and subtracting it from all</span>
+<span class="c1">#   additive seasonals, does not change the model. For additive seasonality</span>
+<span class="c1">#   with a multiplicative trend (forecast l * b + s) a constant cannot be</span>
+<span class="c1">#   moved between the level and the seasonals, so the sum-zero constraint is</span>
+<span class="c1">#   a restriction of the model, as it is in R.</span>
+<span class="c1">#   The heuristic start values already satisfy this normalization, so they</span>
+<span class="c1">#   are used as they are. The covariance of the parameters is computed for</span>
+<span class="c1">#   the m - 1 free initial seasonals and mapped back to all m.</span>
 
 
 <div class="viewcode-block" id="ETSModel">
@@ -812,6 +823,17 @@
 <span class="sd">        level, trend, and seasonal state. 'estimated' uses the same heuristic</span>
 <span class="sd">        as initial guesses, but then estimates the initial states as part of</span>
 <span class="sd">        the fitting process.  Default is 'estimated'.</span>
+
+<span class="sd">        With 'estimated', the initial seasonal states are normalized to sum</span>
+<span class="sd">        to 0 (additive seasonality) or to ``seasonal_periods``</span>
+<span class="sd">        (multiplicative seasonality), as in R's ``forecast::ets``: the first</span>
+<span class="sd">        ``seasonal_periods - 1`` initial seasonal states are estimated and</span>
+<span class="sd">        the last one, ``initial_seasonal.&lt;m-1&gt;``, is computed from them.</span>
+<span class="sd">        For multiplicative seasonality and for additive seasonality with an</span>
+<span class="sd">        additive or no trend, this only removes a constant that could be</span>
+<span class="sd">        moved between the initial level and the initial seasonals. For</span>
+<span class="sd">        additive seasonality with a multiplicative trend, it is a</span>
+<span class="sd">        restriction of the model.</span>
 <span class="sd">    initial_level : float, optional</span>
 <span class="sd">        The initial level component. Only used if initialization is 'known'.</span>
 <span class="sd">    initial_trend : float, optional</span>
@@ -1416,18 +1438,61 @@
             <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">has_trend</span><span class="p">:</span>
                 <span class="n">params</span> <span class="o">+=</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">initial_trend</span><span class="p">]</span>
             <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">has_seasonal</span><span class="p">:</span>
-                <span class="c1"># we have to adapt the seasonal values a bit to make sure the</span>
-                <span class="c1"># problem is well posed (see implementation notes above)</span>
-                <span class="n">initial_seasonal</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">initial_seasonal</span>
+                <span class="c1"># Normalize the initial seasonals so that they sum to 0 or to</span>
+                <span class="c1"># m over the first season, and move the constant into the</span>
+                <span class="c1"># initial level (and an additive trend), so that the start</span>
+                <span class="c1"># values describe the same model as the heuristic. The</span>
+                <span class="c1"># heuristic initializations already satisfy this, so this is</span>
+                <span class="c1"># usually a no-op. See the implementation notes above.</span>
+                <span class="n">initial_seasonal</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">initial_seasonal</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
                 <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">seasonal</span> <span class="o">==</span> <span class="s2">"mul"</span><span class="p">:</span>
-                    <span class="n">params</span><span class="p">[</span><span class="n">lvl_idx</span><span class="p">]</span> <span class="o">*=</span> <span class="n">initial_seasonal</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
-                    <span class="n">initial_seasonal</span> <span class="o">/=</span> <span class="n">initial_seasonal</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+                    <span class="n">scale</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">initial_seasonal</span><span class="p">)</span>
+                    <span class="n">params</span><span class="p">[</span><span class="n">lvl_idx</span><span class="p">]</span> <span class="o">*=</span> <span class="n">scale</span>
+                    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">trend</span> <span class="o">==</span> <span class="s2">"add"</span><span class="p">:</span>
+                        <span class="n">params</span><span class="p">[</span><span class="n">lvl_idx</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span> <span class="o">*=</span> <span class="n">scale</span>
+                    <span class="n">initial_seasonal</span> <span class="o">/=</span> <span class="n">scale</span>
                 <span class="k">else</span><span class="p">:</span>
-                    <span class="n">params</span><span class="p">[</span><span class="n">lvl_idx</span><span class="p">]</span> <span class="o">+=</span> <span class="n">initial_seasonal</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
-                    <span class="n">initial_seasonal</span> <span class="o">-=</span> <span class="n">initial_seasonal</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
-                <span class="n">params</span> <span class="o">+=</span> <span class="n">initial_seasonal</span><span class="o">.</span><span class="n">tolist</span><span class="p">()</span>
+                    <span class="n">shift</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">initial_seasonal</span><span class="p">)</span>
+                    <span class="n">params</span><span class="p">[</span><span class="n">lvl_idx</span><span class="p">]</span> <span class="o">+=</span> <span class="n">shift</span>
+                    <span class="n">initial_seasonal</span> <span class="o">-=</span> <span class="n">shift</span>
+                <span class="c1"># self.initial_seasonal starts with the seasonal of the first</span>
+                <span class="c1"># observation, s_{-m}, while the parameter vector starts with</span>
+                <span class="c1"># initial_seasonal.0 = s_{-1}, see `_internal_params`</span>
+                <span class="n">params</span> <span class="o">+=</span> <span class="n">initial_seasonal</span><span class="p">[::</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">tolist</span><span class="p">()</span>
 
         <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">params</span><span class="p">)</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_derive_last_initial_seasonal</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">"""</span>
+<span class="sd">        Whether the last initial seasonal state is computed from the others</span>
+
+<span class="sd">        With ``initialization_method="estimated"``, the initial seasonals are</span>
+<span class="sd">        normalized to sum to 0 (additive) or to m (multiplicative) over the</span>
+<span class="sd">        first season, so that only m - 1 of them are free parameters. The</span>
+<span class="sd">        last one, ``initial_seasonal.&lt;m-1&gt;``, is computed from the others</span>
+<span class="sd">        unless the user fixed it or gave bounds for it. A bound cannot be</span>
+<span class="sd">        imposed on a computed value, so then all m initial seasonals are</span>
+<span class="sd">        free parameters within the bounds, as before GH 8551.</span>
+<span class="sd">        """</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">initialization_method</span> <span class="o">!=</span> <span class="s2">"estimated"</span> <span class="ow">or</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">has_seasonal</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">False</span>
+        <span class="n">last</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_internal_initial_state_names</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+        <span class="c1"># user bounds (fit also adds fixed parameters to self.bounds, but</span>
+        <span class="c1"># ETSResults reads this property for results from `smooth` as well)</span>
+        <span class="k">if</span> <span class="n">last</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">bounds</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">False</span>
+        <span class="k">return</span> <span class="ow">not</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_has_fixed_params</span> <span class="ow">and</span> <span class="n">last</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_fixed_params</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_last_initial_seasonal</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">initial_seasonal</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">"""</span>
+<span class="sd">        Computes the last initial seasonal state from the first m - 1</span>
+
+<span class="sd">        The initial seasonals sum to 0 for additive seasonality and to m for</span>
+<span class="sd">        multiplicative seasonality.</span>
+<span class="sd">        """</span>
+        <span class="n">total</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">seasonal_periods</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">seasonal</span> <span class="o">==</span> <span class="s2">"mul"</span> <span class="k">else</span> <span class="mi">0</span>
+        <span class="k">return</span> <span class="n">total</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">initial_seasonal</span><span class="p">)</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">_convert_and_bound_start_params</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">params</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">"""This converts start params to internal params, sets internal-only parameters as bounded, sets bounds for fixed parameters, and then makes sure that all start parameters are within the specified bounds"""</span>
@@ -1470,14 +1535,11 @@
         <span class="c1"># other bounds for phi and initial states</span>
         <span class="n">lb</span><span class="p">[</span><span class="mi">3</span><span class="p">],</span> <span class="n">ub</span><span class="p">[</span><span class="mi">3</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.8</span><span class="p">,</span> <span class="mf">0.98</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">initialization_method</span> <span class="o">==</span> <span class="s2">"estimated"</span><span class="p">:</span>
-            <span class="n">lb</span><span class="p">[</span><span class="mi">4</span><span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="n">np</span><span class="o">.</span><span class="n">inf</span>
-            <span class="n">ub</span><span class="p">[</span><span class="mi">4</span><span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span>
-            <span class="c1"># fix the last initial_seasonal to 0 or 1, otherwise the equation</span>
-            <span class="c1"># is underdetermined</span>
-            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">seasonal</span> <span class="o">==</span> <span class="s2">"mul"</span><span class="p">:</span>
-                <span class="n">lb</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span> <span class="n">ub</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span>
-            <span class="k">else</span><span class="p">:</span>
-                <span class="n">lb</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span> <span class="n">ub</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span>
+            <span class="n">lb</span><span class="p">[</span><span class="mi">4</span><span class="p">:]</span> <span class="o">=</span> <span class="o">-</span><span class="n">np</span><span class="o">.</span><span class="n">inf</span>
+            <span class="n">ub</span><span class="p">[</span><span class="mi">4</span><span class="p">:]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span>
+            <span class="c1"># The last initial seasonal is not a free parameter: it is</span>
+            <span class="c1"># computed from the others in every likelihood evaluation, see</span>
+            <span class="c1"># `_derive_last_initial_seasonal` and `fit`.</span>
 
         <span class="c1"># set lb and ub for parameters with bounds</span>
         <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_internal_param_names</span><span class="p">:</span>
@@ -1533,7 +1595,11 @@
 <span class="sd">            * ...</span>
 <span class="sd">            * `initial_seasonal.&lt;m-1&gt;` (:math:`s_{-m}`)</span>
 
-<span class="sd">            also have to be specified.</span>
+<span class="sd">            also have to be specified. The initial seasonal states are</span>
+<span class="sd">            normalized to sum to 0 (additive seasonality) or to m</span>
+<span class="sd">            (multiplicative seasonality) during the fit, so that the last</span>
+<span class="sd">            one, :math:`s_{-m}`, is computed from the others and its start</span>
+<span class="sd">            value is only used if it is fixed or bounded.</span>
 <span class="sd">        maxiter : int, optional</span>
 <span class="sd">            The maximum number of iterations to perform.</span>
 <span class="sd">        full_output : bool, optional</span>
@@ -1578,7 +1644,11 @@
                 <span class="n">internal_start_params</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">/=</span> <span class="mi">1</span> <span class="o">-</span> <span class="n">internal_start_params</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
 
             <span class="c1"># check if we have fixed parameters and remove them from the</span>
-            <span class="c1"># parameter vector</span>
+            <span class="c1"># parameter vector. The last initial seasonal is removed as well</span>
+            <span class="c1"># if it is computed from the other initial seasonals (see the</span>
+            <span class="c1"># implementation notes above); its value in `fixed_values` is</span>
+            <span class="c1"># updated in every call of `_loglike_internal`.</span>
+            <span class="n">derive_last_seasonal</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_derive_last_initial_seasonal</span>
             <span class="n">is_fixed</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_k_params_internal</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int64</span><span class="p">)</span>
             <span class="n">fixed_values</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty_like</span><span class="p">(</span><span class="n">internal_start_params</span><span class="p">)</span>
             <span class="n">params_without_fixed</span> <span class="o">=</span> <span class="p">[]</span>
@@ -1587,6 +1657,11 @@
                 <span class="k">if</span> <span class="n">bounds</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="n">bounds</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="mi">1</span><span class="p">]:</span>
                     <span class="n">is_fixed</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span>
                     <span class="n">fixed_values</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">bounds</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span>
+                <span class="k">elif</span> <span class="n">derive_last_seasonal</span> <span class="ow">and</span> <span class="n">i</span> <span class="o">==</span> <span class="bp">self</span><span class="o">.</span><span class="n">_k_params_internal</span> <span class="o">-</span> <span class="mi">1</span><span class="p">:</span>
+                    <span class="n">is_fixed</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span>
+                    <span class="n">fixed_values</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_last_initial_seasonal</span><span class="p">(</span>
+                        <span class="n">internal_start_params</span><span class="p">[</span><span class="mi">6</span><span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+                    <span class="p">)</span>
                 <span class="k">else</span><span class="p">:</span>
                     <span class="n">params_without_fixed</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">internal_start_params</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
                     <span class="n">kwargs</span><span class="p">[</span><span class="s2">"bounds"</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">bounds</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
@@ -1607,6 +1682,7 @@
                         <span class="n">fixed_values</span><span class="p">,</span>
                         <span class="n">use_beta_star</span><span class="p">,</span>
                         <span class="n">use_gamma_star</span><span class="p">,</span>
+                        <span class="n">derive_last_seasonal</span><span class="p">,</span>
                     <span class="p">),</span>
                     <span class="n">method</span><span class="o">=</span><span class="s2">"lbfgs"</span><span class="p">,</span>
                     <span class="n">maxiter</span><span class="o">=</span><span class="n">maxiter</span><span class="p">,</span>
@@ -1631,6 +1707,10 @@
                 <span class="n">fitted_params</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">*=</span> <span class="n">fitted_params</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
             <span class="k">if</span> <span class="n">use_gamma_star</span><span class="p">:</span>
                 <span class="n">fitted_params</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">*=</span> <span class="mi">1</span> <span class="o">-</span> <span class="n">fitted_params</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="k">if</span> <span class="n">derive_last_seasonal</span><span class="p">:</span>
+                <span class="c1"># fixed_values[-1] holds the value of the last likelihood</span>
+                <span class="c1"># evaluation, which is not necessarily at the optimum</span>
+                <span class="n">fitted_params</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_last_initial_seasonal</span><span class="p">(</span><span class="n">fitted_params</span><span class="p">[</span><span class="mi">6</span><span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span>
             <span class="n">final_params</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_model_params</span><span class="p">(</span><span class="n">fitted_params</span><span class="p">)</span>
 
         <span class="k">if</span> <span class="n">return_params</span><span class="p">:</span>
@@ -1652,6 +1732,7 @@
         <span class="n">fixed_values</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
         <span class="n">use_beta_star</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
         <span class="n">use_gamma_star</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="n">derive_last_seasonal</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
     <span class="p">):</span>
 <span class="w">        </span><span class="sd">"""</span>
 <span class="sd">        Log-likelihood function to be called from fit to avoid reallocation of</span>
@@ -1679,6 +1760,12 @@
 <span class="sd">            Whether to internally use beta_star as parameter</span>
 <span class="sd">        use_gamma_star : bool</span>
 <span class="sd">            Whether to internally use gamma_star as parameter</span>
+<span class="sd">        derive_last_seasonal : bool</span>
+<span class="sd">            Whether the last initial seasonal state (the last entry of</span>
+<span class="sd">            `fixed_values`, which must be marked as fixed in `is_fixed`) is</span>
+<span class="sd">            computed from the other initial seasonal states, so that the</span>
+<span class="sd">            initial seasonals sum to 0 (additive seasonality) or to m</span>
+<span class="sd">            (multiplicative seasonality).</span>
 <span class="sd">        """</span>
         <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">iscomplexobj</span><span class="p">(</span><span class="n">params</span><span class="p">):</span>
             <span class="n">data</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">endog</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">complex</span><span class="p">)</span>
@@ -1690,6 +1777,11 @@
             <span class="n">fixed_values</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_k_params_internal</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">params</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span>
         <span class="k">else</span><span class="p">:</span>
             <span class="n">is_fixed</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ascontiguousarray</span><span class="p">(</span><span class="n">is_fixed</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int64</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">derive_last_seasonal</span><span class="p">:</span>
+            <span class="n">full_params</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">fixed_values</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">params</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span>
+            <span class="n">full_params</span><span class="p">[</span><span class="n">is_fixed</span> <span class="o">==</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">params</span>
+            <span class="n">fixed_values</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_last_initial_seasonal</span><span class="p">(</span><span class="n">full_params</span><span class="p">[</span><span class="mi">6</span><span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span>
 
         <span class="bp">self</span><span class="o">.</span><span class="n">_smoothing_func</span><span class="p">(</span>
             <span class="n">params</span><span class="p">,</span>
@@ -2038,6 +2130,10 @@
         <span class="c1"># Setup the cache</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_cache</span> <span class="o">=</span> <span class="p">{}</span>
 
+        <span class="c1"># Whether the last initial seasonal is computed from the others, see</span>
+        <span class="c1"># ETSModel._derive_last_initial_seasonal. Used for the covariance.</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_derived_last_seasonal</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">_derive_last_initial_seasonal</span>
+
         <span class="c1"># Handle covariance matrix calculation</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_cov_approx_complex_step</span> <span class="o">=</span> <span class="kc">True</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_cov_approx_centered</span> <span class="o">=</span> <span class="kc">False</span>
@@ -2061,6 +2157,53 @@
                 <span class="s2">"Covariance matrix could not be calculated: singular."</span>
                 <span class="s2">" information matrix."</span>
             <span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_cov_params_approx</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">approx_complex_step</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">approx_centered</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_derived_last_seasonal</span><span class="p">:</span>
+            <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">_cov_params_approx</span><span class="p">(</span>
+                <span class="n">approx_complex_step</span><span class="o">=</span><span class="n">approx_complex_step</span><span class="p">,</span>
+                <span class="n">approx_centered</span><span class="o">=</span><span class="n">approx_centered</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="c1"># The last initial seasonal is computed from the others, s[-m] =</span>
+        <span class="c1"># total - sum(s[-1], ..., s[-m+1]), so the free parameters are all</span>
+        <span class="c1"># parameters except it. The Hessian of the full parameter vector is</span>
+        <span class="c1"># singular (for additive seasonality, adding a constant to the level</span>
+        <span class="c1"># and subtracting it from all seasonals does not change the</span>
+        <span class="c1"># likelihood), so the covariance is computed for the free parameters</span>
+        <span class="c1"># and mapped back with the Jacobian of this linear map, which also</span>
+        <span class="c1"># gives the delta-method variance of the derived seasonal.</span>
+        <span class="n">evaluated_hessian</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">nobs_effective</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">hessian</span><span class="p">(</span>
+            <span class="n">params</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">params</span><span class="p">,</span>
+            <span class="n">transformed</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+            <span class="n">includes_fixed</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+            <span class="n">method</span><span class="o">=</span><span class="s2">"approx"</span><span class="p">,</span>
+            <span class="n">approx_complex_step</span><span class="o">=</span><span class="n">approx_complex_step</span><span class="p">,</span>
+            <span class="n">approx_centered</span><span class="o">=</span><span class="n">approx_centered</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">m</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">seasonal_periods</span>
+        <span class="n">params_index</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">_params_index</span>
+        <span class="n">last</span> <span class="o">=</span> <span class="n">params_index</span><span class="p">[</span><span class="sa">f</span><span class="s2">"initial_seasonal.</span><span class="si">{</span><span class="n">m</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="mi">1</span><span class="si">}</span><span class="s2">"</span><span class="p">]</span>
+        <span class="n">others</span> <span class="o">=</span> <span class="p">[</span><span class="n">params_index</span><span class="p">[</span><span class="sa">f</span><span class="s2">"initial_seasonal.</span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s2">"</span><span class="p">]</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">m</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)]</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">fixed_params</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">free</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_free_params_index</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">free</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">k_params</span><span class="p">))</span>
+        <span class="n">reduced</span> <span class="o">=</span> <span class="p">[</span><span class="n">i</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">free</span> <span class="k">if</span> <span class="n">i</span> <span class="o">!=</span> <span class="n">last</span><span class="p">]</span>
+        <span class="n">jac</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="bp">self</span><span class="o">.</span><span class="n">k_params</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">reduced</span><span class="p">)))</span>
+        <span class="n">jac</span><span class="p">[</span><span class="n">reduced</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">reduced</span><span class="p">))]</span> <span class="o">=</span> <span class="mi">1</span>
+        <span class="k">for</span> <span class="n">j</span><span class="p">,</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">reduced</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">others</span><span class="p">:</span>
+                <span class="n">jac</span><span class="p">[</span><span class="n">last</span><span class="p">,</span> <span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="mi">1</span>
+        <span class="n">neg_cov_reduced</span><span class="p">,</span> <span class="n">singular_values</span> <span class="o">=</span> <span class="n">pinv_extended</span><span class="p">(</span>
+            <span class="n">jac</span><span class="o">.</span><span class="n">T</span> <span class="o">@</span> <span class="n">evaluated_hessian</span> <span class="o">@</span> <span class="n">jac</span>
+        <span class="p">)</span>
+        <span class="n">neg_cov</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros_like</span><span class="p">(</span><span class="n">evaluated_hessian</span><span class="p">)</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span>
+        <span class="n">mask</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ix_</span><span class="p">(</span><span class="n">free</span><span class="p">,</span> <span class="n">free</span><span class="p">)</span>
+        <span class="n">neg_cov</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">jac</span> <span class="o">@</span> <span class="n">neg_cov_reduced</span> <span class="o">@</span> <span class="n">jac</span><span class="o">.</span><span class="n">T</span><span class="p">)[</span><span class="n">mask</span><span class="p">]</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_rank</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="c1"># the derived seasonal does not add to the rank deficiency</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_rank</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">matrix_rank</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">diag</span><span class="p">(</span><span class="n">singular_values</span><span class="p">))</span> <span class="o">+</span> <span class="mi">1</span>
+        <span class="k">return</span> <span class="o">-</span><span class="n">neg_cov</span>
 
 <div class="viewcode-block" id="ETSResults.nobs_effective">
 <a class="viewcode-back" href="../../../../generated/statsmodels.tsa.exponential_smoothing.ets.ETSResults.nobs_effective.html#statsmodels.tsa.exponential_smoothing.ets.ETSResults.nobs_effective">[docs]</a>
