@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
-    <title>statsmodels.tsa.exponential_smoothing.ets &#8212; statsmodels 0.15.1 (+1298)</title>
+    <title>statsmodels.tsa.exponential_smoothing.ets &#8212; statsmodels 0.15.1 (+1302)</title>
   <link rel="icon" type="image/png" sizes="32x32" href="../../../../_static/icons/favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="../../../../_static/icons/favicon-16x16.png">
   <link rel="manifest" href="../../../../_static/icons/site.webmanifest">
@@ -71,7 +71,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="color-scheme" content="light dark"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="0.15.1 (+1298)" />
+  <meta name="docsearch:version" content="0.15.1 (+1302)" />
     <meta name="docbuild:last-update" content="Nov 11, 2026"/>
   
     
@@ -775,9 +775,10 @@
 <span class="c1">#   with a multiplicative trend (forecast l * b + s) a constant cannot be</span>
 <span class="c1">#   moved between the level and the seasonals, so the sum-zero constraint is</span>
 <span class="c1">#   a restriction of the model, as it is in R.</span>
-<span class="c1">#   The heuristic start values already satisfy this normalization, so they</span>
-<span class="c1">#   are used as they are. The covariance of the parameters is computed for</span>
-<span class="c1">#   the m - 1 free initial seasonals and mapped back to all m.</span>
+<span class="c1">#   The heuristic and the simple start values (used for short series)</span>
+<span class="c1">#   already satisfy this normalization, so they are used as they are. The</span>
+<span class="c1">#   covariance of the parameters is computed for the m - 1 free initial</span>
+<span class="c1">#   seasonals and mapped back to all m.</span>
 
 
 <div class="viewcode-block" id="ETSModel">
@@ -829,11 +830,22 @@
 <span class="sd">        (multiplicative seasonality), as in R's ``forecast::ets``: the first</span>
 <span class="sd">        ``seasonal_periods - 1`` initial seasonal states are estimated and</span>
 <span class="sd">        the last one, ``initial_seasonal.&lt;m-1&gt;``, is computed from them.</span>
+<span class="sd">        If ``initial_seasonal.&lt;m-1&gt;`` is fixed or bounded, this does not</span>
+<span class="sd">        apply and all initial seasonal states are free parameters.</span>
 <span class="sd">        For multiplicative seasonality and for additive seasonality with an</span>
 <span class="sd">        additive or no trend, this only removes a constant that could be</span>
 <span class="sd">        moved between the initial level and the initial seasonals. For</span>
 <span class="sd">        additive seasonality with a multiplicative trend, it is a</span>
 <span class="sd">        restriction of the model.</span>
+
+<span class="sd">        The initial level is the level around which the initial seasonal</span>
+<span class="sd">        states average 0 (additive seasonality) or 1 (multiplicative</span>
+<span class="sd">        seasonality). A fixed ``initial_level``, for example with</span>
+<span class="sd">        ``fix_params``, is therefore a restriction of the model: the</span>
+<span class="sd">        initial seasonals still add up to 0 or ``seasonal_periods``.</span>
+<span class="sd">        Versions before 0.15.1 fixed ``initial_seasonal.&lt;m-1&gt;`` to 0 or 1</span>
+<span class="sd">        instead, so a model with a fixed initial level is a different</span>
+<span class="sd">        restriction there and gives a different fit.</span>
 <span class="sd">    initial_level : float, optional</span>
 <span class="sd">        The initial level component. Only used if initialization is 'known'.</span>
 <span class="sd">    initial_trend : float, optional</span>
@@ -1433,31 +1445,18 @@
         <span class="p">]</span>
 
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">initialization_method</span> <span class="o">==</span> <span class="s2">"estimated"</span><span class="p">:</span>
-            <span class="n">lvl_idx</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">params</span><span class="p">)</span>
             <span class="n">params</span> <span class="o">+=</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">initial_level</span><span class="p">]</span>
             <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">has_trend</span><span class="p">:</span>
                 <span class="n">params</span> <span class="o">+=</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">initial_trend</span><span class="p">]</span>
             <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">has_seasonal</span><span class="p">:</span>
-                <span class="c1"># Normalize the initial seasonals so that they sum to 0 or to</span>
-                <span class="c1"># m over the first season, and move the constant into the</span>
-                <span class="c1"># initial level (and an additive trend), so that the start</span>
-                <span class="c1"># values describe the same model as the heuristic. The</span>
-                <span class="c1"># heuristic initializations already satisfy this, so this is</span>
-                <span class="c1"># usually a no-op. See the implementation notes above.</span>
-                <span class="n">initial_seasonal</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">initial_seasonal</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
-                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">seasonal</span> <span class="o">==</span> <span class="s2">"mul"</span><span class="p">:</span>
-                    <span class="n">scale</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">initial_seasonal</span><span class="p">)</span>
-                    <span class="n">params</span><span class="p">[</span><span class="n">lvl_idx</span><span class="p">]</span> <span class="o">*=</span> <span class="n">scale</span>
-                    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">trend</span> <span class="o">==</span> <span class="s2">"add"</span><span class="p">:</span>
-                        <span class="n">params</span><span class="p">[</span><span class="n">lvl_idx</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span> <span class="o">*=</span> <span class="n">scale</span>
-                    <span class="n">initial_seasonal</span> <span class="o">/=</span> <span class="n">scale</span>
-                <span class="k">else</span><span class="p">:</span>
-                    <span class="n">shift</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">initial_seasonal</span><span class="p">)</span>
-                    <span class="n">params</span><span class="p">[</span><span class="n">lvl_idx</span><span class="p">]</span> <span class="o">+=</span> <span class="n">shift</span>
-                    <span class="n">initial_seasonal</span> <span class="o">-=</span> <span class="n">shift</span>
+                <span class="c1"># The heuristic and the simple initial seasonals already sum</span>
+                <span class="c1"># to 0 (additive) or to m (multiplicative) over the first</span>
+                <span class="c1"># season, as required by the normalization described in the</span>
+                <span class="c1"># implementation notes above, so they are used as they are.</span>
                 <span class="c1"># self.initial_seasonal starts with the seasonal of the first</span>
                 <span class="c1"># observation, s_{-m}, while the parameter vector starts with</span>
                 <span class="c1"># initial_seasonal.0 = s_{-1}, see `_internal_params`</span>
+                <span class="n">initial_seasonal</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">initial_seasonal</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
                 <span class="n">params</span> <span class="o">+=</span> <span class="n">initial_seasonal</span><span class="p">[::</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">tolist</span><span class="p">()</span>
 
         <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">params</span><span class="p">)</span>
@@ -1598,8 +1597,14 @@
 <span class="sd">            also have to be specified. The initial seasonal states are</span>
 <span class="sd">            normalized to sum to 0 (additive seasonality) or to m</span>
 <span class="sd">            (multiplicative seasonality) during the fit, so that the last</span>
-<span class="sd">            one, :math:`s_{-m}`, is computed from the others and its start</span>
-<span class="sd">            value is only used if it is fixed or bounded.</span>
+<span class="sd">            one, :math:`s_{-m}`, is computed from the others in every</span>
+<span class="sd">            evaluation of the log-likelihood. Its start value is then</span>
+<span class="sd">            ignored, and the fit starts from the value that makes the</span>
+<span class="sd">            initial seasonals add up to 0 or m. If `initial_seasonal.&lt;m-1&gt;`</span>
+<span class="sd">            is bounded, all m initial seasonals are free parameters, and its</span>
+<span class="sd">            start value, moved into the bounds, is the starting point. If it</span>
+<span class="sd">            is fixed, for example with ``fix_params``, the fixed value is</span>
+<span class="sd">            used and the start value is ignored.</span>
 <span class="sd">        maxiter : int, optional</span>
 <span class="sd">            The maximum number of iterations to perform.</span>
 <span class="sd">        full_output : bool, optional</span>
