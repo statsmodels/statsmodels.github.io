@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
-    <title>statsmodels.genmod.generalized_linear_model &#8212; statsmodels 0.15.1 (+1372)</title>
+    <title>statsmodels.genmod.generalized_linear_model &#8212; statsmodels 0.15.1 (+1378)</title>
   <link rel="icon" type="image/png" sizes="32x32" href="../../../_static/icons/favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="../../../_static/icons/favicon-16x16.png">
   <link rel="manifest" href="../../../_static/icons/site.webmanifest">
@@ -71,7 +71,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="color-scheme" content="light dark"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="0.15.1 (+1372)" />
+  <meta name="docsearch:version" content="0.15.1 (+1378)" />
     <meta name="docbuild:last-update" content="Nov 16, 2026"/>
   
     
@@ -1484,7 +1484,10 @@
 <span class="sd">            not None, then k_constraints is assumed to be zero if it is None.</span>
 <span class="sd">        exog_extra : array_like, optional</span>
 <span class="sd">            Explanatory variables that are jointly tested for inclusion in the</span>
-<span class="sd">            model, i.e., omitted variables.</span>
+<span class="sd">            model, i.e., omitted variables. Columns that are linear</span>
+<span class="sd">            combinations of other columns of `exog_extra` or of `exog`, for</span>
+<span class="sd">            example the linear term in a spline basis, do not add a</span>
+<span class="sd">            constraint, see Notes.</span>
 <span class="sd">        observed : bool, optional</span>
 <span class="sd">            If True, then the observed Hessian is used in calculating the</span>
 <span class="sd">            covariance matrix of the score. If false then the expected</span>
@@ -1498,11 +1501,21 @@
 <span class="sd">            P-value of the score test based on the chisquare distribution.</span>
 <span class="sd">        df : int</span>
 <span class="sd">            Degrees of freedom used in the p-value calculation. This is equal</span>
-<span class="sd">            to the number of constraints.</span>
+<span class="sd">            to the number of constraints. With `exog_extra` it is</span>
+<span class="sd">            `k_constraints` plus the rank of `exog_extra` given `exog`.</span>
 
 <span class="sd">        Notes</span>
 <span class="sd">        -----</span>
 <span class="sd">        not yet verified for case with scale not equal to 1.</span>
+
+<span class="sd">        A column of `exog_extra` is redundant if its norm after projecting</span>
+<span class="sd">        out `exog` and the other columns is less than 1e-7 times its norm,</span>
+<span class="sd">        the tolerance of R's ``lm``. If `exog_extra` has redundant columns,</span>
+<span class="sd">        it is replaced by an orthonormal basis of its columns after</span>
+<span class="sd">        projecting out `exog`. The test statistic is invariant to this</span>
+<span class="sd">        change of basis, and the number of constraints is the rank of the</span>
+<span class="sd">        basis. If all columns of `exog_extra` are in the span of `exog`, a</span>
+<span class="sd">        ValueError is raised.</span>
 <span class="sd">        """</span>
 
         <span class="k">if</span> <span class="n">exog_extra</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
@@ -1515,12 +1528,14 @@
             <span class="n">hessian</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">hessian</span><span class="p">(</span><span class="n">params_constrained</span><span class="p">,</span> <span class="n">observed</span><span class="o">=</span><span class="n">observed</span><span class="p">)</span>
 
         <span class="k">else</span><span class="p">:</span>
-            <span class="c1"># exog_extra = np.asarray(exog_extra)</span>
             <span class="k">if</span> <span class="n">k_constraints</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
                 <span class="n">k_constraints</span> <span class="o">=</span> <span class="mi">0</span>
 
+            <span class="c1"># the number of constraints is the rank of exog_extra given exog,</span>
+            <span class="c1"># and redundant columns are replaced by a basis, GH#5364</span>
+            <span class="n">exog_extra</span><span class="p">,</span> <span class="n">k_extra</span> <span class="o">=</span> <span class="n">pinfer</span><span class="o">.</span><span class="n">_full_rank_exog_extra</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">exog</span><span class="p">,</span> <span class="n">exog_extra</span><span class="p">)</span>
             <span class="n">ex</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">column_stack</span><span class="p">((</span><span class="bp">self</span><span class="o">.</span><span class="n">exog</span><span class="p">,</span> <span class="n">exog_extra</span><span class="p">))</span>
-            <span class="n">k_constraints</span> <span class="o">+=</span> <span class="n">ex</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">exog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+            <span class="n">k_constraints</span> <span class="o">+=</span> <span class="n">k_extra</span>
 
             <span class="n">score_factor</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">score_factor</span><span class="p">(</span><span class="n">params_constrained</span><span class="p">)</span>
             <span class="n">score</span> <span class="o">=</span> <span class="p">(</span><span class="n">score_factor</span><span class="p">[:,</span> <span class="kc">None</span><span class="p">]</span> <span class="o">*</span> <span class="n">ex</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
