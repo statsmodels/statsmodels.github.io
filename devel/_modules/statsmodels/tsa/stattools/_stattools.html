@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
-    <title>statsmodels.tsa.stattools._stattools &#8212; statsmodels 0.15.1 (+1333)</title>
+    <title>statsmodels.tsa.stattools._stattools &#8212; statsmodels 0.15.1 (+1339)</title>
   <link rel="icon" type="image/png" sizes="32x32" href="../../../../_static/icons/favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="../../../../_static/icons/favicon-16x16.png">
   <link rel="manifest" href="../../../../_static/icons/site.webmanifest">
@@ -71,7 +71,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="color-scheme" content="light dark"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="0.15.1 (+1333)" />
+  <meta name="docsearch:version" content="0.15.1 (+1339)" />
     <meta name="docbuild:last-update" content="Nov 16, 2026"/>
   
     
@@ -3709,18 +3709,28 @@
 <span class="sd">        ``nobs - 1`` degrees of freedom when the Harvey et al. (1997)</span>
 <span class="sd">        small-sample correction is applied.</span>
 <span class="sd">    pvalue : float</span>
-<span class="sd">        The two-sided p-value for the null of equal predictive accuracy.</span>
+<span class="sd">        The p-value for the null of equal predictive accuracy against the</span>
+<span class="sd">        alternative given by ``alternative``.</span>
 <span class="sd">    lags : int</span>
-<span class="sd">        The number of lags used in the Newey-West estimator of the long-run</span>
+<span class="sd">        The number of lags used in the HAC estimator of the long-run</span>
 <span class="sd">        variance of the loss differential.</span>
 <span class="sd">    harvey_adj_factor : float or None</span>
 <span class="sd">        The finite-sample adjustment factor of Harvey et al. (1997) that</span>
 <span class="sd">        was applied to ``statistic``. ``None`` unless ``harvey_adj`` was</span>
 <span class="sd">        True.</span>
+<span class="sd">    alternative : str</span>
+<span class="sd">        The alternative hypothesis, one of "two-sided", "larger" or</span>
+<span class="sd">        "smaller".</span>
+
+<span class="sd">        .. versionadded:: 0.15.1</span>
+<span class="sd">    kernel : str</span>
+<span class="sd">        The kernel of the HAC estimator, "bartlett" or "uniform".</span>
+
+<span class="sd">        .. versionadded:: 0.15.1</span>
 
 <span class="sd">    Notes</span>
 <span class="sd">    -----</span>
-<span class="sd">    Unpacks as ``statistic, pvalue = result``. The other two fields are only</span>
+<span class="sd">    Unpacks as ``statistic, pvalue = result``. The other fields are only</span>
 <span class="sd">    available through attribute access.</span>
 <span class="sd">    """</span>
 
@@ -3728,9 +3738,81 @@
     <span class="n">pvalue</span><span class="p">:</span> <span class="nb">float</span>
     <span class="n">lags</span><span class="p">:</span> <span class="nb">int</span>
     <span class="n">harvey_adj_factor</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span>
+    <span class="n">alternative</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"two-sided"</span>
+    <span class="n">kernel</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"bartlett"</span>
 
     <span class="n">_iter_fields</span><span class="p">:</span> <span class="n">ClassVar</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]]</span> <span class="o">=</span> <span class="p">(</span><span class="s2">"statistic"</span><span class="p">,</span> <span class="s2">"pvalue"</span><span class="p">)</span></div>
 
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_hac_mean_tstat</span><span class="p">(</span><span class="n">d</span><span class="p">,</span> <span class="n">lags</span><span class="p">,</span> <span class="n">kernel</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""</span>
+<span class="sd">    Compute the t-statistic of the mean of d with a HAC variance estimate.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    d : ndarray</span>
+<span class="sd">        The series whose mean is tested.</span>
+<span class="sd">    lags : int</span>
+<span class="sd">        The number of lags of the HAC estimator.</span>
+<span class="sd">    kernel : {"bartlett", "uniform"}</span>
+<span class="sd">        The kernel of the HAC estimator.</span>
+<span class="sd">    name : str</span>
+<span class="sd">        The name of ``d`` used in error messages.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    float</span>
+<span class="sd">        The mean of ``d`` divided by the square root of its estimated</span>
+<span class="sd">        variance.</span>
+
+<span class="sd">    Raises</span>
+<span class="sd">    ------</span>
+<span class="sd">    MissingDataError</span>
+<span class="sd">        If ``d`` contains non-finite values.</span>
+<span class="sd">    ValueError</span>
+<span class="sd">        If ``lags`` is too large for the number of observations, if ``d`` is</span>
+<span class="sd">        constant up to rounding error, or if the estimated variance of its</span>
+<span class="sd">        mean is not positive.</span>
+<span class="sd">    """</span>
+    <span class="n">nobs</span> <span class="o">=</span> <span class="n">d</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">lags</span> <span class="o">&gt;=</span> <span class="n">nobs</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">"lags (</span><span class="si">{</span><span class="n">lags</span><span class="si">}</span><span class="s2">) must be smaller than the number of observations "</span>
+            <span class="sa">f</span><span class="s2">"(</span><span class="si">{</span><span class="n">nobs</span><span class="si">}</span><span class="s2">)."</span>
+        <span class="p">)</span>
+    <span class="k">if</span> <span class="n">kernel</span> <span class="o">==</span> <span class="s2">"uniform"</span> <span class="ow">and</span> <span class="n">lags</span> <span class="o">&gt;=</span> <span class="n">nobs</span> <span class="o">-</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">"With kernel='uniform', lags (</span><span class="si">{</span><span class="n">lags</span><span class="si">}</span><span class="s2">) must be smaller than the "</span>
+            <span class="sa">f</span><span class="s2">"number of observations minus one (</span><span class="si">{</span><span class="n">nobs</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="mi">1</span><span class="si">}</span><span class="s2">), since the "</span>
+            <span class="s2">"estimate of the long-run variance is otherwise identically zero."</span>
+        <span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">d</span><span class="p">)):</span>
+        <span class="k">raise</span> <span class="n">MissingDataError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">"The </span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2"> contains non-finite values. Check y and the forecasts."</span>
+        <span class="p">)</span>
+    <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">ptp</span><span class="p">(</span><span class="n">d</span><span class="p">)</span> <span class="o">&lt;=</span> <span class="n">SQRTEPS</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">d</span><span class="p">)):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">"The </span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2"> is constant up to rounding error, so its variance is "</span>
+            <span class="s2">"zero and the test is undefined. This happens if the forecasts are "</span>
+            <span class="s2">"identical or if both forecast errors are constant."</span>
+        <span class="p">)</span>
+    <span class="n">res</span> <span class="o">=</span> <span class="n">OLS</span><span class="p">(</span><span class="n">d</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ones_like</span><span class="p">(</span><span class="n">d</span><span class="p">))</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span>
+        <span class="n">cov_type</span><span class="o">=</span><span class="s2">"HAC"</span><span class="p">,</span> <span class="n">cov_kwds</span><span class="o">=</span><span class="p">{</span><span class="s2">"maxlags"</span><span class="p">:</span> <span class="n">lags</span><span class="p">,</span> <span class="s2">"kernel"</span><span class="p">:</span> <span class="n">kernel</span><span class="p">}</span>
+    <span class="p">)</span>
+    <span class="n">variance</span> <span class="o">=</span> <span class="n">res</span><span class="o">.</span><span class="n">cov_params</span><span class="p">()[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">variance</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="n">msg</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="sa">f</span><span class="s2">"The estimated long-run variance of the </span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2"> is not positive "</span>
+            <span class="sa">f</span><span class="s2">"(</span><span class="si">{</span><span class="n">variance</span><span class="si">:</span><span class="s2">.6g</span><span class="si">}</span><span class="s2">) with kernel='</span><span class="si">{</span><span class="n">kernel</span><span class="si">}</span><span class="s2">' and lags=</span><span class="si">{</span><span class="n">lags</span><span class="si">}</span><span class="s2">."</span>
+        <span class="p">)</span>
+        <span class="k">if</span> <span class="n">kernel</span> <span class="o">==</span> <span class="s2">"uniform"</span><span class="p">:</span>
+            <span class="n">msg</span> <span class="o">+=</span> <span class="p">(</span>
+                <span class="s2">" Use kernel='bartlett', which always gives a non-negative "</span>
+                <span class="s2">"estimate, or fewer lags."</span>
+            <span class="p">)</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+    <span class="k">return</span> <span class="nb">float</span><span class="p">(</span><span class="n">res</span><span class="o">.</span><span class="n">params</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">variance</span><span class="p">))</span>
 
 
 <div class="viewcode-block" id="diebold_mariano_test">
@@ -3745,6 +3827,8 @@
     <span class="n">power</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
     <span class="n">harvey_adj</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
     <span class="n">horizon</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+    <span class="n">alternative</span><span class="o">=</span><span class="s2">"two-sided"</span><span class="p">,</span>
+    <span class="n">kernel</span><span class="o">=</span><span class="s2">"bartlett"</span><span class="p">,</span>
 <span class="p">):</span>
 <span class="w">    </span><span class="sd">"""</span>
 <span class="sd">    Performs a Diebold-Mariano test under the null hypothesis of</span>
@@ -3759,11 +3843,13 @@
 <span class="sd">    forecast_b : array_like</span>
 <span class="sd">        Array of forecasted values from the second model.</span>
 <span class="sd">    lags : int, optional</span>
-<span class="sd">        The number of lags to include in the Newey-West (HAC) variance</span>
-<span class="sd">        estimator used for the loss differential. Must be non-negative if</span>
-<span class="sd">        provided. If not provided, ``max(horizon - 1, ceil(nobs ** (1/3)))``</span>
-<span class="sd">        is used, so this also depends on ``horizon`` even when</span>
-<span class="sd">        ``harvey_adj`` is False. See the Notes for details.</span>
+<span class="sd">        The number of lags to include in the HAC variance estimator used for</span>
+<span class="sd">        the loss differential. Must be non-negative if provided. If not</span>
+<span class="sd">        provided, ``max(horizon - 1, ceil(nobs ** (1/3)))`` is used with the</span>
+<span class="sd">        Bartlett kernel and ``horizon - 1`` with the uniform kernel, so this</span>
+<span class="sd">        also depends on ``horizon`` even when ``harvey_adj`` is False. See</span>
+<span class="sd">        the Notes for details. Must be smaller than ``nobs``, and smaller</span>
+<span class="sd">        than ``nobs - 1`` with the uniform kernel.</span>
 <span class="sd">    criterion : str or callable, optional</span>
 <span class="sd">        The loss function used to score each forecast. Default is 'mse'.</span>
 <span class="sd">        Implemented criteria are 'mse', 'mad' (equivalently 'mae') and</span>
@@ -3782,17 +3868,50 @@
 <span class="sd">        small samples should be applied. Default is False. When True, the</span>
 <span class="sd">        test statistic is rescaled and the p-value is computed from a</span>
 <span class="sd">        Student's t distribution with ``nobs - 1`` degrees of freedom</span>
-<span class="sd">        instead of the standard normal.</span>
+<span class="sd">        instead of the standard normal. The adjustment factor depends only</span>
+<span class="sd">        on ``nobs`` and ``horizon``. Harvey et al. (1997) derive it for the</span>
+<span class="sd">        uniform kernel with ``lags=horizon - 1``; with other kernels or lags</span>
+<span class="sd">        it is applied unchanged, as in ``dm.test`` in R. See the Notes.</span>
 <span class="sd">    horizon : int, optional</span>
 <span class="sd">        The forecast horizon used to (1) form the default number of HAC</span>
 <span class="sd">        lags and (2) compute the Harvey et al. (1997) adjustment when</span>
-<span class="sd">        ``harvey_adj`` is True. Must be a positive integer. Default is 1.</span>
+<span class="sd">        ``harvey_adj`` is True. Must be a positive integer smaller than</span>
+<span class="sd">        ``nobs``. Default is 1.</span>
+<span class="sd">    alternative : {"two-sided", "larger", "smaller"}, optional</span>
+<span class="sd">        The alternative hypothesis, in terms of the mean loss differential</span>
+<span class="sd">        :math:`E[d_t]` defined in the Notes. "larger" is</span>
+<span class="sd">        :math:`E[d_t] &gt; 0`, i.e. ``forecast_b`` is more accurate than</span>
+<span class="sd">        ``forecast_a``, and "smaller" is :math:`E[d_t] &lt; 0`, i.e.</span>
+<span class="sd">        ``forecast_a`` is more accurate. Default is "two-sided".</span>
+
+<span class="sd">        .. versionadded:: 0.15.1</span>
+<span class="sd">    kernel : {"bartlett", "uniform"}, optional</span>
+<span class="sd">        The kernel of the HAC estimator of the long-run variance of the</span>
+<span class="sd">        loss differential. "bartlett" (the default) is the Newey-West</span>
+<span class="sd">        estimator. "uniform" weights all autocovariances up to ``lags``</span>
+<span class="sd">        equally, which with ``lags=horizon - 1`` is the estimator of</span>
+<span class="sd">        Diebold and Mariano (1995) and Harvey et al. (1997). See the Notes.</span>
+
+<span class="sd">        .. versionadded:: 0.15.1</span>
 
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
 <span class="sd">    DieboldMarianoResult</span>
-<span class="sd">        A result object containing the DM test statistic, its p-value, and</span>
-<span class="sd">        the Harvey et al. (1997) adjustment factor, if applicable.</span>
+<span class="sd">        A result object with the test statistic, the p-value, the number of</span>
+<span class="sd">        lags, the Harvey et al. (1997) adjustment factor, the alternative</span>
+<span class="sd">        and the kernel. Unpacks as ``statistic, pvalue``.</span>
+
+<span class="sd">    Raises</span>
+<span class="sd">    ------</span>
+<span class="sd">    MissingDataError</span>
+<span class="sd">        If the loss differential contains non-finite values.</span>
+<span class="sd">    ValueError</span>
+<span class="sd">        If ``horizon`` or ``lags`` is too large for the number of</span>
+<span class="sd">        observations, if ``criterion`` does not return one loss per</span>
+<span class="sd">        observation, if the loss differential is constant up to rounding</span>
+<span class="sd">        error, for example when the two forecasts are identical, or if the</span>
+<span class="sd">        estimated long-run variance is not positive, which can happen with</span>
+<span class="sd">        the uniform kernel.</span>
 
 <span class="sd">    Notes</span>
 <span class="sd">    -----</span>
@@ -3808,21 +3927,38 @@
 
 <span class="sd">    Under the null hypothesis of equal predictive accuracy,</span>
 <span class="sd">    :math:`E[d_t] = 0`. The test statistic is the t-statistic from</span>
-<span class="sd">    regressing :math:`d_t` on a constant using a Newey-West (HAC)</span>
-<span class="sd">    covariance estimator with ``lags`` lags, i.e.</span>
+<span class="sd">    regressing :math:`d_t` on a constant using a HAC covariance estimator</span>
+<span class="sd">    with :math:`L` = ``lags`` lags, i.e.</span>
 
 <span class="sd">    .. math::</span>
 
 <span class="sd">        DM = \\frac{\\bar{d}}{\\sqrt{\\widehat{\\mathrm{avar}}(\\bar{d})}},</span>
+<span class="sd">        \\qquad</span>
+<span class="sd">        \\widehat{\\mathrm{avar}}(\\bar{d}) = \\frac{1}{T}\\left(</span>
+<span class="sd">        \\hat{\\gamma}_0 + 2 \\sum_{j=1}^{L} w_j \\hat{\\gamma}_j\\right),</span>
 
-<span class="sd">    where :math:`\\bar{d}` is the sample mean of :math:`d_t` and</span>
-<span class="sd">    :math:`\\widehat{\\mathrm{avar}}` is the HAC long-run variance</span>
-<span class="sd">    estimator. When ``lags`` is not supplied, a bandwidth of</span>
-<span class="sd">    ``max(horizon - 1, ceil(nobs ** (1/3)))`` is used. This differs from</span>
-<span class="sd">    some presentations of the DM test that always use ``horizon - 1``</span>
-<span class="sd">    lags; pass ``lags=horizon - 1`` explicitly to reproduce that</span>
-<span class="sd">    parameterization. Under the null, ``statistic`` is asymptotically</span>
-<span class="sd">    standard normal.</span>
+<span class="sd">    where :math:`\\bar{d}` is the sample mean of :math:`d_t`,</span>
+<span class="sd">    :math:`\\hat{\\gamma}_j` is its sample autocovariance at lag :math:`j`</span>
+<span class="sd">    (with divisor :math:`T`) and :math:`w_j` are the kernel weights. The</span>
+<span class="sd">    Bartlett kernel uses :math:`w_j = 1 - j / (L + 1)`, which always gives</span>
+<span class="sd">    a non-negative variance. The uniform kernel uses :math:`w_j = 1`. The</span>
+<span class="sd">    h-step forecast errors of an optimal forecast are at most MA(h - 1), so</span>
+<span class="sd">    Diebold and Mariano (1995) use the uniform kernel with</span>
+<span class="sd">    :math:`L = h - 1`, and Harvey et al. (1997) derive their correction for</span>
+<span class="sd">    this estimator. Its estimate of the variance can be negative, in which</span>
+<span class="sd">    case a ``ValueError`` is raised. When ``lags`` is not supplied,</span>
+<span class="sd">    ``max(horizon - 1, ceil(nobs ** (1/3)))`` lags are used with the</span>
+<span class="sd">    Bartlett kernel and ``horizon - 1`` with the uniform kernel. Under the</span>
+<span class="sd">    null, ``statistic`` is asymptotically standard normal.</span>
+
+<span class="sd">    With ``kernel="uniform"``, ``lags=horizon - 1`` and ``harvey_adj=True``,</span>
+<span class="sd">    the statistic and the p-values are those of ``dm.test`` in the R</span>
+<span class="sd">    package forecast with ``varestimator="acf"``, its default. With</span>
+<span class="sd">    ``kernel="bartlett"`` and ``lags=horizon - 1`` they are those of</span>
+<span class="sd">    ``varestimator="bartlett"``. ``alternative="larger"`` corresponds to</span>
+<span class="sd">    ``alternative="greater"`` in R. If the estimate of the variance with</span>
+<span class="sd">    the uniform kernel is not positive, ``dm.test`` warns and computes the</span>
+<span class="sd">    test with ``h=1`` instead, while a ``ValueError`` is raised here.</span>
 
 <span class="sd">    Because ``forecast_a`` and ``forecast_b`` are typically generated from</span>
 <span class="sd">    overlapping information sets (e.g., multi-step-ahead forecasts), the</span>
@@ -3862,6 +3998,14 @@
 <span class="sd">    Any other loss can be supplied directly through ``criterion`` as a</span>
 <span class="sd">    callable, for example an asymmetric loss or a loss appropriate for</span>
 <span class="sd">    strictly positive series such as QLIKE (see Examples).</span>
+
+<span class="sd">    .. versionchanged:: 0.15.1</span>
+
+<span class="sd">       A ``ValueError`` is raised if the loss differential is constant up</span>
+<span class="sd">       to rounding error, if its estimated long-run variance is not</span>
+<span class="sd">       positive, or if ``horizon`` or ``lags`` is too large for the number</span>
+<span class="sd">       of observations. These cases returned ``nan`` or a meaningless</span>
+<span class="sd">       statistic before.</span>
 
 <span class="sd">    References</span>
 <span class="sd">    ----------</span>
@@ -3903,6 +4047,10 @@
     <span class="n">harvey_adj</span> <span class="o">=</span> <span class="n">bool_like</span><span class="p">(</span><span class="n">harvey_adj</span><span class="p">,</span> <span class="s2">"harvey_adj"</span><span class="p">)</span>
     <span class="n">power</span> <span class="o">=</span> <span class="n">float_like</span><span class="p">(</span><span class="n">power</span><span class="p">,</span> <span class="s2">"power"</span><span class="p">,</span> <span class="n">optional</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
     <span class="n">horizon</span> <span class="o">=</span> <span class="n">int_like</span><span class="p">(</span><span class="n">horizon</span><span class="p">,</span> <span class="s2">"horizon"</span><span class="p">)</span>
+    <span class="n">alternative</span> <span class="o">=</span> <span class="n">string_like</span><span class="p">(</span>
+        <span class="n">alternative</span><span class="p">,</span> <span class="s2">"alternative"</span><span class="p">,</span> <span class="n">options</span><span class="o">=</span><span class="p">(</span><span class="s2">"two-sided"</span><span class="p">,</span> <span class="s2">"larger"</span><span class="p">,</span> <span class="s2">"smaller"</span><span class="p">)</span>
+    <span class="p">)</span>
+    <span class="n">kernel</span> <span class="o">=</span> <span class="n">string_like</span><span class="p">(</span><span class="n">kernel</span><span class="p">,</span> <span class="s2">"kernel"</span><span class="p">,</span> <span class="n">options</span><span class="o">=</span><span class="p">(</span><span class="s2">"bartlett"</span><span class="p">,</span> <span class="s2">"uniform"</span><span class="p">))</span>
 
     <span class="k">if</span> <span class="n">horizon</span> <span class="o">&lt;</span> <span class="mi">1</span><span class="p">:</span>
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"horizon must be a positive integer."</span><span class="p">)</span>
@@ -3912,9 +4060,17 @@
     <span class="n">t</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">y</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">forecast_a</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">!=</span> <span class="n">t</span> <span class="ow">or</span> <span class="n">forecast_b</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">!=</span> <span class="n">t</span><span class="p">:</span>
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"y, forecast_a and forecast_b must all have equal length."</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">horizon</span> <span class="o">&gt;=</span> <span class="n">t</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">"horizon (</span><span class="si">{</span><span class="n">horizon</span><span class="si">}</span><span class="s2">) must be smaller than the number of "</span>
+            <span class="sa">f</span><span class="s2">"observations (</span><span class="si">{</span><span class="n">t</span><span class="si">}</span><span class="s2">)."</span>
+        <span class="p">)</span>
 
     <span class="k">if</span> <span class="n">lags</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-        <span class="n">lags</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="nb">max</span><span class="p">(</span><span class="n">horizon</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ceil</span><span class="p">(</span><span class="n">t</span> <span class="o">**</span> <span class="p">(</span><span class="mi">1</span> <span class="o">/</span> <span class="mi">3</span><span class="p">))))</span>
+        <span class="k">if</span> <span class="n">kernel</span> <span class="o">==</span> <span class="s2">"uniform"</span><span class="p">:</span>
+            <span class="n">lags</span> <span class="o">=</span> <span class="n">horizon</span> <span class="o">-</span> <span class="mi">1</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">lags</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="nb">max</span><span class="p">(</span><span class="n">horizon</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ceil</span><span class="p">(</span><span class="n">t</span> <span class="o">**</span> <span class="p">(</span><span class="mi">1</span> <span class="o">/</span> <span class="mi">3</span><span class="p">))))</span>
 
     <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">criterion</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
         <span class="n">criterion</span> <span class="o">=</span> <span class="n">string_like</span><span class="p">(</span>
@@ -3946,11 +4102,16 @@
     <span class="c1"># calculate d based on criterion</span>
     <span class="n">loss_1</span> <span class="o">=</span> <span class="n">criterion_func</span><span class="p">(</span><span class="n">y</span><span class="p">,</span> <span class="n">forecast_a</span><span class="p">)</span>
     <span class="n">loss_2</span> <span class="o">=</span> <span class="n">criterion_func</span><span class="p">(</span><span class="n">y</span><span class="p">,</span> <span class="n">forecast_b</span><span class="p">)</span>
-    <span class="n">d</span> <span class="o">=</span> <span class="n">loss_1</span> <span class="o">-</span> <span class="n">loss_2</span>
+    <span class="n">d</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">loss_1</span> <span class="o">-</span> <span class="n">loss_2</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">d</span><span class="o">.</span><span class="n">shape</span> <span class="o">==</span> <span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="mi">1</span><span class="p">):</span>
+        <span class="n">d</span> <span class="o">=</span> <span class="n">d</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">d</span><span class="o">.</span><span class="n">shape</span> <span class="o">!=</span> <span class="p">(</span><span class="n">t</span><span class="p">,):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="s2">"criterion must return one loss per observation, an array with "</span>
+            <span class="sa">f</span><span class="s2">"shape (</span><span class="si">{</span><span class="n">t</span><span class="si">}</span><span class="s2">,), but the loss differential has shape </span><span class="si">{</span><span class="n">d</span><span class="o">.</span><span class="n">shape</span><span class="si">}</span><span class="s2">."</span>
+        <span class="p">)</span>
 
-    <span class="c1"># calculate test statistic as the t-stat of a constant-only HAC regression</span>
-    <span class="n">res</span> <span class="o">=</span> <span class="n">OLS</span><span class="p">(</span><span class="n">d</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ones_like</span><span class="p">(</span><span class="n">d</span><span class="p">))</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">cov_type</span><span class="o">=</span><span class="s2">"HAC"</span><span class="p">,</span> <span class="n">cov_kwds</span><span class="o">=</span><span class="p">{</span><span class="s2">"maxlags"</span><span class="p">:</span> <span class="n">lags</span><span class="p">})</span>
-    <span class="n">dm_stat</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">res</span><span class="o">.</span><span class="n">tvalues</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+    <span class="n">dm_stat</span> <span class="o">=</span> <span class="n">_hac_mean_tstat</span><span class="p">(</span><span class="n">d</span><span class="p">,</span> <span class="n">lags</span><span class="p">,</span> <span class="n">kernel</span><span class="p">,</span> <span class="s2">"loss differential"</span><span class="p">)</span>
 
     <span class="c1"># Harvey et. al (1997) small-sample adjustment</span>
     <span class="k">if</span> <span class="n">harvey_adj</span><span class="p">:</span>
@@ -3958,12 +4119,21 @@
             <span class="p">(</span><span class="n">t</span> <span class="o">+</span> <span class="mi">1</span> <span class="o">-</span> <span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">horizon</span><span class="p">)</span> <span class="o">+</span> <span class="p">(</span><span class="n">horizon</span> <span class="o">*</span> <span class="p">(</span><span class="n">horizon</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span> <span class="o">/</span> <span class="n">t</span><span class="p">))</span> <span class="o">/</span> <span class="n">t</span>
         <span class="p">)</span>
         <span class="n">dm_stat</span> <span class="o">=</span> <span class="n">adj_factor</span> <span class="o">*</span> <span class="n">dm_stat</span>
-        <span class="n">p_value</span> <span class="o">=</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">stats</span><span class="o">.</span><span class="n">t</span><span class="o">.</span><span class="n">cdf</span><span class="p">(</span><span class="o">-</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">dm_stat</span><span class="p">),</span> <span class="n">df</span><span class="o">=</span><span class="n">t</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="n">dist</span> <span class="o">=</span> <span class="n">stats</span><span class="o">.</span><span class="n">t</span><span class="p">(</span><span class="n">df</span><span class="o">=</span><span class="n">t</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
     <span class="k">else</span><span class="p">:</span>
         <span class="n">adj_factor</span> <span class="o">=</span> <span class="kc">None</span>
-        <span class="n">p_value</span> <span class="o">=</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">stats</span><span class="o">.</span><span class="n">norm</span><span class="o">.</span><span class="n">cdf</span><span class="p">(</span><span class="o">-</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">dm_stat</span><span class="p">))</span>
+        <span class="n">dist</span> <span class="o">=</span> <span class="n">stats</span><span class="o">.</span><span class="n">norm</span>
 
-    <span class="k">return</span> <span class="n">DieboldMarianoResult</span><span class="p">(</span><span class="n">dm_stat</span><span class="p">,</span> <span class="nb">float</span><span class="p">(</span><span class="n">p_value</span><span class="p">),</span> <span class="n">lags</span><span class="p">,</span> <span class="n">adj_factor</span><span class="p">)</span></div>
+    <span class="k">if</span> <span class="n">alternative</span> <span class="o">==</span> <span class="s2">"two-sided"</span><span class="p">:</span>
+        <span class="n">p_value</span> <span class="o">=</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">dist</span><span class="o">.</span><span class="n">cdf</span><span class="p">(</span><span class="o">-</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">dm_stat</span><span class="p">))</span>
+    <span class="k">elif</span> <span class="n">alternative</span> <span class="o">==</span> <span class="s2">"larger"</span><span class="p">:</span>
+        <span class="n">p_value</span> <span class="o">=</span> <span class="n">dist</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="n">dm_stat</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">p_value</span> <span class="o">=</span> <span class="n">dist</span><span class="o">.</span><span class="n">cdf</span><span class="p">(</span><span class="n">dm_stat</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">DieboldMarianoResult</span><span class="p">(</span>
+        <span class="n">dm_stat</span><span class="p">,</span> <span class="nb">float</span><span class="p">(</span><span class="n">p_value</span><span class="p">),</span> <span class="n">lags</span><span class="p">,</span> <span class="n">adj_factor</span><span class="p">,</span> <span class="n">alternative</span><span class="p">,</span> <span class="n">kernel</span>
+    <span class="p">)</span></div>
 
 
 
