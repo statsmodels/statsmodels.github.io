@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
-    <title>statsmodels.base.optimizer &#8212; statsmodels 0.15.1 (+1438)</title>
+    <title>statsmodels.base.optimizer &#8212; statsmodels 0.15.1 (+1426)</title>
   <link rel="icon" type="image/png" sizes="32x32" href="../../../_static/icons/favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="../../../_static/icons/favicon-16x16.png">
   <link rel="manifest" href="../../../_static/icons/site.webmanifest">
@@ -71,7 +71,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="color-scheme" content="light dark"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="0.15.1 (+1438)" />
+  <meta name="docsearch:version" content="0.15.1 (+1426)" />
     <meta name="docbuild:last-update" content="Nov 17, 2026"/>
   
     
@@ -568,14 +568,13 @@
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.compat.scipy</span><span class="w"> </span><span class="kn">import</span> <span class="n">SP_LT_115</span><span class="p">,</span> <span class="n">SP_LT_118</span>
 
-<span class="kn">import</span><span class="w"> </span><span class="nn">contextlib</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">TYPE_CHECKING</span><span class="p">,</span> <span class="n">Any</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">warnings</span>
 
 <span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">scipy</span><span class="w"> </span><span class="kn">import</span> <span class="n">optimize</span>
 
-<span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.tools.validation</span><span class="w"> </span><span class="kn">import</span> <span class="n">bool_like</span><span class="p">,</span> <span class="n">string_like</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.tools.validation</span><span class="w"> </span><span class="kn">import</span> <span class="n">string_like</span>
 
 <span class="k">if</span> <span class="n">TYPE_CHECKING</span><span class="p">:</span>
     <span class="kn">from</span><span class="w"> </span><span class="nn">collections.abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">Sequence</span>
@@ -683,14 +682,6 @@
 <span class="sd">            'newton'</span>
 <span class="sd">                tol : float</span>
 <span class="sd">                    Relative error in params acceptable for convergence.</span>
-<span class="sd">                step_halving : {True, False, "finite"}</span>
-<span class="sd">                    What is done with a Newton step that gives an objective</span>
-<span class="sd">                    that is not finite or larger than the current one. True,</span>
-<span class="sd">                    the default, halves such a step up to 30 times, "finite"</span>
-<span class="sd">                    halves only a step with an objective that is not finite,</span>
-<span class="sd">                    and False takes the full step. If no step is found, the</span>
-<span class="sd">                    iteration stops at the last parameters, `warnflag` is 2</span>
-<span class="sd">                    and `converged` is False.</span>
 <span class="sd">            'nm' -- Nelder Mead</span>
 <span class="sd">                xtol : float</span>
 <span class="sd">                    Relative error in params acceptable for convergence</span>
@@ -1027,89 +1018,6 @@
     <span class="k">return</span> <span class="n">xopt</span><span class="p">,</span> <span class="n">retvals</span>
 
 
-<span class="k">def</span><span class="w"> </span><span class="nf">_newton_step_halving</span><span class="p">(</span>
-    <span class="n">f</span><span class="p">,</span> <span class="n">fargs</span><span class="p">,</span> <span class="n">oldparams</span><span class="p">,</span> <span class="n">step</span><span class="p">,</span> <span class="n">fold</span><span class="p">,</span> <span class="n">max_halvings</span><span class="o">=</span><span class="mi">30</span><span class="p">,</span> <span class="n">use_first_finite</span><span class="o">=</span><span class="kc">True</span>
-<span class="p">):</span>
-<span class="w">    </span><span class="sd">"""</span>
-<span class="sd">    Shorten a Newton step that increases the objective or is not finite</span>
-
-<span class="sd">    Parameters</span>
-<span class="sd">    ----------</span>
-<span class="sd">    f : callable</span>
-<span class="sd">        Returns negative log likelihood given parameters.</span>
-<span class="sd">    fargs : tuple</span>
-<span class="sd">        Extra arguments passed to f.</span>
-<span class="sd">    oldparams : ndarray</span>
-<span class="sd">        The current parameters.</span>
-<span class="sd">    step : ndarray</span>
-<span class="sd">        The Newton step, so that the update is ``oldparams - step``.</span>
-<span class="sd">    fold : float</span>
-<span class="sd">        The value of f at oldparams, or nan if a step does not have to</span>
-<span class="sd">        decrease f.</span>
-<span class="sd">    max_halvings : int, optional</span>
-<span class="sd">        The maximum number of times that the step is halved.</span>
-<span class="sd">    use_first_finite : bool, optional</span>
-<span class="sd">        If True and no step that does not increase f is found, the first step</span>
-<span class="sd">        with a finite value of f is used. If False, there is no step then.</span>
-
-<span class="sd">    Returns</span>
-<span class="sd">    -------</span>
-<span class="sd">    newparams : ndarray</span>
-<span class="sd">        The parameters of the update.</span>
-<span class="sd">    fnew : float</span>
-<span class="sd">        The value of f at newparams.</span>
-<span class="sd">    success : bool</span>
-<span class="sd">        False if there is no step, which is the case if f is not finite for</span>
-<span class="sd">        every step, or if f increases for every step and `use_first_finite`</span>
-<span class="sd">        is False. Then newparams is the unchanged oldparams and fnew is the</span>
-<span class="sd">        argument `fold`.</span>
-<span class="sd">    shortened : bool</span>
-<span class="sd">        True if the step was shortened, so that newparams is not the full</span>
-<span class="sd">        Newton update.</span>
-
-<span class="sd">    Notes</span>
-<span class="sd">    -----</span>
-<span class="sd">    The full step is used if f is finite at the updated parameters and does</span>
-<span class="sd">    not increase, apart from a small relative tolerance. Otherwise the step is</span>
-<span class="sd">    halved until that is the case. A step is not required to decrease f if</span>
-<span class="sd">    `fold` is nan, and then only a step with a finite value of f is needed.</span>
-<span class="sd">    This makes a step from poor starting values</span>
-<span class="sd">    that overshoots, for example into a linear predictor for which exp</span>
-<span class="sd">    overflows or is huge, converge instead of diverging. If no step is found</span>
-<span class="sd">    that does not increase f, the first step with a finite value of f is used</span>
-<span class="sd">    if `use_first_finite` is True, which is the choice if f and its gradient</span>
-<span class="sd">    disagree because of the rounding error of f. It is False if the Newton</span>
-<span class="sd">    direction is not a direction of descent, since the steps then increase f</span>
-<span class="sd">    where they are small. A step with a non-finite value of f is never used.</span>
-<span class="sd">    """</span>
-    <span class="n">finite_fold</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">fold</span><span class="p">)</span>
-    <span class="c1"># a relative tolerance far above the rounding error of f, so that a step</span>
-    <span class="c1"># is not rejected because of noise, and far below the decrease of f that</span>
-    <span class="c1"># is possible while the step is still larger than the tolerance of the fit</span>
-    <span class="n">tol</span> <span class="o">=</span> <span class="mf">1e-12</span> <span class="o">*</span> <span class="nb">abs</span><span class="p">(</span><span class="n">fold</span><span class="p">)</span> <span class="k">if</span> <span class="n">finite_fold</span> <span class="k">else</span> <span class="mf">0.0</span>
-    <span class="n">first_finite</span> <span class="o">=</span> <span class="kc">None</span>
-    <span class="c1"># overflow and invalid values at the trial points are handled here</span>
-    <span class="k">with</span> <span class="n">np</span><span class="o">.</span><span class="n">errstate</span><span class="p">(</span><span class="nb">all</span><span class="o">=</span><span class="s2">"ignore"</span><span class="p">):</span>
-        <span class="n">factor</span> <span class="o">=</span> <span class="mf">1.0</span>
-        <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">max_halvings</span> <span class="o">+</span> <span class="mi">1</span><span class="p">):</span>
-            <span class="n">newparams</span> <span class="o">=</span> <span class="n">oldparams</span> <span class="o">-</span> <span class="n">factor</span> <span class="o">*</span> <span class="n">step</span>
-            <span class="n">fnew</span> <span class="o">=</span> <span class="n">f</span><span class="p">(</span><span class="n">newparams</span><span class="p">,</span> <span class="o">*</span><span class="n">fargs</span><span class="p">)</span>
-            <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">fnew</span><span class="p">):</span>
-                <span class="k">if</span> <span class="ow">not</span> <span class="n">finite_fold</span> <span class="ow">or</span> <span class="n">fnew</span> <span class="o">&lt;=</span> <span class="n">fold</span> <span class="o">+</span> <span class="n">tol</span><span class="p">:</span>
-                    <span class="k">return</span> <span class="n">newparams</span><span class="p">,</span> <span class="n">fnew</span><span class="p">,</span> <span class="kc">True</span><span class="p">,</span> <span class="n">factor</span> <span class="o">&lt;</span> <span class="mi">1</span>
-                <span class="k">if</span> <span class="n">first_finite</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-                    <span class="n">first_finite</span> <span class="o">=</span> <span class="p">(</span><span class="n">newparams</span><span class="p">,</span> <span class="n">fnew</span><span class="p">,</span> <span class="kc">True</span><span class="p">,</span> <span class="n">factor</span> <span class="o">&lt;</span> <span class="mi">1</span><span class="p">)</span>
-            <span class="n">factor</span> <span class="o">/=</span> <span class="mi">2</span>
-    <span class="k">if</span> <span class="n">use_first_finite</span> <span class="ow">and</span> <span class="n">first_finite</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-        <span class="k">return</span> <span class="n">first_finite</span>
-    <span class="k">return</span> <span class="n">oldparams</span><span class="p">,</span> <span class="n">fold</span><span class="p">,</span> <span class="kc">False</span><span class="p">,</span> <span class="kc">False</span>
-
-
-<span class="k">def</span><span class="w"> </span><span class="nf">_quiet_if</span><span class="p">(</span><span class="n">condition</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">"""Context that ignores floating point warnings if `condition` is True"""</span>
-    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">errstate</span><span class="p">(</span><span class="nb">all</span><span class="o">=</span><span class="s2">"ignore"</span><span class="p">)</span> <span class="k">if</span> <span class="n">condition</span> <span class="k">else</span> <span class="n">contextlib</span><span class="o">.</span><span class="n">nullcontext</span><span class="p">()</span>
-
-
 <div class="viewcode-block" id="_fit_newton">
 <a class="viewcode-back" href="../../../generated/statsmodels.base.optimizer._fit_newton.html#statsmodels.base.optimizer._fit_newton">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">_fit_newton</span><span class="p">(</span>
@@ -1171,124 +1079,30 @@
 <span class="sd">        If `full_output` is True then this is a dictionary which holds</span>
 <span class="sd">        information returned from the solver used. If it is False, this is</span>
 <span class="sd">        None.</span>
-
-<span class="sd">    Notes</span>
-<span class="sd">    -----</span>
-<span class="sd">    The keyword arguments in `kwargs` are ``tol``, ``ridge_factor`` and</span>
-<span class="sd">    ``step_halving``. The iteration stops if the change of the parameters is</span>
-<span class="sd">    at most ``tol`` in every element.</span>
-
-<span class="sd">    ``step_halving`` controls what is done with a Newton step that gives a</span>
-<span class="sd">    value of the objective that is not finite or larger than the current one.</span>
-<span class="sd">    It is one of the following.</span>
-
-<span class="sd">    * ``True`` (the default): the step is halved up to 30 times until the</span>
-<span class="sd">      value of the objective is finite and does not increase.</span>
-<span class="sd">    * ``"finite"``: the step is halved only if the value of the objective is</span>
-<span class="sd">      not finite. This is the choice for models where the score and the</span>
-<span class="sd">      Hessian are not the derivatives of the objective.</span>
-<span class="sd">    * ``False``: the full Newton step is always taken.</span>
-
-<span class="sd">    If no step is found, the iteration stops at the last parameters,</span>
-<span class="sd">    `warnflag` is 2 and `converged` is False. If the Newton step is not a</span>
-<span class="sd">    direction of descent, for example because the Hessian is not positive</span>
-<span class="sd">    definite, no step with a larger objective is taken, and only a step that</span>
-<span class="sd">    decreases it is accepted. Otherwise, if no step decreases the objective,</span>
-<span class="sd">    the first step with a finite value is used.</span>
-
-<span class="sd">    For a step that was shortened the change of the parameters that is</span>
-<span class="sd">    compared with ``tol`` is that of the full Newton step, since a shortened</span>
-<span class="sd">    step can be small only because the objective is not finite or increases</span>
-<span class="sd">    beyond it. An iteration that only takes shortened steps ends at `maxiter`</span>
-<span class="sd">    with `warnflag` 1, or at a point beyond which no step is found.</span>
-
-<span class="sd">    .. versionchanged:: 0.15.1</span>
-
-<span class="sd">       Added ``step_halving``. Before, a step that left the region where the</span>
-<span class="sd">       objective is finite continued with nan parameters and `converged` True.</span>
 <span class="sd">    """</span>
-    <span class="n">check_kwargs</span><span class="p">(</span><span class="n">kwargs</span><span class="p">,</span> <span class="p">(</span><span class="s2">"tol"</span><span class="p">,</span> <span class="s2">"ridge_factor"</span><span class="p">,</span> <span class="s2">"step_halving"</span><span class="p">),</span> <span class="s2">"newton"</span><span class="p">)</span>
+    <span class="n">check_kwargs</span><span class="p">(</span><span class="n">kwargs</span><span class="p">,</span> <span class="p">(</span><span class="s2">"tol"</span><span class="p">,</span> <span class="s2">"ridge_factor"</span><span class="p">),</span> <span class="s2">"newton"</span><span class="p">)</span>
     <span class="n">tol</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s2">"tol"</span><span class="p">,</span> <span class="mf">1e-8</span><span class="p">)</span>
     <span class="n">ridge_factor</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s2">"ridge_factor"</span><span class="p">,</span> <span class="mf">1e-10</span><span class="p">)</span>
-    <span class="n">step_halving</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s2">"step_halving"</span><span class="p">,</span> <span class="kc">True</span><span class="p">)</span>
-    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">step_halving</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
-        <span class="n">step_halving</span> <span class="o">=</span> <span class="n">string_like</span><span class="p">(</span><span class="n">step_halving</span><span class="p">,</span> <span class="s2">"step_halving"</span><span class="p">,</span> <span class="n">options</span><span class="o">=</span><span class="p">(</span><span class="s2">"finite"</span><span class="p">,))</span>
-    <span class="k">else</span><span class="p">:</span>
-        <span class="n">step_halving</span> <span class="o">=</span> <span class="n">bool_like</span><span class="p">(</span><span class="n">step_halving</span><span class="p">,</span> <span class="s2">"step_halving"</span><span class="p">,</span> <span class="n">strict</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
     <span class="n">iterations</span> <span class="o">=</span> <span class="mi">0</span>
     <span class="n">oldparams</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span>
-    <span class="c1"># a copy, so that the result does not share memory with start_params</span>
-    <span class="n">newparams</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">start_params</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
-    <span class="n">step_failed</span> <span class="o">=</span> <span class="kc">False</span>
-    <span class="c1"># The value of f at newparams if it is known. It is the current value</span>
-    <span class="c1"># that a step has to decrease, and it is not needed to evaluate f again at</span>
-    <span class="c1"># the end.</span>
-    <span class="n">fcur</span> <span class="o">=</span> <span class="kc">None</span>
-    <span class="k">if</span> <span class="n">step_halving</span> <span class="ow">is</span> <span class="kc">True</span><span class="p">:</span>
-        <span class="k">with</span> <span class="n">np</span><span class="o">.</span><span class="n">errstate</span><span class="p">(</span><span class="nb">all</span><span class="o">=</span><span class="s2">"ignore"</span><span class="p">):</span>
-            <span class="n">fcur</span> <span class="o">=</span> <span class="n">f</span><span class="p">(</span><span class="n">newparams</span><span class="p">,</span> <span class="o">*</span><span class="n">fargs</span><span class="p">)</span>
+    <span class="n">newparams</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">start_params</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">retall</span><span class="p">:</span>
         <span class="n">history</span> <span class="o">=</span> <span class="p">[</span><span class="n">oldparams</span><span class="p">,</span> <span class="n">newparams</span><span class="p">]</span>
-    <span class="n">change</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">newparams</span> <span class="o">-</span> <span class="n">oldparams</span><span class="p">)</span>
-    <span class="k">while</span> <span class="n">iterations</span> <span class="o">&lt;</span> <span class="n">maxiter</span> <span class="ow">and</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">change</span> <span class="o">&gt;</span> <span class="n">tol</span><span class="p">):</span>
-        <span class="c1"># The score and the Hessian at a start for which f is not finite are</span>
-        <span class="c1"># only used to look for a step, so that an overflow is not of interest.</span>
-        <span class="k">with</span> <span class="n">_quiet_if</span><span class="p">(</span><span class="n">fcur</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">fcur</span><span class="p">)):</span>
-            <span class="n">H</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">hess</span><span class="p">(</span><span class="n">newparams</span><span class="p">))</span>
-            <span class="c1"># regularize Hessian, not clear what ridge factor should be</span>
-            <span class="c1"># keyword option with absolute default 1e-10, see #1847</span>
-            <span class="k">if</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">ridge_factor</span> <span class="o">==</span> <span class="mi">0</span><span class="p">):</span>
-                <span class="n">H</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">diag_indices</span><span class="p">(</span><span class="n">H</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])]</span> <span class="o">+=</span> <span class="n">ridge_factor</span>
-            <span class="n">oldparams</span> <span class="o">=</span> <span class="n">newparams</span>
-            <span class="n">grad</span> <span class="o">=</span> <span class="n">score</span><span class="p">(</span><span class="n">oldparams</span><span class="p">)</span>
-            <span class="n">step</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">solve</span><span class="p">(</span><span class="n">H</span><span class="p">,</span> <span class="n">grad</span><span class="p">)</span>
-        <span class="k">if</span> <span class="n">step_halving</span><span class="p">:</span>
-            <span class="c1"># Halve the step if it gives a value of f that is not finite or</span>
-            <span class="c1"># larger, instead of continuing with nan, inf or a worse value. If</span>
-            <span class="c1"># the step is not a direction of descent its short steps increase</span>
-            <span class="c1"># f, so that the step is not used if f increases for all of them.</span>
-            <span class="n">descent</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">ravel</span><span class="p">(</span><span class="n">grad</span><span class="p">),</span> <span class="n">np</span><span class="o">.</span><span class="n">ravel</span><span class="p">(</span><span class="n">step</span><span class="p">)))</span> <span class="o">&gt;</span> <span class="mi">0</span>
-            <span class="n">trial</span><span class="p">,</span> <span class="n">ftrial</span><span class="p">,</span> <span class="n">success</span><span class="p">,</span> <span class="n">shortened</span> <span class="o">=</span> <span class="n">_newton_step_halving</span><span class="p">(</span>
-                <span class="n">f</span><span class="p">,</span>
-                <span class="n">fargs</span><span class="p">,</span>
-                <span class="n">oldparams</span><span class="p">,</span>
-                <span class="n">step</span><span class="p">,</span>
-                <span class="n">fcur</span> <span class="k">if</span> <span class="n">step_halving</span> <span class="ow">is</span> <span class="kc">True</span> <span class="k">else</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span><span class="p">,</span>
-                <span class="n">use_first_finite</span><span class="o">=</span><span class="n">descent</span><span class="p">,</span>
-            <span class="p">)</span>
-            <span class="k">if</span> <span class="ow">not</span> <span class="n">success</span><span class="p">:</span>
-                <span class="n">step_failed</span> <span class="o">=</span> <span class="kc">True</span>
-                <span class="k">break</span>
-            <span class="n">newparams</span><span class="p">,</span> <span class="n">fcur</span> <span class="o">=</span> <span class="n">trial</span><span class="p">,</span> <span class="n">ftrial</span>
-        <span class="k">else</span><span class="p">:</span>
-            <span class="n">newparams</span> <span class="o">=</span> <span class="n">oldparams</span> <span class="o">-</span> <span class="n">step</span>
-            <span class="n">shortened</span> <span class="o">=</span> <span class="kc">False</span>
-        <span class="c1"># A shortened step can be small only because f is not finite or</span>
-        <span class="c1"># increases beyond it, which does not show that the iteration</span>
-        <span class="c1"># converged. Then the change of the full Newton step is used.</span>
-        <span class="n">change</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">step</span><span class="p">)</span> <span class="k">if</span> <span class="n">shortened</span> <span class="k">else</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">newparams</span> <span class="o">-</span> <span class="n">oldparams</span><span class="p">)</span>
+    <span class="k">while</span> <span class="n">iterations</span> <span class="o">&lt;</span> <span class="n">maxiter</span> <span class="ow">and</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">newparams</span> <span class="o">-</span> <span class="n">oldparams</span><span class="p">)</span> <span class="o">&gt;</span> <span class="n">tol</span><span class="p">):</span>
+        <span class="n">H</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">hess</span><span class="p">(</span><span class="n">newparams</span><span class="p">))</span>
+        <span class="c1"># regularize Hessian, not clear what ridge factor should be</span>
+        <span class="c1"># keyword option with absolute default 1e-10, see #1847</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">ridge_factor</span> <span class="o">==</span> <span class="mi">0</span><span class="p">):</span>
+            <span class="n">H</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">diag_indices</span><span class="p">(</span><span class="n">H</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])]</span> <span class="o">+=</span> <span class="n">ridge_factor</span>
+        <span class="n">oldparams</span> <span class="o">=</span> <span class="n">newparams</span>
+        <span class="n">newparams</span> <span class="o">=</span> <span class="n">oldparams</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">solve</span><span class="p">(</span><span class="n">H</span><span class="p">,</span> <span class="n">score</span><span class="p">(</span><span class="n">oldparams</span><span class="p">))</span>
         <span class="k">if</span> <span class="n">retall</span><span class="p">:</span>
             <span class="n">history</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">newparams</span><span class="p">)</span>
         <span class="k">if</span> <span class="n">callback</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
             <span class="n">callback</span><span class="p">(</span><span class="n">newparams</span><span class="p">)</span>
         <span class="n">iterations</span> <span class="o">+=</span> <span class="mi">1</span>
-    <span class="c1"># The objective, the score and the Hessian at the parameters of a failed</span>
-    <span class="c1"># step are only reported, so that a warning about an overflow there is not</span>
-    <span class="c1"># of interest.</span>
-    <span class="k">with</span> <span class="n">_quiet_if</span><span class="p">(</span><span class="n">step_failed</span><span class="p">):</span>
-        <span class="k">if</span> <span class="n">fcur</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="n">fcur</span> <span class="o">=</span> <span class="n">f</span><span class="p">(</span><span class="n">newparams</span><span class="p">,</span> <span class="o">*</span><span class="n">fargs</span><span class="p">)</span>
-    <span class="n">fval</span> <span class="o">=</span> <span class="n">fcur</span>  <span class="c1"># this is the negative likelihood</span>
-    <span class="k">if</span> <span class="n">step_failed</span> <span class="ow">or</span> <span class="ow">not</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">newparams</span><span class="p">))</span> <span class="ow">and</span> <span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">fval</span><span class="p">)):</span>
-        <span class="n">warnflag</span> <span class="o">=</span> <span class="mi">2</span>
-        <span class="k">if</span> <span class="n">disp</span><span class="p">:</span>
-            <span class="k">if</span> <span class="n">step_failed</span><span class="p">:</span>
-                <span class="nb">print</span><span class="p">(</span><span class="s2">"Warning: No acceptable step was found."</span><span class="p">)</span>
-            <span class="k">else</span><span class="p">:</span>
-                <span class="nb">print</span><span class="p">(</span><span class="s2">"Warning: The parameters or the function value are not finite."</span><span class="p">)</span>
-            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"         Current function value: </span><span class="si">{</span><span class="n">fval</span><span class="si">:</span><span class="s2">f</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
-            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"         Iterations: </span><span class="si">{</span><span class="n">iterations</span><span class="si">:</span><span class="s2">d</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
-    <span class="k">elif</span> <span class="n">iterations</span> <span class="o">==</span> <span class="n">maxiter</span><span class="p">:</span>
+    <span class="n">fval</span> <span class="o">=</span> <span class="n">f</span><span class="p">(</span><span class="n">newparams</span><span class="p">,</span> <span class="o">*</span><span class="n">fargs</span><span class="p">)</span>  <span class="c1"># this is the negative likelihood</span>
+    <span class="k">if</span> <span class="n">iterations</span> <span class="o">==</span> <span class="n">maxiter</span><span class="p">:</span>
         <span class="n">warnflag</span> <span class="o">=</span> <span class="mi">1</span>
         <span class="k">if</span> <span class="n">disp</span><span class="p">:</span>
             <span class="nb">print</span><span class="p">(</span><span class="s2">"Warning: Maximum number of iterations has been exceeded."</span><span class="p">)</span>
@@ -1301,14 +1115,13 @@
             <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"         Current function value: </span><span class="si">{</span><span class="n">fval</span><span class="si">:</span><span class="s2">f</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
             <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"         Iterations </span><span class="si">{</span><span class="n">iterations</span><span class="si">:</span><span class="s2">d</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">full_output</span><span class="p">:</span>
-        <span class="k">with</span> <span class="n">_quiet_if</span><span class="p">(</span><span class="n">step_failed</span><span class="p">):</span>
-            <span class="n">xopt</span><span class="p">,</span> <span class="n">fopt</span><span class="p">,</span> <span class="n">niter</span><span class="p">,</span> <span class="n">gopt</span><span class="p">,</span> <span class="n">hopt</span> <span class="o">=</span> <span class="p">(</span>
-                <span class="n">newparams</span><span class="p">,</span>
-                <span class="n">fval</span><span class="p">,</span>
-                <span class="n">iterations</span><span class="p">,</span>
-                <span class="n">score</span><span class="p">(</span><span class="n">newparams</span><span class="p">),</span>
-                <span class="n">hess</span><span class="p">(</span><span class="n">newparams</span><span class="p">),</span>
-            <span class="p">)</span>
+        <span class="n">xopt</span><span class="p">,</span> <span class="n">fopt</span><span class="p">,</span> <span class="n">niter</span><span class="p">,</span> <span class="n">gopt</span><span class="p">,</span> <span class="n">hopt</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="n">newparams</span><span class="p">,</span>
+            <span class="n">f</span><span class="p">(</span><span class="n">newparams</span><span class="p">,</span> <span class="o">*</span><span class="n">fargs</span><span class="p">),</span>
+            <span class="n">iterations</span><span class="p">,</span>
+            <span class="n">score</span><span class="p">(</span><span class="n">newparams</span><span class="p">),</span>
+            <span class="n">hess</span><span class="p">(</span><span class="n">newparams</span><span class="p">),</span>
+        <span class="p">)</span>
         <span class="n">converged</span> <span class="o">=</span> <span class="ow">not</span> <span class="n">warnflag</span>
         <span class="n">retvals</span> <span class="o">=</span> <span class="p">{</span>
             <span class="s2">"fopt"</span><span class="p">:</span> <span class="n">fopt</span><span class="p">,</span>
