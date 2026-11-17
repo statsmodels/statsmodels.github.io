@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
-    <title>statsmodels.regression.linear_model &#8212; statsmodels 0.15.1 (+1416)</title>
+    <title>statsmodels.regression.linear_model &#8212; statsmodels 0.15.1 (+1421)</title>
   <link rel="icon" type="image/png" sizes="32x32" href="../../../_static/icons/favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="../../../_static/icons/favicon-16x16.png">
   <link rel="manifest" href="../../../_static/icons/site.webmanifest">
@@ -71,7 +71,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="color-scheme" content="light dark"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="0.15.1 (+1416)" />
+  <meta name="docsearch:version" content="0.15.1 (+1421)" />
     <meta name="docbuild:last-update" content="Nov 17, 2026"/>
   
     
@@ -611,6 +611,7 @@
 <span class="c1"># need import in module instead of lazily to copy `__doc__`</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.regression._prediction</span><span class="w"> </span><span class="kn">import</span> <span class="n">PredictionResults</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.tools._decorators</span><span class="w"> </span><span class="kn">import</span> <span class="n">cache_readonly</span><span class="p">,</span> <span class="n">cache_writable</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.tools._lstsq</span><span class="w"> </span><span class="kn">import</span> <span class="n">QRSVD</span><span class="p">,</span> <span class="n">default_rcond</span><span class="p">,</span> <span class="n">numerical_rank</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.tools.docstring_helpers</span><span class="w"> </span><span class="kn">import</span> <span class="n">Appender</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.tools.sm_exceptions</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
     <span class="n">InvalidTestWarning</span><span class="p">,</span>
@@ -929,7 +930,9 @@
 <span class="sd">        method : {'pinv', 'qr'}, optional</span>
 <span class="sd">            Can be "pinv", "qr".  "pinv" uses the Moore-Penrose pseudoinverse</span>
 <span class="sd">            to solve the least squares problem. "qr" uses the QR</span>
-<span class="sd">            factorization.</span>
+<span class="sd">            factorization of the design followed by the SVD of the R factor.</span>
+<span class="sd">            Both return the minimum-norm solution and use the same rank rule,</span>
+<span class="sd">            see Notes.</span>
 <span class="sd">        cov_type : str, optional</span>
 <span class="sd">            See `regression.linear_model.RegressionResults` for a description</span>
 <span class="sd">            of the available covariance estimators.</span>
@@ -964,6 +967,13 @@
 <span class="sd">        The fit method uses the pseudoinverse of the design/exogenous variables</span>
 <span class="sd">        to solve the least squares minimization.</span>
 
+<span class="sd">        A singular value of the design is treated as zero if it is at most</span>
+<span class="sd">        ``max(nobs, k) * eps`` times the largest singular value, where ``eps``</span>
+<span class="sd">        is the machine precision. This is the rule of</span>
+<span class="sd">        ``numpy.linalg.matrix_rank``. The rank, ``rank``, is the number of</span>
+<span class="sd">        singular values above the cutoff and a ``SingularMatrixWarning`` is</span>
+<span class="sd">        issued if it is less than the number of columns of the design.</span>
+
 <span class="sd">        """</span>
         <span class="c1"># NOTE: pinv_wexog, normalized_cov_params, wexog_singular_values and</span>
         <span class="c1"># rank are recomputed from self.wexog on every call (rather than</span>
@@ -971,35 +981,40 @@
         <span class="c1"># state after fit() depends only on the current data, never on</span>
         <span class="c1"># which `method` a previous fit() call happened to use.</span>
         <span class="n">method</span> <span class="o">=</span> <span class="n">string_like</span><span class="p">(</span><span class="n">method</span><span class="p">,</span> <span class="s2">"method"</span><span class="p">,</span> <span class="n">options</span><span class="o">=</span><span class="p">(</span><span class="s2">"pinv"</span><span class="p">,</span> <span class="s2">"qr"</span><span class="p">),</span> <span class="n">lower</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+        <span class="c1"># One rank rule for both methods: singular values at or below</span>
+        <span class="c1"># rcond * max(singular values) are zero, see tools._lstsq</span>
+        <span class="n">rcond</span> <span class="o">=</span> <span class="n">default_rcond</span><span class="p">(</span><span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">wexog</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
         <span class="k">if</span> <span class="n">method</span> <span class="o">==</span> <span class="s2">"pinv"</span><span class="p">:</span>
-            <span class="n">pinv_wexog</span><span class="p">,</span> <span class="n">singular_values</span> <span class="o">=</span> <span class="n">pinv_extended</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">wexog</span><span class="p">)</span>
+            <span class="n">pinv_wexog</span><span class="p">,</span> <span class="n">singular_values</span> <span class="o">=</span> <span class="n">pinv_extended</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">wexog</span><span class="p">,</span> <span class="n">rcond</span><span class="o">=</span><span class="n">rcond</span><span class="p">)</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">pinv_wexog</span> <span class="o">=</span> <span class="n">pinv_wexog</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">normalized_cov_params</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span>
                 <span class="n">pinv_wexog</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">transpose</span><span class="p">(</span><span class="n">pinv_wexog</span><span class="p">)</span>
             <span class="p">)</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">wexog_singular_values</span> <span class="o">=</span> <span class="n">singular_values</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">rank</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">matrix_rank</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">diag</span><span class="p">(</span><span class="n">singular_values</span><span class="p">))</span>
-
-            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">rank</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">wexog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]:</span>
-                <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span>
-                    <span class="s2">"The design matrix is rank-deficient. "</span>
-                    <span class="s2">"The model parameters are not uniquely determined."</span><span class="p">,</span>
-                    <span class="n">SingularMatrixWarning</span><span class="p">,</span>
-                    <span class="n">stacklevel</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
-                <span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">rank</span> <span class="o">=</span> <span class="n">numerical_rank</span><span class="p">(</span><span class="n">singular_values</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">wexog</span><span class="o">.</span><span class="n">shape</span><span class="p">,</span> <span class="n">rcond</span><span class="p">)</span>
 
             <span class="n">beta</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">pinv_wexog</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">wendog</span><span class="p">)</span>
 
         <span class="k">else</span><span class="p">:</span>  <span class="c1"># method == "qr"</span>
-            <span class="n">Q</span><span class="p">,</span> <span class="n">R</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">qr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">wexog</span><span class="p">)</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">normalized_cov_params</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">inv</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">R</span><span class="o">.</span><span class="n">T</span><span class="p">,</span> <span class="n">R</span><span class="p">))</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">wexog_singular_values</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">svd</span><span class="p">(</span><span class="n">R</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">rank</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">matrix_rank</span><span class="p">(</span><span class="n">R</span><span class="p">)</span>
+            <span class="c1"># QR of the design, then the SVD of R. The covariance comes from</span>
+            <span class="c1"># the SVD and not from inv(R'R), which squares the condition number</span>
+            <span class="n">qr_svd</span> <span class="o">=</span> <span class="n">QRSVD</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">wexog</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">normalized_cov_params</span> <span class="o">=</span> <span class="n">qr_svd</span><span class="o">.</span><span class="n">cov_unscaled</span><span class="p">(</span><span class="n">rcond</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">wexog_singular_values</span> <span class="o">=</span> <span class="n">qr_svd</span><span class="o">.</span><span class="n">singular_values</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">rank</span> <span class="o">=</span> <span class="n">qr_svd</span><span class="o">.</span><span class="n">rank</span><span class="p">(</span><span class="n">rcond</span><span class="p">)</span>
             <span class="c1"># Needed for some covariance estimators, see GH #8157</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">pinv_wexog</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">pinv</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">wexog</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">pinv_wexog</span> <span class="o">=</span> <span class="n">qr_svd</span><span class="o">.</span><span class="n">pinv</span><span class="p">(</span><span class="n">rcond</span><span class="p">)</span>
             <span class="c1"># used in ANOVA</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">effects</span> <span class="o">=</span> <span class="n">effects</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">Q</span><span class="o">.</span><span class="n">T</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">wendog</span><span class="p">)</span>
-            <span class="n">beta</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">solve</span><span class="p">(</span><span class="n">R</span><span class="p">,</span> <span class="n">effects</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">effects</span> <span class="o">=</span> <span class="n">qr_svd</span><span class="o">.</span><span class="n">effects</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">wendog</span><span class="p">)</span>
+            <span class="n">beta</span> <span class="o">=</span> <span class="n">qr_svd</span><span class="o">.</span><span class="n">solve</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">wendog</span><span class="p">,</span> <span class="n">rcond</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">rank</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">wexog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]:</span>
+            <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span>
+                <span class="s2">"The design matrix is rank-deficient. "</span>
+                <span class="s2">"The model parameters are not uniquely determined."</span><span class="p">,</span>
+                <span class="n">SingularMatrixWarning</span><span class="p">,</span>
+                <span class="n">stacklevel</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
+            <span class="p">)</span>
 
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_df_model</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_df_model</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">rank</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_constant</span><span class="p">)</span>
