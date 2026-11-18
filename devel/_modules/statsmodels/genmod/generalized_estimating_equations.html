@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
-    <title>statsmodels.genmod.generalized_estimating_equations &#8212; statsmodels 0.15.1 (+1473)</title>
+    <title>statsmodels.genmod.generalized_estimating_equations &#8212; statsmodels 0.15.1 (+1484)</title>
   <link rel="icon" type="image/png" sizes="32x32" href="../../../_static/icons/favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="../../../_static/icons/favicon-16x16.png">
   <link rel="manifest" href="../../../_static/icons/site.webmanifest">
@@ -71,7 +71,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="color-scheme" content="light dark"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="0.15.1 (+1473)" />
+  <meta name="docsearch:version" content="0.15.1 (+1484)" />
     <meta name="docbuild:last-update" content="Nov 18, 2026"/>
   
     
@@ -582,6 +582,14 @@
 
 <span class="sd">LA Mancl LA, TA DeRouen (2001). A covariance estimator for GEE with</span>
 <span class="sd">improved small-sample properties.  Biometrics. 2001 Mar;57(1):126-34.</span>
+
+<span class="sd">G Kauermann and RJ Carroll (2001). A note on the efficiency of sandwich</span>
+<span class="sd">covariance matrix estimation. Journal of the American Statistical</span>
+<span class="sd">Association, 96(456), 1387-1396.</span>
+
+<span class="sd">P Li and DT Redden (2015). Small sample performance of bias-corrected</span>
+<span class="sd">sandwich estimators for cluster-randomized trials with binary outcomes.</span>
+<span class="sd">Statistics in Medicine, 34(2), 281-296.</span>
 <span class="sd">"""</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.compat.python</span><span class="w"> </span><span class="kn">import</span> <span class="n">lzip</span>
@@ -591,7 +599,7 @@
 
 <span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">scipy</span><span class="w"> </span><span class="kn">import</span> <span class="n">stats</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">scipy</span><span class="w"> </span><span class="kn">import</span> <span class="n">linalg</span><span class="p">,</span> <span class="n">stats</span>
 
 <span class="kn">import</span><span class="w"> </span><span class="nn">statsmodels.base.model</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">base</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">statsmodels.base.wrapper</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">wrap</span>
@@ -867,7 +875,12 @@
 <span class="s2">        No dependence structure updates occur before this</span>
 <span class="s2">        iteration number.</span>
 <span class="s2">    cov_type : str, optional</span>
-<span class="s2">        One of "robust", "naive", or "bias_reduced".</span>
+<span class="s2">        One of "robust", "naive", "bias_reduced" or "kauermann_carroll".</span>
+<span class="s2">        "bias_reduced" is the Mancl-DeRouen and "kauermann_carroll" the</span>
+<span class="s2">        Kauermann-Carroll small-sample correction of the robust covariance.</span>
+
+<span class="s2">        .. versionchanged:: 0.15.1</span>
+<span class="s2">           Added "kauermann_carroll".</span>
 <span class="s2">    ddof_scale : int, optional</span>
 <span class="s2">        The scale parameter is estimated as the sum of squared</span>
 <span class="s2">        Pearson residuals divided by `N - ddof_scale`, where N</span>
@@ -885,6 +898,18 @@
 <span class="s2">        The default value is None, which uses `X2` (Pearson's</span>
 <span class="s2">        chi-square) for Gamma, Gaussian, and Inverse Gaussian.</span>
 <span class="s2">        The default is 1 for the Binomial and Poisson families.</span>
+<span class="s2">    use_t : bool, optional</span>
+<span class="s2">        If True, use the t distribution for inference, with the number</span>
+<span class="s2">        of groups minus the number of parameters as degrees of freedom.</span>
+<span class="s2">        The default is False, which uses the normal distribution.</span>
+<span class="s2">        The number of parameters is subtracted, not 1 as for ``OLS`` with</span>
+<span class="s2">        ``cov_type="cluster"`` or Stata's ``vce(cluster)``, because Li and</span>
+<span class="s2">        Redden (2015) found these degrees of freedom to work well with the</span>
+<span class="s2">        bias-corrected covariances when there are few groups. A</span>
+<span class="s2">        ``ValueError`` is raised if the number of groups is not larger</span>
+<span class="s2">        than the number of parameters.</span>
+
+<span class="s2">        .. versionadded:: 0.15.1</span>
 
 <span class="s2">    Returns</span>
 <span class="s2">    -------</span>
@@ -902,6 +927,29 @@
 <span class="s2">    For the Gaussian family, there is no benefit to setting</span>
 <span class="s2">    `params_niter` to a value greater than 1, since the mean</span>
 <span class="s2">    structure parameters converge in one step.</span>
+
+<span class="s2">    The small-sample covariances adjust the residuals of each group</span>
+<span class="s2">    with its leverage matrix ``H``. ``cov_type="bias_reduced"`` (Mancl</span>
+<span class="s2">    and DeRouen, 2001) uses ``(I - H)^{-1}`` and</span>
+<span class="s2">    ``cov_type="kauermann_carroll"`` (Kauermann and Carroll, 2001) uses</span>
+<span class="s2">    ``(I - H)^{-1/2}``. ``I - H`` is not symmetric unless the family is</span>
+<span class="s2">    Gaussian and the working correlation is independence, and the</span>
+<span class="s2">    principal square root is used. Its eigenvalues are positive, so the</span>
+<span class="s2">    root is real. Each group needs an ``O(m^3)`` matrix root, where</span>
+<span class="s2">    ``m`` is the group size, which can be slow for large groups.</span>
+
+<span class="s2">    References</span>
+<span class="s2">    ----------</span>
+<span class="s2">    LA Mancl and TA DeRouen (2001). A covariance estimator for GEE with</span>
+<span class="s2">    improved small-sample properties. Biometrics, 57(1), 126-134.</span>
+
+<span class="s2">    G Kauermann and RJ Carroll (2001). A note on the efficiency of</span>
+<span class="s2">    sandwich covariance matrix estimation. Journal of the American</span>
+<span class="s2">    Statistical Association, 96(456), 1387-1396.</span>
+
+<span class="s2">    P Li and DT Redden (2015). Small sample performance of bias-corrected</span>
+<span class="s2">    sandwich estimators for cluster-randomized trials with binary</span>
+<span class="s2">    outcomes. Statistics in Medicine, 34(2), 281-296.</span>
 <span class="s2">"""</span>
 
 <span class="n">_gee_results_doc</span> <span class="o">=</span> <span class="s2">"""</span>
@@ -919,12 +967,14 @@
 <span class="s2">    cov_robust_bc : ndarray</span>
 <span class="s2">        covariance of the parameter estimates that is robust and bias</span>
 <span class="s2">        reduced</span>
+<span class="s2">    cov_robust_kc : ndarray</span>
+<span class="s2">        Kauermann-Carroll robust covariance of the parameter estimates</span>
 <span class="s2">    converged : bool</span>
 <span class="s2">        indicator for convergence of the optimization.</span>
 <span class="s2">        True if the norm of the score is smaller than a threshold</span>
 <span class="s2">    cov_type : str</span>
-<span class="s2">        string indicating whether a "robust", "naive" or "bias_reduced"</span>
-<span class="s2">        covariance is used as default</span>
+<span class="s2">        string indicating whether a "robust", "naive", "bias_reduced" or</span>
+<span class="s2">        "kauermann_carroll" covariance is used as default</span>
 <span class="s2">    fit_history : dict</span>
 <span class="s2">        Contains information about the iterations.</span>
 <span class="s2">    fittedvalues : ndarray</span>
@@ -1821,7 +1871,8 @@
 
     <span class="c1"># Calculate the bias-corrected sandwich estimate of Mancl and</span>
     <span class="c1"># DeRouen.</span>
-    <span class="k">def</span><span class="w"> </span><span class="nf">_bc_covmat</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cov_naive</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_bc_covmat</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cov_naive</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s2">"md"</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">"""Mancl-DeRouen ("md") or Kauermann-Carroll ("kc") covariance."""</span>
 
         <span class="n">cov_naive</span> <span class="o">=</span> <span class="n">cov_naive</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">scaling_factor</span>
         <span class="n">endog</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">endog_li</span>
@@ -1849,7 +1900,11 @@
 
             <span class="n">f</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">weights_li</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">weights</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="mf">1.0</span>
 
-            <span class="n">aresid</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">solve</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">resid</span><span class="p">))</span> <span class="o">-</span> <span class="n">hmat</span><span class="p">,</span> <span class="n">resid</span><span class="p">)</span>
+            <span class="n">imh</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">resid</span><span class="p">))</span> <span class="o">-</span> <span class="n">hmat</span>
+            <span class="k">if</span> <span class="n">method</span> <span class="o">==</span> <span class="s2">"kc"</span><span class="p">:</span>
+                <span class="c1"># principal root, since I - H is not symmetric in general</span>
+                <span class="n">imh</span> <span class="o">=</span> <span class="n">linalg</span><span class="o">.</span><span class="n">sqrtm</span><span class="p">(</span><span class="n">imh</span><span class="p">)</span><span class="o">.</span><span class="n">real</span>
+            <span class="n">aresid</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">solve</span><span class="p">(</span><span class="n">imh</span><span class="p">,</span> <span class="n">resid</span><span class="p">)</span>
             <span class="n">rslt</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">cov_struct</span><span class="o">.</span><span class="n">covariance_matrix_solve</span><span class="p">(</span><span class="n">expval</span><span class="p">,</span> <span class="n">i</span><span class="p">,</span> <span class="n">sdev</span><span class="p">,</span> <span class="p">(</span><span class="n">aresid</span><span class="p">,))</span>
             <span class="k">if</span> <span class="n">rslt</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
                 <span class="k">return</span> <span class="kc">None</span>
@@ -1893,7 +1948,15 @@
         <span class="n">ddof_scale</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
         <span class="n">scaling_factor</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span>
         <span class="n">scale</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">use_t</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
     <span class="p">):</span>
+
+        <span class="n">k_params</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">df_resid</span>
+        <span class="k">if</span> <span class="n">use_t</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">num_group</span> <span class="o">&lt;=</span> <span class="n">k_params</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">"use_t requires more groups (</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">num_group</span><span class="si">}</span><span class="s2">) than "</span>
+                <span class="sa">f</span><span class="s2">"parameters (</span><span class="si">{</span><span class="n">k_params</span><span class="si">:</span><span class="s2">g</span><span class="si">}</span><span class="s2">)."</span>
+            <span class="p">)</span>
 
         <span class="bp">self</span><span class="o">.</span><span class="n">scaletype</span> <span class="o">=</span> <span class="n">scale</span>
 
@@ -1981,9 +2044,11 @@
                 <span class="n">stacklevel</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
             <span class="p">)</span>
             <span class="k">return</span> <span class="kc">None</span>
-        <span class="n">bc_cov</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="n">bc_cov</span> <span class="o">=</span> <span class="n">kc_cov</span> <span class="o">=</span> <span class="kc">None</span>
         <span class="k">if</span> <span class="n">cov_type</span> <span class="o">==</span> <span class="s2">"bias_reduced"</span><span class="p">:</span>
             <span class="n">bc_cov</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_bc_covmat</span><span class="p">(</span><span class="n">ncov</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">cov_type</span> <span class="o">==</span> <span class="s2">"kauermann_carroll"</span><span class="p">:</span>
+            <span class="n">kc_cov</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_bc_covmat</span><span class="p">(</span><span class="n">ncov</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s2">"kc"</span><span class="p">)</span>
 
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">constraint</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
             <span class="n">x</span> <span class="o">=</span> <span class="n">mean_params</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
@@ -2014,12 +2079,18 @@
                         <span class="n">stacklevel</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
                     <span class="p">)</span>
                     <span class="k">return</span> <span class="kc">None</span>
+            <span class="k">if</span> <span class="n">kc_cov</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">y</span><span class="p">,</span> <span class="n">kc_cov</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_handle_constraint</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">kc_cov</span><span class="p">)</span>
 
         <span class="n">scale</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">estimate_scale</span><span class="p">()</span>
 
         <span class="c1"># kwargs to add to results instance, need to be available in __init__</span>
         <span class="n">res_kwds</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span>
-            <span class="n">cov_type</span><span class="o">=</span><span class="n">cov_type</span><span class="p">,</span> <span class="n">cov_robust</span><span class="o">=</span><span class="n">bcov</span><span class="p">,</span> <span class="n">cov_naive</span><span class="o">=</span><span class="n">ncov</span><span class="p">,</span> <span class="n">cov_robust_bc</span><span class="o">=</span><span class="n">bc_cov</span>
+            <span class="n">cov_type</span><span class="o">=</span><span class="n">cov_type</span><span class="p">,</span>
+            <span class="n">cov_robust</span><span class="o">=</span><span class="n">bcov</span><span class="p">,</span>
+            <span class="n">cov_naive</span><span class="o">=</span><span class="n">ncov</span><span class="p">,</span>
+            <span class="n">cov_robust_bc</span><span class="o">=</span><span class="n">bc_cov</span><span class="p">,</span>
+            <span class="n">cov_robust_kc</span><span class="o">=</span><span class="n">kc_cov</span><span class="p">,</span>
         <span class="p">)</span>
 
         <span class="c1"># The superclass constructor will multiply the covariance</span>
@@ -2031,7 +2102,7 @@
             <span class="n">bcov</span> <span class="o">/</span> <span class="n">scale</span><span class="p">,</span>
             <span class="n">scale</span><span class="p">,</span>
             <span class="n">cov_type</span><span class="o">=</span><span class="n">cov_type</span><span class="p">,</span>
-            <span class="n">use_t</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+            <span class="n">use_t</span><span class="o">=</span><span class="n">use_t</span><span class="p">,</span>
             <span class="n">attr_kwds</span><span class="o">=</span><span class="n">res_kwds</span><span class="p">,</span>
         <span class="p">)</span>
 
@@ -2054,6 +2125,7 @@
             <span class="s2">"cov_robust"</span><span class="p">,</span>
             <span class="s2">"cov_naive"</span><span class="p">,</span>
             <span class="s2">"cov_robust_bc"</span><span class="p">,</span>
+            <span class="s2">"cov_robust_kc"</span><span class="p">,</span>
             <span class="s2">"fit_history"</span><span class="p">,</span>
             <span class="s2">"score_norm"</span><span class="p">,</span>
             <span class="s2">"converged"</span><span class="p">,</span>
@@ -2502,12 +2574,16 @@
         <span class="o">**</span><span class="n">kwds</span><span class="p">,</span>
     <span class="p">):</span>
 
-        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">normalized_cov_params</span><span class="o">=</span><span class="n">cov_params</span><span class="p">,</span> <span class="n">scale</span><span class="o">=</span><span class="n">scale</span><span class="p">)</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span>
+            <span class="n">model</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">normalized_cov_params</span><span class="o">=</span><span class="n">cov_params</span><span class="p">,</span> <span class="n">scale</span><span class="o">=</span><span class="n">scale</span><span class="p">,</span> <span class="n">use_t</span><span class="o">=</span><span class="n">use_t</span>
+        <span class="p">)</span>
 
         <span class="c1"># not added by super</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">df_resid</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">df_resid</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">df_model</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">df_model</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">family</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">family</span>
+        <span class="c1"># t inference uses clusters, not observations</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">df_resid_inference</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">num_group</span> <span class="o">-</span> <span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">nobs</span> <span class="o">-</span> <span class="n">model</span><span class="o">.</span><span class="n">df_resid</span><span class="p">)</span>
 
         <span class="n">attr_kwds</span> <span class="o">=</span> <span class="n">kwds</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">"attr_kwds"</span><span class="p">,</span> <span class="p">{})</span>
         <span class="bp">self</span><span class="o">.</span><span class="vm">__dict__</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">attr_kwds</span><span class="p">)</span>
@@ -2517,7 +2593,12 @@
         <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span><span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">"cov_type"</span><span class="p">)</span> <span class="ow">and</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">"cov_params_default"</span><span class="p">)):</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">cov_type</span> <span class="o">=</span> <span class="n">cov_type</span>  <span class="c1"># keep alias</span>
             <span class="n">covariance_type</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">cov_type</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
-            <span class="n">allowed_covariances</span> <span class="o">=</span> <span class="p">[</span><span class="s2">"robust"</span><span class="p">,</span> <span class="s2">"naive"</span><span class="p">,</span> <span class="s2">"bias_reduced"</span><span class="p">]</span>
+            <span class="n">allowed_covariances</span> <span class="o">=</span> <span class="p">[</span>
+                <span class="s2">"robust"</span><span class="p">,</span>
+                <span class="s2">"naive"</span><span class="p">,</span>
+                <span class="s2">"bias_reduced"</span><span class="p">,</span>
+                <span class="s2">"kauermann_carroll"</span><span class="p">,</span>
+            <span class="p">]</span>
             <span class="k">if</span> <span class="n">covariance_type</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">allowed_covariances</span><span class="p">:</span>
                 <span class="n">msg</span> <span class="o">=</span> <span class="s2">"GEE: `cov_type` must be one of "</span> <span class="o">+</span> <span class="s2">", "</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">allowed_covariances</span><span class="p">)</span>
                 <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
@@ -2528,6 +2609,8 @@
                 <span class="n">cov</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">cov_naive</span>
             <span class="k">elif</span> <span class="n">cov_type</span> <span class="o">==</span> <span class="s2">"bias_reduced"</span><span class="p">:</span>
                 <span class="n">cov</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">cov_robust_bc</span>
+            <span class="k">elif</span> <span class="n">cov_type</span> <span class="o">==</span> <span class="s2">"kauermann_carroll"</span><span class="p">:</span>
+                <span class="n">cov</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">cov_robust_kc</span>
 
             <span class="bp">self</span><span class="o">.</span><span class="n">cov_params_default</span> <span class="o">=</span> <span class="n">cov</span>
         <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">cov_type</span> <span class="o">!=</span> <span class="n">cov_type</span><span class="p">:</span>
@@ -2558,14 +2641,14 @@
 <span class="sd">        Parameters</span>
 <span class="sd">        ----------</span>
 <span class="sd">        cov_type : str, optional</span>
-<span class="sd">            One of "robust", "naive", or "bias_reduced".  Determines</span>
-<span class="sd">            the covariance used to compute standard errors.  Defaults</span>
-<span class="sd">            to "robust".</span>
+<span class="sd">            One of "robust", "naive", "bias_reduced" or</span>
+<span class="sd">            "kauermann_carroll".  Determines the covariance used to compute</span>
+<span class="sd">            standard errors.  Defaults to "robust".</span>
 <span class="sd">        """</span>
 
         <span class="c1"># Check covariance_type</span>
         <span class="n">covariance_type</span> <span class="o">=</span> <span class="n">cov_type</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
-        <span class="n">allowed_covariances</span> <span class="o">=</span> <span class="p">[</span><span class="s2">"robust"</span><span class="p">,</span> <span class="s2">"naive"</span><span class="p">,</span> <span class="s2">"bias_reduced"</span><span class="p">]</span>
+        <span class="n">allowed_covariances</span> <span class="o">=</span> <span class="p">[</span><span class="s2">"robust"</span><span class="p">,</span> <span class="s2">"naive"</span><span class="p">,</span> <span class="s2">"bias_reduced"</span><span class="p">,</span> <span class="s2">"kauermann_carroll"</span><span class="p">]</span>
         <span class="k">if</span> <span class="n">covariance_type</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">allowed_covariances</span><span class="p">:</span>
             <span class="n">msg</span> <span class="o">=</span> <span class="s2">"GEE: `covariance_type` must be one of "</span> <span class="o">+</span> <span class="s2">", "</span><span class="o">.</span><span class="n">join</span><span class="p">(</span>
                 <span class="n">allowed_covariances</span>
@@ -2579,7 +2662,11 @@
         <span class="k">elif</span> <span class="n">covariance_type</span> <span class="o">==</span> <span class="s2">"bias_reduced"</span><span class="p">:</span>
             <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">cov_robust_bc</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
                 <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"GEE: `bias_reduced` covariance not available"</span><span class="p">)</span>
-            <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">diag</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">cov_robust_bc</span><span class="p">))</span></div>
+            <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">diag</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">cov_robust_bc</span><span class="p">))</span>
+        <span class="k">elif</span> <span class="n">covariance_type</span> <span class="o">==</span> <span class="s2">"kauermann_carroll"</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">"cov_robust_kc"</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"GEE: `kauermann_carroll` covariance not available"</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">diag</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">cov_robust_kc</span><span class="p">))</span></div>
 
 
     <span class="c1"># Need to override to allow for different covariance types.</span>
@@ -2765,12 +2852,15 @@
 <span class="sd">             default `alpha` = .05 returns a 95% confidence interval.</span>
 <span class="sd">        cov_type : str, optional</span>
 <span class="sd">             The covariance type used for computing standard errors;</span>
-<span class="sd">             must be one of 'robust', 'naive', and 'bias reduced'.</span>
+<span class="sd">             must be one of 'robust', 'naive', 'bias_reduced' and</span>
+<span class="sd">             'kauermann_carroll'.</span>
 <span class="sd">             See `GEE` for details.</span>
 
 <span class="sd">        Notes</span>
 <span class="sd">        -----</span>
-<span class="sd">        The confidence interval is based on the Gaussian distribution.</span>
+<span class="sd">        The confidence interval is based on the t distribution with</span>
+<span class="sd">        ``df_resid_inference`` degrees of freedom if ``use_t`` is True,</span>
+<span class="sd">        and on the normal distribution otherwise.</span>
 <span class="sd">        """</span>
         <span class="c1"># super does not allow to specify cov_type and method is not</span>
         <span class="c1"># implemented,</span>
@@ -2780,8 +2870,10 @@
         <span class="k">else</span><span class="p">:</span>
             <span class="n">bse</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">standard_errors</span><span class="p">(</span><span class="n">cov_type</span><span class="o">=</span><span class="n">cov_type</span><span class="p">)</span>
         <span class="n">params</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">params</span>
-        <span class="n">dist</span> <span class="o">=</span> <span class="n">stats</span><span class="o">.</span><span class="n">norm</span>
-        <span class="n">q</span> <span class="o">=</span> <span class="n">dist</span><span class="o">.</span><span class="n">ppf</span><span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">alpha</span> <span class="o">/</span> <span class="mi">2</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">use_t</span><span class="p">:</span>
+            <span class="n">q</span> <span class="o">=</span> <span class="n">stats</span><span class="o">.</span><span class="n">t</span><span class="o">.</span><span class="n">ppf</span><span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">alpha</span> <span class="o">/</span> <span class="mi">2</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">df_resid_inference</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">q</span> <span class="o">=</span> <span class="n">stats</span><span class="o">.</span><span class="n">norm</span><span class="o">.</span><span class="n">ppf</span><span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">alpha</span> <span class="o">/</span> <span class="mi">2</span><span class="p">)</span>
 
         <span class="n">lower</span> <span class="o">=</span> <span class="n">params</span> <span class="o">-</span> <span class="n">q</span> <span class="o">*</span> <span class="n">bse</span>
         <span class="n">upper</span> <span class="o">=</span> <span class="n">params</span> <span class="o">+</span> <span class="n">q</span> <span class="o">*</span> <span class="n">bse</span>
@@ -2886,7 +2978,9 @@
             <span class="n">xname</span><span class="o">=</span><span class="n">xname</span><span class="p">,</span>
             <span class="n">title</span><span class="o">=</span><span class="n">title</span><span class="p">,</span>
         <span class="p">)</span>
-        <span class="n">smry</span><span class="o">.</span><span class="n">add_table_params</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">yname</span><span class="o">=</span><span class="n">yname</span><span class="p">,</span> <span class="n">xname</span><span class="o">=</span><span class="n">xname</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="n">alpha</span><span class="p">,</span> <span class="n">use_t</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+        <span class="n">smry</span><span class="o">.</span><span class="n">add_table_params</span><span class="p">(</span>
+            <span class="bp">self</span><span class="p">,</span> <span class="n">yname</span><span class="o">=</span><span class="n">yname</span><span class="p">,</span> <span class="n">xname</span><span class="o">=</span><span class="n">xname</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="n">alpha</span><span class="p">,</span> <span class="n">use_t</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">use_t</span>
+        <span class="p">)</span>
         <span class="n">smry</span><span class="o">.</span><span class="n">add_table_2cols</span><span class="p">(</span>
             <span class="bp">self</span><span class="p">,</span>
             <span class="n">gleft</span><span class="o">=</span><span class="n">diagn_left</span><span class="p">,</span>
@@ -3267,6 +3361,7 @@
         <span class="n">params_niter</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
         <span class="n">first_dep_update</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
         <span class="n">cov_type</span><span class="o">=</span><span class="s2">"robust"</span><span class="p">,</span>
+        <span class="n">use_t</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
     <span class="p">):</span>
 
         <span class="n">rslt</span> <span class="o">=</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span>
@@ -3276,6 +3371,7 @@
             <span class="n">params_niter</span><span class="p">,</span>
             <span class="n">first_dep_update</span><span class="p">,</span>
             <span class="n">cov_type</span><span class="o">=</span><span class="n">cov_type</span><span class="p">,</span>
+            <span class="n">use_t</span><span class="o">=</span><span class="n">use_t</span><span class="p">,</span>
         <span class="p">)</span>
 
         <span class="n">rslt</span> <span class="o">=</span> <span class="n">rslt</span><span class="o">.</span><span class="n">_results</span>  <span class="c1"># use unwrapped instance</span>
@@ -3287,6 +3383,7 @@
             <span class="n">rslt</span><span class="o">.</span><span class="n">cov_params</span><span class="p">()</span> <span class="o">/</span> <span class="n">rslt</span><span class="o">.</span><span class="n">scale</span><span class="p">,</span>
             <span class="n">rslt</span><span class="o">.</span><span class="n">scale</span><span class="p">,</span>
             <span class="n">cov_type</span><span class="o">=</span><span class="n">cov_type</span><span class="p">,</span>
+            <span class="n">use_t</span><span class="o">=</span><span class="n">use_t</span><span class="p">,</span>
             <span class="n">attr_kwds</span><span class="o">=</span><span class="n">res_kwds</span><span class="p">,</span>
         <span class="p">)</span>
         <span class="c1"># for k in rslt._props:</span>
@@ -3716,6 +3813,7 @@
         <span class="n">params_niter</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
         <span class="n">first_dep_update</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
         <span class="n">cov_type</span><span class="o">=</span><span class="s2">"robust"</span><span class="p">,</span>
+        <span class="n">use_t</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
     <span class="p">):</span>
 
         <span class="n">rslt</span> <span class="o">=</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span>
@@ -3725,6 +3823,7 @@
             <span class="n">params_niter</span><span class="p">,</span>
             <span class="n">first_dep_update</span><span class="p">,</span>
             <span class="n">cov_type</span><span class="o">=</span><span class="n">cov_type</span><span class="p">,</span>
+            <span class="n">use_t</span><span class="o">=</span><span class="n">use_t</span><span class="p">,</span>
         <span class="p">)</span>
         <span class="k">if</span> <span class="n">rslt</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
             <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span>
@@ -3741,6 +3840,7 @@
             <span class="n">rslt</span><span class="o">.</span><span class="n">cov_params</span><span class="p">()</span> <span class="o">/</span> <span class="n">rslt</span><span class="o">.</span><span class="n">scale</span><span class="p">,</span>
             <span class="n">rslt</span><span class="o">.</span><span class="n">scale</span><span class="p">,</span>
             <span class="n">cov_type</span><span class="o">=</span><span class="n">cov_type</span><span class="p">,</span>
+            <span class="n">use_t</span><span class="o">=</span><span class="n">use_t</span><span class="p">,</span>
             <span class="n">attr_kwds</span><span class="o">=</span><span class="n">res_kwds</span><span class="p">,</span>
         <span class="p">)</span>
         <span class="c1"># TODO: document or delete</span>
