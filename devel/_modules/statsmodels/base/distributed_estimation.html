@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
-    <title>statsmodels.base.distributed_estimation &#8212; statsmodels 0.15.1 (+1484)</title>
+    <title>statsmodels.base.distributed_estimation &#8212; statsmodels 0.15.1 (+1487)</title>
   <link rel="icon" type="image/png" sizes="32x32" href="../../../_static/icons/favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="../../../_static/icons/favicon-16x16.png">
   <link rel="manifest" href="../../../_static/icons/site.webmanifest">
@@ -71,7 +71,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="color-scheme" content="light dark"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="0.15.1 (+1484)" />
+  <meta name="docsearch:version" content="0.15.1 (+1487)" />
     <meta name="docbuild:last-update" content="Nov 18, 2026"/>
   
     
@@ -559,7 +559,9 @@
                 <article class="bd-article">
                   
   <h1>Source code for statsmodels.base.distributed_estimation</h1><div class="highlight"><pre>
-<span></span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span></span><span class="kn">import</span><span class="w"> </span><span class="nn">inspect</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.base.elastic_net</span><span class="w"> </span><span class="kn">import</span> <span class="n">RegularizedResults</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.base.model</span><span class="w"> </span><span class="kn">import</span> <span class="n">LikelihoodModelResults</span>
@@ -1108,10 +1110,23 @@
 <span class="sd">            An instance of results_class (RegularizedResults by</span>
 <span class="sd">            default), initialized using the dummy result model and</span>
 <span class="sd">            the join_method result as params.</span>
+
+<span class="sd">        Raises</span>
+<span class="sd">        ------</span>
+<span class="sd">        NotImplementedError</span>
+<span class="sd">            If the default debiased estimation method is used with a model</span>
+<span class="sd">            whose ``fit_regularized`` does not accept ``alpha``, e.g. GEE.</span>
+
+<span class="sd">        .. versionchanged:: 0.15.1</span>
+
+<span class="sd">           Raises ``NotImplementedError`` before fitting for models that</span>
+<span class="sd">           cannot use the default estimation method.</span>
 <span class="sd">        """</span>
 
         <span class="k">if</span> <span class="n">fit_kwds</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
             <span class="n">fit_kwds</span> <span class="o">=</span> <span class="p">{}</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_check_estimation_method</span><span class="p">()</span>
 
         <span class="n">parallel_method</span> <span class="o">=</span> <span class="n">string_like</span><span class="p">(</span>
             <span class="n">parallel_method</span><span class="p">,</span>
@@ -1136,10 +1151,48 @@
         <span class="c1"># if it is provided.  It is possible to imagine an edge case where</span>
         <span class="c1"># this might be a problem but given that the results model instance</span>
         <span class="c1"># does not correspond to any data partition this seems reasonable.</span>
-        <span class="n">res_mod</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model_class</span><span class="p">([</span><span class="mi">0</span><span class="p">],</span> <span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="o">**</span><span class="bp">self</span><span class="o">.</span><span class="n">init_kwds</span><span class="p">)</span>
+        <span class="n">res_mod</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_dummy_model</span><span class="p">()</span>
 
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">results_class</span><span class="p">(</span><span class="n">res_mod</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="o">**</span><span class="bp">self</span><span class="o">.</span><span class="n">results_kwds</span><span class="p">)</span></div>
 
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_check_estimation_method</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">"""Raise early if the debiased method cannot use this model."""</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">estimation_method</span> <span class="ow">is</span> <span class="ow">not</span> <span class="n">_est_regularized_debiased</span><span class="p">:</span>
+            <span class="k">return</span>
+        <span class="n">fit_reg</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">model_class</span><span class="p">,</span> <span class="s2">"fit_regularized"</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">fit_reg</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">accepts_alpha</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">params</span> <span class="o">=</span> <span class="n">inspect</span><span class="o">.</span><span class="n">signature</span><span class="p">(</span><span class="n">fit_reg</span><span class="p">)</span><span class="o">.</span><span class="n">parameters</span>
+            <span class="n">accepts_alpha</span> <span class="o">=</span> <span class="s2">"alpha"</span> <span class="ow">in</span> <span class="n">params</span> <span class="ow">or</span> <span class="nb">any</span><span class="p">(</span>
+                <span class="n">p</span><span class="o">.</span><span class="n">kind</span> <span class="ow">is</span> <span class="n">inspect</span><span class="o">.</span><span class="n">Parameter</span><span class="o">.</span><span class="n">VAR_KEYWORD</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">params</span><span class="o">.</span><span class="n">values</span><span class="p">()</span>
+            <span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">accepts_alpha</span><span class="p">:</span>
+            <span class="n">name</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model_class</span><span class="o">.</span><span class="vm">__name__</span>
+            <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">"The default estimation method (_est_regularized_debiased) "</span>
+                <span class="sa">f</span><span class="s2">"requires a model whose fit_regularized accepts alpha, which "</span>
+                <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2"> does not support. Use, for example, "</span>
+                <span class="sa">f</span><span class="s2">"estimation_method=_est_unregularized_naive with "</span>
+                <span class="sa">f</span><span class="s2">"join_method=_join_naive."</span>
+            <span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_dummy_model</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">"""Fake-data model for the results, e.g. for predict."""</span>
+        <span class="n">init_kwds</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">init_kwds</span><span class="p">)</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">sig_params</span> <span class="o">=</span> <span class="n">inspect</span><span class="o">.</span><span class="n">signature</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">model_class</span><span class="p">)</span><span class="o">.</span><span class="n">parameters</span>
+        <span class="k">except</span> <span class="p">(</span><span class="ne">TypeError</span><span class="p">,</span> <span class="ne">ValueError</span><span class="p">):</span>
+            <span class="n">sig_params</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="n">groups</span> <span class="o">=</span> <span class="n">sig_params</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"groups"</span><span class="p">)</span>
+        <span class="k">if</span> <span class="p">(</span>
+            <span class="n">groups</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+            <span class="ow">and</span> <span class="n">groups</span><span class="o">.</span><span class="n">default</span> <span class="ow">is</span> <span class="n">inspect</span><span class="o">.</span><span class="n">Parameter</span><span class="o">.</span><span class="n">empty</span>
+            <span class="ow">and</span> <span class="s2">"groups"</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">init_kwds</span>
+        <span class="p">):</span>
+            <span class="n">init_kwds</span><span class="p">[</span><span class="s2">"groups"</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">model_class</span><span class="p">([</span><span class="mi">0</span><span class="p">],</span> <span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="o">**</span><span class="n">init_kwds</span><span class="p">)</span>
 
 <div class="viewcode-block" id="DistributedModel.fit_sequential">
 <a class="viewcode-back" href="../../../generated/statsmodels.base.distributed_estimation.DistributedModel.fit_sequential.html#statsmodels.base.distributed_estimation.DistributedModel.fit_sequential">[docs]</a>
