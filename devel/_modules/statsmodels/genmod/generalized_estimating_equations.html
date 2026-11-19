@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
-    <title>statsmodels.genmod.generalized_estimating_equations &#8212; statsmodels 0.15.1 (+1501)</title>
+    <title>statsmodels.genmod.generalized_estimating_equations &#8212; statsmodels 0.15.1 (+1510)</title>
   <link rel="icon" type="image/png" sizes="32x32" href="../../../_static/icons/favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="../../../_static/icons/favicon-16x16.png">
   <link rel="manifest" href="../../../_static/icons/site.webmanifest">
@@ -71,7 +71,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="color-scheme" content="light dark"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="0.15.1 (+1501)" />
+  <meta name="docsearch:version" content="0.15.1 (+1510)" />
     <meta name="docbuild:last-update" content="Nov 19, 2026"/>
   
     
@@ -875,12 +875,15 @@
 <span class="s2">        No dependence structure updates occur before this</span>
 <span class="s2">        iteration number.</span>
 <span class="s2">    cov_type : str, optional</span>
-<span class="s2">        One of "robust", "naive", "bias_reduced" or "kauermann_carroll".</span>
-<span class="s2">        "bias_reduced" is the Mancl-DeRouen and "kauermann_carroll" the</span>
-<span class="s2">        Kauermann-Carroll small-sample correction of the robust covariance.</span>
+<span class="s2">        One of "robust", "naive", "bias_reduced", "kauermann_carroll",</span>
+<span class="s2">        "fay_graubard" or "morel_bokossa_neerchal". The last four are</span>
+<span class="s2">        small-sample corrections of the robust covariance by Mancl and</span>
+<span class="s2">        DeRouen, Kauermann and Carroll, Fay and Graubard, and Morel,</span>
+<span class="s2">        Bokossa and Neerchal. See Notes.</span>
 
 <span class="s2">        .. versionchanged:: 0.15.1</span>
-<span class="s2">           Added "kauermann_carroll".</span>
+<span class="s2">           Added "kauermann_carroll", "fay_graubard" and</span>
+<span class="s2">           "morel_bokossa_neerchal".</span>
 <span class="s2">    ddof_scale : int, optional</span>
 <span class="s2">        The scale parameter is estimated as the sum of squared</span>
 <span class="s2">        Pearson residuals divided by `N - ddof_scale`, where N</span>
@@ -940,6 +943,19 @@
 <span class="s2">    root is real. Each group needs an ``O(m^3)`` matrix root, where</span>
 <span class="s2">    ``m`` is the group size, which can be slow for large groups.</span>
 
+<span class="s2">    ``cov_type="fay_graubard"`` (Fay and Graubard, 2001) multiplies the</span>
+<span class="s2">    score of group ``i`` elementwise by</span>
+<span class="s2">    ``(1 - min(b, diag(Omega_i Omega^{-1})))^{-1/2}``, where ``Omega_i``</span>
+<span class="s2">    is the contribution of the group to the information ``Omega`` and</span>
+<span class="s2">    ``b = 0.75``. ``cov_type="morel_bokossa_neerchal"`` (Morel, Bokossa</span>
+<span class="s2">    and Neerchal, 2003) is ``c * cov_robust + delta * xi * cov_naive``</span>
+<span class="s2">    with ``c = (N - 1) / (N - p) * K / (K - 1)``, ``delta = p / (K - p)``</span>
+<span class="s2">    if ``K &gt; (d + 1) p`` and ``1 / d`` otherwise, and</span>
+<span class="s2">    ``xi = max(r, trace(cov_naive M) / p)``, where ``N`` is the number of</span>
+<span class="s2">    observations, ``K`` the number of groups, ``p`` the number of</span>
+<span class="s2">    parameters, ``M`` the center of the robust covariance, ``d = 2`` and</span>
+<span class="s2">    ``r = 1``. These follow the R packages saws and geesmv.</span>
+
 <span class="s2">    References</span>
 <span class="s2">    ----------</span>
 <span class="s2">    LA Mancl and TA DeRouen (2001). A covariance estimator for GEE with</span>
@@ -952,6 +968,13 @@
 <span class="s2">    P Li and DT Redden (2015). Small sample performance of bias-corrected</span>
 <span class="s2">    sandwich estimators for cluster-randomized trials with binary</span>
 <span class="s2">    outcomes. Statistics in Medicine, 34(2), 281-296.</span>
+
+<span class="s2">    MP Fay and BI Graubard (2001). Small-sample adjustments for Wald-type</span>
+<span class="s2">    tests using sandwich estimators. Biometrics, 57(4), 1198-1206.</span>
+
+<span class="s2">    Morel, Bokossa and Neerchal (2003). Small sample correction for the</span>
+<span class="s2">    variance of GEE estimators. Biometrical Journal, 45(4), 395-409.</span>
+<span class="s2">    doi:10.1002/bimj.200390021</span>
 <span class="s2">"""</span>
 
 <span class="n">_gee_results_doc</span> <span class="o">=</span> <span class="s2">"""</span>
@@ -971,12 +994,17 @@
 <span class="s2">        reduced</span>
 <span class="s2">    cov_robust_kc : ndarray</span>
 <span class="s2">        Kauermann-Carroll robust covariance of the parameter estimates</span>
+<span class="s2">    cov_robust_fg : ndarray</span>
+<span class="s2">        Fay-Graubard robust covariance of the parameter estimates</span>
+<span class="s2">    cov_robust_mbn : ndarray</span>
+<span class="s2">        Morel-Bokossa-Neerchal robust covariance of the parameter estimates</span>
 <span class="s2">    converged : bool</span>
 <span class="s2">        indicator for convergence of the optimization.</span>
 <span class="s2">        True if the norm of the score is smaller than a threshold</span>
 <span class="s2">    cov_type : str</span>
-<span class="s2">        string indicating whether a "robust", "naive", "bias_reduced" or</span>
-<span class="s2">        "kauermann_carroll" covariance is used as default</span>
+<span class="s2">        string indicating whether a "robust", "naive", "bias_reduced",</span>
+<span class="s2">        "kauermann_carroll", "fay_graubard" or "morel_bokossa_neerchal"</span>
+<span class="s2">        covariance is used as default</span>
 <span class="s2">    fit_history : dict</span>
 <span class="s2">        Contains information about the iterations.</span>
 <span class="s2">    fittedvalues : ndarray</span>
@@ -1919,6 +1947,62 @@
 
         <span class="k">return</span> <span class="n">cov_robust_bc</span>
 
+    <span class="k">def</span><span class="w"> </span><span class="nf">_fg_mbn_covmat</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">method</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">"""Fay-Graubard ("fg") or Morel-Bokossa-Neerchal ("mbn") covariance."""</span>
+
+        <span class="n">endog</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">endog_li</span>
+        <span class="n">exog</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">exog_li</span>
+        <span class="n">weights</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">"weights_li"</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+        <span class="n">varfunc</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">family</span><span class="o">.</span><span class="n">variance</span>
+
+        <span class="n">bmats</span><span class="p">,</span> <span class="n">scores</span> <span class="o">=</span> <span class="p">[],</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">num_group</span><span class="p">):</span>
+            <span class="n">expval</span><span class="p">,</span> <span class="n">lpr</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">cached_means</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+            <span class="n">resid</span> <span class="o">=</span> <span class="n">endog</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">-</span> <span class="n">expval</span>
+            <span class="n">dmat</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">mean_deriv</span><span class="p">(</span><span class="n">exog</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">lpr</span><span class="p">)</span>
+            <span class="n">sdev</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">varfunc</span><span class="p">(</span><span class="n">expval</span><span class="p">))</span>
+            <span class="k">if</span> <span class="n">weights</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">w</span> <span class="o">=</span> <span class="n">weights</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+                <span class="n">resid</span> <span class="o">=</span> <span class="n">resid</span> <span class="o">*</span> <span class="n">w</span>
+                <span class="n">wdmat</span> <span class="o">=</span> <span class="n">dmat</span> <span class="o">*</span> <span class="n">w</span><span class="p">[:,</span> <span class="kc">None</span><span class="p">]</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">wdmat</span> <span class="o">=</span> <span class="n">dmat</span>
+            <span class="n">rslt</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">cov_struct</span><span class="o">.</span><span class="n">covariance_matrix_solve</span><span class="p">(</span>
+                <span class="n">expval</span><span class="p">,</span> <span class="n">i</span><span class="p">,</span> <span class="n">sdev</span><span class="p">,</span> <span class="p">(</span><span class="n">wdmat</span><span class="p">,</span> <span class="n">resid</span><span class="p">)</span>
+            <span class="p">)</span>
+            <span class="k">if</span> <span class="n">rslt</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">return</span> <span class="kc">None</span>
+            <span class="n">vinv_d</span><span class="p">,</span> <span class="n">vinv_resid</span> <span class="o">=</span> <span class="n">rslt</span>
+            <span class="n">bmats</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">dmat</span><span class="o">.</span><span class="n">T</span><span class="p">,</span> <span class="n">vinv_d</span><span class="p">))</span>
+            <span class="n">scores</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">dmat</span><span class="o">.</span><span class="n">T</span><span class="p">,</span> <span class="n">vinv_resid</span><span class="p">))</span>
+
+        <span class="n">bmati</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">inv</span><span class="p">(</span><span class="nb">sum</span><span class="p">(</span><span class="n">bmats</span><span class="p">))</span>
+        <span class="n">scores</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">scores</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">method</span> <span class="o">==</span> <span class="s2">"fg"</span><span class="p">:</span>
+            <span class="c1"># scale each score by (1 - min(b, diag(Omega_i Omega^{-1})))^{-1/2}</span>
+            <span class="n">bound</span> <span class="o">=</span> <span class="mf">0.75</span>
+            <span class="n">lev</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">np</span><span class="o">.</span><span class="n">diag</span><span class="p">(</span><span class="n">bm</span> <span class="o">@</span> <span class="n">bmati</span><span class="p">)</span> <span class="k">for</span> <span class="n">bm</span> <span class="ow">in</span> <span class="n">bmats</span><span class="p">])</span>
+            <span class="n">scores</span> <span class="o">=</span> <span class="n">scores</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">minimum</span><span class="p">(</span><span class="n">bound</span><span class="p">,</span> <span class="n">lev</span><span class="p">))</span>
+            <span class="n">cov</span> <span class="o">=</span> <span class="n">bmati</span> <span class="o">@</span> <span class="p">(</span><span class="n">scores</span><span class="o">.</span><span class="n">T</span> <span class="o">@</span> <span class="n">scores</span><span class="p">)</span> <span class="o">@</span> <span class="n">bmati</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># c * robust + delta * xi * naive, with d = 2 and r = 1</span>
+            <span class="n">d</span><span class="p">,</span> <span class="n">r</span> <span class="o">=</span> <span class="mf">2.0</span><span class="p">,</span> <span class="mf">1.0</span>
+            <span class="n">k_params</span> <span class="o">=</span> <span class="n">bmati</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="n">n_groups</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">num_group</span>
+            <span class="n">nobs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span>
+            <span class="n">meat</span> <span class="o">=</span> <span class="n">scores</span><span class="o">.</span><span class="n">T</span> <span class="o">@</span> <span class="n">scores</span>
+            <span class="n">scale</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">estimate_scale</span><span class="p">()</span>
+            <span class="n">c</span> <span class="o">=</span> <span class="p">(</span><span class="n">nobs</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="n">nobs</span> <span class="o">-</span> <span class="n">k_params</span><span class="p">)</span> <span class="o">*</span> <span class="n">n_groups</span> <span class="o">/</span> <span class="p">(</span><span class="n">n_groups</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">n_groups</span> <span class="o">&gt;</span> <span class="p">(</span><span class="n">d</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="o">*</span> <span class="n">k_params</span><span class="p">:</span>
+                <span class="n">delta</span> <span class="o">=</span> <span class="n">k_params</span> <span class="o">/</span> <span class="p">(</span><span class="n">n_groups</span> <span class="o">-</span> <span class="n">k_params</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">delta</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">/</span> <span class="n">d</span>
+            <span class="n">xi</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">r</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">trace</span><span class="p">(</span><span class="n">bmati</span> <span class="o">@</span> <span class="n">meat</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="n">k_params</span> <span class="o">*</span> <span class="n">scale</span><span class="p">))</span>
+            <span class="n">cov</span> <span class="o">=</span> <span class="n">c</span> <span class="o">*</span> <span class="p">(</span><span class="n">bmati</span> <span class="o">@</span> <span class="n">meat</span> <span class="o">@</span> <span class="n">bmati</span><span class="p">)</span> <span class="o">+</span> <span class="n">delta</span> <span class="o">*</span> <span class="n">xi</span> <span class="o">*</span> <span class="n">scale</span> <span class="o">*</span> <span class="n">bmati</span>
+
+        <span class="k">return</span> <span class="n">cov</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">scaling_factor</span>
+
     <span class="k">def</span><span class="w"> </span><span class="nf">_starting_params</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
 
         <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">isscalar</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_offset_exposure</span><span class="p">):</span>
@@ -2046,11 +2130,15 @@
                 <span class="n">stacklevel</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
             <span class="p">)</span>
             <span class="k">return</span> <span class="kc">None</span>
-        <span class="n">bc_cov</span> <span class="o">=</span> <span class="n">kc_cov</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="n">bc_cov</span> <span class="o">=</span> <span class="n">kc_cov</span> <span class="o">=</span> <span class="n">fg_cov</span> <span class="o">=</span> <span class="n">mbn_cov</span> <span class="o">=</span> <span class="kc">None</span>
         <span class="k">if</span> <span class="n">cov_type</span> <span class="o">==</span> <span class="s2">"bias_reduced"</span><span class="p">:</span>
             <span class="n">bc_cov</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_bc_covmat</span><span class="p">(</span><span class="n">ncov</span><span class="p">)</span>
         <span class="k">elif</span> <span class="n">cov_type</span> <span class="o">==</span> <span class="s2">"kauermann_carroll"</span><span class="p">:</span>
             <span class="n">kc_cov</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_bc_covmat</span><span class="p">(</span><span class="n">ncov</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s2">"kc"</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">cov_type</span> <span class="o">==</span> <span class="s2">"fay_graubard"</span><span class="p">:</span>
+            <span class="n">fg_cov</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_fg_mbn_covmat</span><span class="p">(</span><span class="s2">"fg"</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">cov_type</span> <span class="o">==</span> <span class="s2">"morel_bokossa_neerchal"</span><span class="p">:</span>
+            <span class="n">mbn_cov</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_fg_mbn_covmat</span><span class="p">(</span><span class="s2">"mbn"</span><span class="p">)</span>
 
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">constraint</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
             <span class="n">x</span> <span class="o">=</span> <span class="n">mean_params</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
@@ -2083,6 +2171,10 @@
                     <span class="k">return</span> <span class="kc">None</span>
             <span class="k">if</span> <span class="n">kc_cov</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
                 <span class="n">y</span><span class="p">,</span> <span class="n">kc_cov</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_handle_constraint</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">kc_cov</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">fg_cov</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">y</span><span class="p">,</span> <span class="n">fg_cov</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_handle_constraint</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">fg_cov</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">mbn_cov</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">y</span><span class="p">,</span> <span class="n">mbn_cov</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_handle_constraint</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">mbn_cov</span><span class="p">)</span>
 
         <span class="n">scale</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">estimate_scale</span><span class="p">()</span>
 
@@ -2093,6 +2185,8 @@
             <span class="n">cov_naive</span><span class="o">=</span><span class="n">ncov</span><span class="p">,</span>
             <span class="n">cov_robust_bc</span><span class="o">=</span><span class="n">bc_cov</span><span class="p">,</span>
             <span class="n">cov_robust_kc</span><span class="o">=</span><span class="n">kc_cov</span><span class="p">,</span>
+            <span class="n">cov_robust_fg</span><span class="o">=</span><span class="n">fg_cov</span><span class="p">,</span>
+            <span class="n">cov_robust_mbn</span><span class="o">=</span><span class="n">mbn_cov</span><span class="p">,</span>
         <span class="p">)</span>
 
         <span class="c1"># The superclass constructor will multiply the covariance</span>
@@ -2128,6 +2222,8 @@
             <span class="s2">"cov_naive"</span><span class="p">,</span>
             <span class="s2">"cov_robust_bc"</span><span class="p">,</span>
             <span class="s2">"cov_robust_kc"</span><span class="p">,</span>
+            <span class="s2">"cov_robust_fg"</span><span class="p">,</span>
+            <span class="s2">"cov_robust_mbn"</span><span class="p">,</span>
             <span class="s2">"fit_history"</span><span class="p">,</span>
             <span class="s2">"score_norm"</span><span class="p">,</span>
             <span class="s2">"converged"</span><span class="p">,</span>
@@ -2600,6 +2696,8 @@
                 <span class="s2">"naive"</span><span class="p">,</span>
                 <span class="s2">"bias_reduced"</span><span class="p">,</span>
                 <span class="s2">"kauermann_carroll"</span><span class="p">,</span>
+                <span class="s2">"fay_graubard"</span><span class="p">,</span>
+                <span class="s2">"morel_bokossa_neerchal"</span><span class="p">,</span>
             <span class="p">]</span>
             <span class="k">if</span> <span class="n">covariance_type</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">allowed_covariances</span><span class="p">:</span>
                 <span class="n">msg</span> <span class="o">=</span> <span class="s2">"GEE: `cov_type` must be one of "</span> <span class="o">+</span> <span class="s2">", "</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">allowed_covariances</span><span class="p">)</span>
@@ -2613,6 +2711,10 @@
                 <span class="n">cov</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">cov_robust_bc</span>
             <span class="k">elif</span> <span class="n">cov_type</span> <span class="o">==</span> <span class="s2">"kauermann_carroll"</span><span class="p">:</span>
                 <span class="n">cov</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">cov_robust_kc</span>
+            <span class="k">elif</span> <span class="n">cov_type</span> <span class="o">==</span> <span class="s2">"fay_graubard"</span><span class="p">:</span>
+                <span class="n">cov</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">cov_robust_fg</span>
+            <span class="k">elif</span> <span class="n">cov_type</span> <span class="o">==</span> <span class="s2">"morel_bokossa_neerchal"</span><span class="p">:</span>
+                <span class="n">cov</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">cov_robust_mbn</span>
 
             <span class="bp">self</span><span class="o">.</span><span class="n">cov_params_default</span> <span class="o">=</span> <span class="n">cov</span>
         <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">cov_type</span> <span class="o">!=</span> <span class="n">cov_type</span><span class="p">:</span>
@@ -2643,14 +2745,22 @@
 <span class="sd">        Parameters</span>
 <span class="sd">        ----------</span>
 <span class="sd">        cov_type : str, optional</span>
-<span class="sd">            One of "robust", "naive", "bias_reduced" or</span>
-<span class="sd">            "kauermann_carroll".  Determines the covariance used to compute</span>
-<span class="sd">            standard errors.  Defaults to "robust".</span>
+<span class="sd">            One of "robust", "naive", "bias_reduced", "kauermann_carroll",</span>
+<span class="sd">            "fay_graubard" or "morel_bokossa_neerchal".  Determines the</span>
+<span class="sd">            covariance used to compute standard errors.  Defaults to</span>
+<span class="sd">            "robust".</span>
 <span class="sd">        """</span>
 
         <span class="c1"># Check covariance_type</span>
         <span class="n">covariance_type</span> <span class="o">=</span> <span class="n">cov_type</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
-        <span class="n">allowed_covariances</span> <span class="o">=</span> <span class="p">[</span><span class="s2">"robust"</span><span class="p">,</span> <span class="s2">"naive"</span><span class="p">,</span> <span class="s2">"bias_reduced"</span><span class="p">,</span> <span class="s2">"kauermann_carroll"</span><span class="p">]</span>
+        <span class="n">allowed_covariances</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="s2">"robust"</span><span class="p">,</span>
+            <span class="s2">"naive"</span><span class="p">,</span>
+            <span class="s2">"bias_reduced"</span><span class="p">,</span>
+            <span class="s2">"kauermann_carroll"</span><span class="p">,</span>
+            <span class="s2">"fay_graubard"</span><span class="p">,</span>
+            <span class="s2">"morel_bokossa_neerchal"</span><span class="p">,</span>
+        <span class="p">]</span>
         <span class="k">if</span> <span class="n">covariance_type</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">allowed_covariances</span><span class="p">:</span>
             <span class="n">msg</span> <span class="o">=</span> <span class="s2">"GEE: `covariance_type` must be one of "</span> <span class="o">+</span> <span class="s2">", "</span><span class="o">.</span><span class="n">join</span><span class="p">(</span>
                 <span class="n">allowed_covariances</span>
@@ -2668,7 +2778,17 @@
         <span class="k">elif</span> <span class="n">covariance_type</span> <span class="o">==</span> <span class="s2">"kauermann_carroll"</span><span class="p">:</span>
             <span class="k">if</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">"cov_robust_kc"</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
                 <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"GEE: `kauermann_carroll` covariance not available"</span><span class="p">)</span>
-            <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">diag</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">cov_robust_kc</span><span class="p">))</span></div>
+            <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">diag</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">cov_robust_kc</span><span class="p">))</span>
+        <span class="k">elif</span> <span class="n">covariance_type</span> <span class="o">==</span> <span class="s2">"fay_graubard"</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">"cov_robust_fg"</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"GEE: `fay_graubard` covariance not available"</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">diag</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">cov_robust_fg</span><span class="p">))</span>
+        <span class="k">elif</span> <span class="n">covariance_type</span> <span class="o">==</span> <span class="s2">"morel_bokossa_neerchal"</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">"cov_robust_mbn"</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                    <span class="s2">"GEE: `morel_bokossa_neerchal` covariance not available"</span>
+                <span class="p">)</span>
+            <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">diag</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">cov_robust_mbn</span><span class="p">))</span></div>
 
 
     <span class="c1"># Need to override to allow for different covariance types.</span>
@@ -2854,8 +2974,9 @@
 <span class="sd">             default `alpha` = .05 returns a 95% confidence interval.</span>
 <span class="sd">        cov_type : str, optional</span>
 <span class="sd">             The covariance type used for computing standard errors;</span>
-<span class="sd">             must be one of 'robust', 'naive', 'bias_reduced' and</span>
-<span class="sd">             'kauermann_carroll'.</span>
+<span class="sd">             must be one of 'robust', 'naive', 'bias_reduced',</span>
+<span class="sd">             'kauermann_carroll', 'fay_graubard' and</span>
+<span class="sd">             'morel_bokossa_neerchal'.</span>
 <span class="sd">             See `GEE` for details.</span>
 
 <span class="sd">        Notes</span>
