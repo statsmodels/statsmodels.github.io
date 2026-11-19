@@ -9,7 +9,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   
-    <title>statsmodels.regression.linear_model.GLS.fit &#8212; statsmodels 0.15.1 (+1581)</title>
+    <title>statsmodels.regression.linear_model.GLS.fit &#8212; statsmodels 0.15.1 (+1584)</title>
   <link rel="icon" type="image/png" sizes="32x32" href="../_static/icons/favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="../_static/icons/favicon-16x16.png">
   <link rel="manifest" href="../_static/icons/site.webmanifest">
@@ -74,7 +74,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="color-scheme" content="light dark"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="0.15.1 (+1581)" />
+  <meta name="docsearch:version" content="0.15.1 (+1584)" />
     <meta name="docbuild:last-update" content="Nov 19, 2026"/>
   
     
@@ -704,6 +704,9 @@ solution and use the same rank rule. “chol” uses the Cholesky
 factorization of the cross product matrix of the whitened design
 matrix to solve the normal equations. See Notes for the
 differences between the methods.</p>
+<div class="versionadded">
+<p><span class="versionmodified added">Added in version 0.15.1: </span>The <code class="docutils literal notranslate"><span class="pre">&quot;chol&quot;</span></code> method.</p>
+</div>
 </dd>
 <dt><strong>cov_type</strong><span class="classifier"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><code class="docutils literal notranslate"><span class="pre">str</span></code></a>, <code class="xref py py-obj docutils literal notranslate"><span class="pre">optional</span></code></span></dt><dd><p>See <cite>regression.linear_model.RegressionResults</cite> for a description
 of the available covariance estimators.</p>
@@ -764,25 +767,37 @@ than the other two methods when the number of observations is large
 relative to the number of regressors. The pseudoinverse
 <code class="docutils literal notranslate"><span class="pre">pinv_wexog</span></code> is computed from the Cholesky factor when it is first
 used, for example by the heteroscedasticity robust covariance
-estimators or by influence measures.</p>
-<p><code class="docutils literal notranslate"><span class="pre">method=&quot;chol&quot;</span></code> is less accurate than the other two methods and
-should only be used when speed and memory usage are more important
-than numerical accuracy. Forming <code class="docutils literal notranslate"><span class="pre">X'X</span></code> squares the condition
-number, so “chol” loses about twice as many digits as “pinv” and
-“qr”. The loss depends on the condition number of the design after
-its columns are scaled to unit norm,
+estimators or by influence measures. It is an array of the size of
+the design matrix, so the memory advantage is lost when it is needed.
+For example, with 1,000,000 observations and 10 regressors (a design
+matrix of 80 MB) the peak memory of <code class="docutils literal notranslate"><span class="pre">fit</span></code> followed by <code class="docutils literal notranslate"><span class="pre">bse</span></code>,
+measured with <code class="docutils literal notranslate"><span class="pre">tracemalloc</span></code>, was about 16 MB with the default
+covariance, about 180 MB with <code class="docutils literal notranslate"><span class="pre">cov_type=&quot;HC0&quot;</span></code> and about 240 MB
+with <code class="docutils literal notranslate"><span class="pre">method=&quot;pinv&quot;</span></code>. The <code class="docutils literal notranslate"><span class="pre">&quot;cluster&quot;</span></code> and <code class="docutils literal notranslate"><span class="pre">&quot;HAC&quot;</span></code> covariances
+need other arrays of the size of the design matrix (about 90 MB in
+this example).</p>
+<p><strong>Limitations of “chol”.</strong> <code class="docutils literal notranslate"><span class="pre">method=&quot;chol&quot;</span></code> is less accurate than
+the other two methods and should only be used when speed and memory
+usage are more important than numerical accuracy. Forming <code class="docutils literal notranslate"><span class="pre">X'X</span></code>
+squares the condition number, so “chol” loses about twice as many
+digits as “pinv” and “qr”. The loss depends on the condition number
+of the design after its columns are scaled to unit norm,
 <code class="docutils literal notranslate"><span class="pre">np.linalg.cond(X</span> <span class="pre">/</span> <span class="pre">np.linalg.norm(X,</span> <span class="pre">axis=0))</span></code>, and not on the
 scales of the columns: the rounding error of the parameters grows
 roughly like the square of this condition number times <code class="docutils literal notranslate"><span class="pre">eps</span></code>
 instead of the condition number times <code class="docutils literal notranslate"><span class="pre">eps</span></code> for “pinv” and “qr”.
-In a simulation with 10,000 observations, 50 regressors with columns
-of similar norm and the condition number of the design controlled
-directly, the relative error of the parameters from “chol” against
-the exact least squares solution was about 1e-9 to 1e-8 at a
-condition number of 1e4, 1e-7 at 1e5, 1e-5 at 1e6, 1e-3 at 1e7 and a
-few percent at 1e8, against about 1e-12 at 1e4 and 1e5, 1e-11 at
-1e6, 1e-10 at 1e7 and 1e-9 at 1e8 with “pinv” and “qr”. The standard
-errors lose precision in the same way.</p>
+In simulated designs with 10,000 observations and 50 regressors, the
+relative error of the parameter vector against the exact least
+squares solution was about:</p>
+<ul class="simple">
+<li><p>1e-9 for “chol” and 5e-13 for “pinv” and “qr” at a condition
+number of about 1e4,</p></li>
+<li><p>2e-6 to 9e-6 for “chol” and 5e-11 for “pinv” and “qr” at about 1e6,</p></li>
+<li><p>0.02 to 0.1 for “chol” and 5e-9 for “pinv” and “qr” at about 1e8.</p></li>
+</ul>
+<p>The error of a single coefficient can be much larger than the error
+of the whole vector: at 1e8 the largest relative error of a
+coefficient from “chol” was between 0.6 and 8.</p>
 <p>The typical silent failure of “chol” is a regressor with a large mean
 next to the constant, which is nearly collinear with the constant
 once the columns are scaled. For a regressor with mean 1e6 and
@@ -794,18 +809,21 @@ relative error of up to 3e-3 and the parameters were off by up to
 “pinv” or “qr”. Other ill-conditioned designs are nearly collinear
 regressors, polynomial or interaction terms of uncentered variables
 and dummy variables with few observations in a category.</p>
-<p>The regressors are checked column by column: if the norm of a column
-after projecting out the preceding columns is less than 1e-7 times
-its norm, the default tolerance of <code class="docutils literal notranslate"><span class="pre">lm</span></code> in R, or if the Cholesky
-factorization fails, the regressors are treated as collinear, a
-<code class="docutils literal notranslate"><span class="pre">SingularMatrixWarning</span></code> is raised and the model is estimated with
-“pinv” instead, including its rank rule. Otherwise the rank is the
-number of columns. This check only prevents the factorization from
-breaking down on (nearly) collinear regressors; in the simulation it
-did not trigger below a condition number of about 1e8. It does not
-trigger for designs that are merely ill-conditioned, such as the
-regressor with a large mean above, and it is not a guarantee of
-accuracy.</p>
+<p><strong>Collinearity check and fallback.</strong> The regressors are checked
+column by column: if the norm of a column after projecting out the
+preceding columns is less than 1e-7 times its norm, the default
+tolerance of <code class="docutils literal notranslate"><span class="pre">lm</span></code> in R, or if the Cholesky factorization fails, the
+regressors are treated as collinear, a <code class="docutils literal notranslate"><span class="pre">SingularMatrixWarning</span></code> is
+raised and the model is estimated with “pinv” instead, including its
+rank rule. Otherwise the rank is the number of columns. In contrast
+to <code class="docutils literal notranslate"><span class="pre">lm</span></code>, which drops an aliased column and reports an <code class="docutils literal notranslate"><span class="pre">NA</span></code>
+coefficient, the fallback keeps all columns and returns the
+minimum-norm solution of “pinv”. This check only prevents the
+factorization from breaking down on (nearly) collinear regressors;
+in the simulation it did not trigger below a condition number of
+about 1e8. It does not trigger for designs that are merely
+ill-conditioned, such as the regressor with a large mean above, and
+it is not a guarantee of accuracy.</p>
 </dd></dl>
 
 </section>
