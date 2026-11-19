@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
-    <title>statsmodels.tsa.vector_ar.var_model &#8212; statsmodels 0.15.1 (+1568)</title>
+    <title>statsmodels.tsa.vector_ar.var_model &#8212; statsmodels 0.15.1 (+1574)</title>
   <link rel="icon" type="image/png" sizes="32x32" href="../../../../_static/icons/favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="../../../../_static/icons/favicon-16x16.png">
   <link rel="manifest" href="../../../../_static/icons/site.webmanifest">
@@ -71,7 +71,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="color-scheme" content="light dark"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="0.15.1 (+1568)" />
+  <meta name="docsearch:version" content="0.15.1 (+1574)" />
     <meta name="docbuild:last-update" content="Nov 19, 2026"/>
   
     
@@ -574,6 +574,7 @@
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">collections</span><span class="w"> </span><span class="kn">import</span> <span class="n">defaultdict</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">io</span><span class="w"> </span><span class="kn">import</span> <span class="n">StringIO</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">warnings</span>
 
 <span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
@@ -583,9 +584,10 @@
 <span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.graphics.utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">_import_mpl</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.iolib.table</span><span class="w"> </span><span class="kn">import</span> <span class="n">SimpleTable</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.tools._decorators</span><span class="w"> </span><span class="kn">import</span> <span class="n">cache_readonly</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.tools._lstsq</span><span class="w"> </span><span class="kn">import</span> <span class="n">default_rcond</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.tools.linalg</span><span class="w"> </span><span class="kn">import</span> <span class="n">logdet_symm</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.tools.rng_qrng</span><span class="w"> </span><span class="kn">import</span> <span class="n">check_random_state</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.tools.sm_exceptions</span><span class="w"> </span><span class="kn">import</span> <span class="n">OutputWarning</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.tools.sm_exceptions</span><span class="w"> </span><span class="kn">import</span> <span class="n">OutputWarning</span><span class="p">,</span> <span class="n">SingularMatrixWarning</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.tools.validation</span><span class="w"> </span><span class="kn">import</span> <span class="n">array_like</span><span class="p">,</span> <span class="n">float_like</span><span class="p">,</span> <span class="n">int_like</span><span class="p">,</span> <span class="n">string_like</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.tsa._lagselect</span><span class="w"> </span><span class="kn">import</span> <span class="n">nested_lag_ols</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.tsa.base.tsa_model</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
@@ -1389,6 +1391,13 @@
 <span class="sd">        VARResults</span>
 <span class="sd">            Estimation results</span>
 
+<span class="sd">        Warns</span>
+<span class="sd">        -----</span>
+<span class="sd">        SingularMatrixWarning</span>
+<span class="sd">            If the lagged regressors are collinear so that the design</span>
+<span class="sd">            matrix is rank-deficient, the fitted parameters are not</span>
+<span class="sd">            uniquely determined.</span>
+
 <span class="sd">        Notes</span>
 <span class="sd">        -----</span>
 <span class="sd">        See Lütkepohl pp. 146-153 for implementation details.</span>
@@ -1407,7 +1416,14 @@
                 <span class="p">)</span>
 
         <span class="k">if</span> <span class="n">ic</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="n">selections</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">select_order</span><span class="p">(</span><span class="n">maxlags</span><span class="o">=</span><span class="n">maxlags</span><span class="p">)</span>
+            <span class="c1"># The final _estimate_var call below already warns if the</span>
+            <span class="c1"># chosen lag order is singular, so do not also warn here for</span>
+            <span class="c1"># the other lag orders select_order considers internally.</span>
+            <span class="k">with</span> <span class="n">warnings</span><span class="o">.</span><span class="n">catch_warnings</span><span class="p">():</span>
+                <span class="n">warnings</span><span class="o">.</span><span class="n">filterwarnings</span><span class="p">(</span>
+                    <span class="s2">"ignore"</span><span class="p">,</span> <span class="n">category</span><span class="o">=</span><span class="n">SingularMatrixWarning</span>
+                <span class="p">)</span>
+                <span class="n">selections</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">select_order</span><span class="p">(</span><span class="n">maxlags</span><span class="o">=</span><span class="n">maxlags</span><span class="p">,</span> <span class="n">trend</span><span class="o">=</span><span class="n">trend</span><span class="p">)</span>
             <span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">selections</span><span class="p">,</span> <span class="n">ic</span><span class="p">):</span>
                 <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
                     <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">ic</span><span class="si">}</span><span class="s2"> not recognized, must be among </span><span class="si">{</span><span class="nb">sorted</span><span class="p">(</span><span class="n">selections</span><span class="o">.</span><span class="n">ics</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span>
@@ -1440,7 +1456,7 @@
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_estimate_var</span><span class="p">(</span><span class="n">lags</span><span class="p">,</span> <span class="n">trend</span><span class="o">=</span><span class="n">trend</span><span class="p">)</span></div>
 
 
-    <span class="k">def</span><span class="w"> </span><span class="nf">_estimate_var</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lags</span><span class="p">,</span> <span class="n">offset</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">trend</span><span class="o">=</span><span class="s2">"c"</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_estimate_var</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">lags</span><span class="p">,</span> <span class="n">offset</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">trend</span><span class="o">=</span><span class="s2">"c"</span><span class="p">,</span> <span class="n">warn_singular</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">"""</span>
 <span class="sd">        Estimate a VAR model with a given number of lags</span>
 
@@ -1453,6 +1469,12 @@
 <span class="sd">            apples-to-apples comparison</span>
 <span class="sd">        trend : {"n", "c", "ct", "ctt"}, optional</span>
 <span class="sd">            As per above</span>
+<span class="sd">        warn_singular : bool, optional</span>
+<span class="sd">            Whether to warn immediately if the design matrix is</span>
+<span class="sd">            rank-deficient. Callers that estimate many lag orders in a loop</span>
+<span class="sd">            (e.g. ``select_order``) should pass False and instead check</span>
+<span class="sd">            ``result._rank_deficient`` once per call, so that a single</span>
+<span class="sd">            warning can be raised for the whole loop instead of one per lag.</span>
 <span class="sd">        """</span>
         <span class="c1"># have to do this again because select_order does not call fit</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">k_trend</span> <span class="o">=</span> <span class="n">k_trend</span> <span class="o">=</span> <span class="n">util</span><span class="o">.</span><span class="n">get_trendorder</span><span class="p">(</span><span class="n">trend</span><span class="p">)</span>
@@ -1486,8 +1508,20 @@
                 <span class="n">z</span><span class="p">[:,</span> <span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">z</span><span class="p">[:,</span> <span class="n">i</span><span class="p">])</span> <span class="o">+</span> <span class="n">lags</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span>
 
         <span class="n">y_sample</span> <span class="o">=</span> <span class="n">endog</span><span class="p">[</span><span class="n">lags</span><span class="p">:]</span>
-        <span class="c1"># Lütkepohl p75, about 5x faster than stated formula</span>
-        <span class="n">params</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">lstsq</span><span class="p">(</span><span class="n">z</span><span class="p">,</span> <span class="n">y_sample</span><span class="p">,</span> <span class="n">rcond</span><span class="o">=</span><span class="mf">1e-15</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="c1"># Lütkepohl p75, about 5x faster than stated formula. Same rank</span>
+        <span class="c1"># rule as OLS (statsmodels.tools._lstsq): rcond scales with nobs,</span>
+        <span class="c1"># not just the number of columns, or the cutoff misses designs</span>
+        <span class="c1"># that are exactly rank-deficient at a few thousand observations.</span>
+        <span class="n">rcond</span> <span class="o">=</span> <span class="n">default_rcond</span><span class="p">(</span><span class="o">*</span><span class="n">z</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
+        <span class="n">params</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">rank</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">lstsq</span><span class="p">(</span><span class="n">z</span><span class="p">,</span> <span class="n">y_sample</span><span class="p">,</span> <span class="n">rcond</span><span class="o">=</span><span class="n">rcond</span><span class="p">)</span>
+        <span class="n">rank_deficient</span> <span class="o">=</span> <span class="n">rank</span> <span class="o">&lt;</span> <span class="n">z</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">rank_deficient</span> <span class="ow">and</span> <span class="n">warn_singular</span><span class="p">:</span>
+            <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span>
+                <span class="s2">"The design matrix is rank-deficient. "</span>
+                <span class="s2">"The VAR parameters are not uniquely determined."</span><span class="p">,</span>
+                <span class="n">SingularMatrixWarning</span><span class="p">,</span>
+                <span class="n">stacklevel</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span>
+            <span class="p">)</span>
         <span class="n">resid</span> <span class="o">=</span> <span class="n">y_sample</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">z</span><span class="p">,</span> <span class="n">params</span><span class="p">)</span>
 
         <span class="c1"># Unbiased estimate of covariance matrix $\Sigma_u$ of the white noise</span>
@@ -1521,6 +1555,7 @@
             <span class="n">model</span><span class="o">=</span><span class="bp">self</span><span class="p">,</span>
             <span class="n">exog</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">exog</span><span class="p">,</span>
         <span class="p">)</span>
+        <span class="n">varfit</span><span class="o">.</span><span class="n">_rank_deficient</span> <span class="o">=</span> <span class="n">rank_deficient</span>
         <span class="k">return</span> <span class="n">VARResultsWrapper</span><span class="p">(</span><span class="n">varfit</span><span class="p">)</span>
 
 <div class="viewcode-block" id="VAR.select_order">
@@ -1543,6 +1578,13 @@
 <span class="sd">        Returns</span>
 <span class="sd">        -------</span>
 <span class="sd">        selections : LagOrderResults</span>
+
+<span class="sd">        Warns</span>
+<span class="sd">        -----</span>
+<span class="sd">        SingularMatrixWarning</span>
+<span class="sd">            If the design matrix is rank-deficient for at least one of the</span>
+<span class="sd">            lag orders considered, at most one warning is raised for the</span>
+<span class="sd">            whole call, rather than one per affected lag order.</span>
 <span class="sd">        """</span>
         <span class="n">ntrend</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">trend</span><span class="p">)</span> <span class="k">if</span> <span class="n">trend</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">"c"</span><span class="p">)</span> <span class="k">else</span> <span class="mi">0</span>
         <span class="n">max_estimable</span> <span class="o">=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">n_totobs</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">neqs</span> <span class="o">-</span> <span class="n">ntrend</span><span class="p">)</span> <span class="o">//</span> <span class="p">(</span><span class="mi">1</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">neqs</span><span class="p">)</span>
@@ -1572,13 +1614,27 @@
             <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">fast_ics</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
                 <span class="n">ics</span><span class="p">[</span><span class="n">k</span><span class="p">]</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">v</span><span class="p">)</span>
         <span class="k">else</span><span class="p">:</span>
+            <span class="n">singular</span> <span class="o">=</span> <span class="kc">False</span>
             <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">p_min</span><span class="p">,</span> <span class="n">maxlags</span> <span class="o">+</span> <span class="mi">1</span><span class="p">):</span>
                 <span class="c1"># exclude some periods to same amount of data used for each</span>
                 <span class="c1"># lag order</span>
-                <span class="n">result</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_estimate_var</span><span class="p">(</span><span class="n">p</span><span class="p">,</span> <span class="n">offset</span><span class="o">=</span><span class="n">maxlags</span> <span class="o">-</span> <span class="n">p</span><span class="p">,</span> <span class="n">trend</span><span class="o">=</span><span class="n">trend</span><span class="p">)</span>
+                <span class="n">result</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_estimate_var</span><span class="p">(</span>
+                    <span class="n">p</span><span class="p">,</span> <span class="n">offset</span><span class="o">=</span><span class="n">maxlags</span> <span class="o">-</span> <span class="n">p</span><span class="p">,</span> <span class="n">trend</span><span class="o">=</span><span class="n">trend</span><span class="p">,</span> <span class="n">warn_singular</span><span class="o">=</span><span class="kc">False</span>
+                <span class="p">)</span>
+                <span class="n">singular</span> <span class="o">=</span> <span class="n">singular</span> <span class="ow">or</span> <span class="n">result</span><span class="o">.</span><span class="n">_rank_deficient</span>
 
                 <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">result</span><span class="o">.</span><span class="n">info_criteria</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
                     <span class="n">ics</span><span class="p">[</span><span class="n">k</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">v</span><span class="p">)</span>
+
+            <span class="k">if</span> <span class="n">singular</span><span class="p">:</span>
+                <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span>
+                    <span class="s2">"The design matrix is rank-deficient for at least one "</span>
+                    <span class="s2">"lag order considered by select_order. The VAR "</span>
+                    <span class="s2">"parameters are not uniquely determined for those "</span>
+                    <span class="s2">"models."</span><span class="p">,</span>
+                    <span class="n">SingularMatrixWarning</span><span class="p">,</span>
+                    <span class="n">stacklevel</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
+                <span class="p">)</span>
 
         <span class="n">selected_orders</span> <span class="o">=</span> <span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">v</span><span class="p">)</span><span class="o">.</span><span class="n">argmin</span><span class="p">()</span> <span class="o">+</span> <span class="n">p_min</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">ics</span><span class="o">.</span><span class="n">items</span><span class="p">()}</span>
 
