@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
-    <title>statsmodels.stats.inter_rater &#8212; statsmodels 0.15.1 (+1561)</title>
+    <title>statsmodels.stats.inter_rater &#8212; statsmodels 0.15.1 (+1572)</title>
   <link rel="icon" type="image/png" sizes="32x32" href="../../../_static/icons/favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="../../../_static/icons/favicon-16x16.png">
   <link rel="manifest" href="../../../_static/icons/site.webmanifest">
@@ -71,7 +71,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="color-scheme" content="light dark"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="0.15.1 (+1561)" />
+  <meta name="docsearch:version" content="0.15.1 (+1572)" />
     <meta name="docbuild:last-update" content="Nov 19, 2026"/>
   
     
@@ -1105,8 +1105,9 @@
 
 <span class="sd">    If one rater uses a single category, then kappa is 0, its standard</span>
 <span class="sd">    errors and confidence limits are 0, and the z statistic and the p-values</span>
-<span class="sd">    are nan. If both raters use the same single category, then kappa and all</span>
-<span class="sd">    other statistics are nan.</span>
+<span class="sd">    are nan. If both raters use the same single category, which includes a</span>
+<span class="sd">    table with a single row and column, then kappa and all other statistics</span>
+<span class="sd">    are nan.</span>
 
 <span class="sd">    .. versionchanged:: 0.15.1</span>
 
@@ -1114,10 +1115,39 @@
 <span class="sd">       Before, they depended on rounding errors, and NumPy emitted a</span>
 <span class="sd">       ``RuntimeWarning``.</span>
 
+<span class="sd">    Kappa depends on the prevalence of the categories, not only on the</span>
+<span class="sd">    accuracy of the raters. Chance agreement is computed from the margins of</span>
+<span class="sd">    the table. If one category is rare, both raters mostly assign the common</span>
+<span class="sd">    category, chance agreement is close to the observed agreement, and kappa</span>
+<span class="sd">    is small even if raw agreement is high. See the example below.</span>
+
 <span class="sd">    References</span>
 <span class="sd">    ----------</span>
 <span class="sd">    Wikipedia</span>
 <span class="sd">    SAS Manual</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    Two raters each have sensitivity and specificity of 0.9, and their errors</span>
+<span class="sd">    are independent given the true class. The expected tables for 10000</span>
+<span class="sd">    subjects (rows: rater 1 positive, negative; columns: rater 2) differ only</span>
+<span class="sd">    in the proportion of positive subjects.</span>
+
+<span class="sd">    &gt;&gt;&gt; from statsmodels.stats.inter_rater import cohens_kappa</span>
+
+<span class="sd">    With 50% positive subjects, observed agreement is 0.82 and chance</span>
+<span class="sd">    agreement is 0.50.</span>
+
+<span class="sd">    &gt;&gt;&gt; table_balanced = [[4100, 900], [900, 4100]]</span>
+<span class="sd">    &gt;&gt;&gt; print(f"{cohens_kappa(table_balanced, return_results=False):.4f}")</span>
+<span class="sd">    0.6400</span>
+
+<span class="sd">    With 1% positive subjects, observed agreement is still 0.82, but chance</span>
+<span class="sd">    agreement from the margins is 0.8073, so kappa is much smaller.</span>
+
+<span class="sd">    &gt;&gt;&gt; table_rare = [[180, 900], [900, 8020]]</span>
+<span class="sd">    &gt;&gt;&gt; print(f"{cohens_kappa(table_rare, return_results=False):.4f}")</span>
+<span class="sd">    0.0658</span>
 <span class="sd">    '''</span>
     <span class="n">table</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">table</span><span class="p">,</span> <span class="nb">float</span><span class="p">)</span>  <span class="c1"># avoid integer division</span>
     <span class="k">if</span> <span class="n">table</span><span class="o">.</span><span class="n">ndim</span> <span class="o">!=</span> <span class="mi">2</span> <span class="ow">or</span> <span class="n">table</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">!=</span> <span class="n">table</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]:</span>
@@ -1126,16 +1156,20 @@
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
             <span class="sa">f</span><span class="s2">"table must be a square 2-d array, got shape </span><span class="si">{</span><span class="n">table</span><span class="o">.</span><span class="n">shape</span><span class="si">}</span><span class="s2">"</span>
         <span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">table</span><span class="p">)</span><span class="o">.</span><span class="n">all</span><span class="p">():</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"table must contain only finite counts"</span><span class="p">)</span>
     <span class="n">agree</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">diag</span><span class="p">(</span><span class="n">table</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
     <span class="n">nobs</span> <span class="o">=</span> <span class="n">table</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">nobs</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"the sum of the table must be finite"</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">nobs</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"table must have a positive number of observations"</span><span class="p">)</span>
     <span class="n">probs</span> <span class="o">=</span> <span class="n">table</span> <span class="o">/</span> <span class="n">nobs</span>
     <span class="n">freqs</span> <span class="o">=</span> <span class="n">probs</span>  <span class="c1"># TODO: rename to use freqs instead of probs for observed</span>
     <span class="n">probs_diag</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">diag</span><span class="p">(</span><span class="n">probs</span><span class="p">)</span>
     <span class="n">freq_row</span> <span class="o">=</span> <span class="n">table</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span> <span class="o">/</span> <span class="n">nobs</span>
     <span class="n">freq_col</span> <span class="o">=</span> <span class="n">table</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span> <span class="o">/</span> <span class="n">nobs</span>
     <span class="n">prob_exp</span> <span class="o">=</span> <span class="n">freq_col</span> <span class="o">*</span> <span class="n">freq_row</span><span class="p">[:,</span> <span class="kc">None</span><span class="p">]</span>
-    <span class="k">assert</span> <span class="n">np</span><span class="o">.</span><span class="n">allclose</span><span class="p">(</span><span class="n">prob_exp</span><span class="o">.</span><span class="n">sum</span><span class="p">(),</span> <span class="mi">1</span><span class="p">)</span>
-    <span class="c1"># print prob_exp.sum()</span>
     <span class="n">agree_exp</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">diag</span><span class="p">(</span><span class="n">prob_exp</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>  <span class="c1"># need for kappa_max</span>
     <span class="c1"># If a rater uses a single category, then kappa and its variances are 0,</span>
     <span class="c1"># and if both raters use the same single category, then they are 0 / 0.</span>
