@@ -153,6 +153,11 @@ Behavior changes
   these kernels returned ``nan`` for most data. They now integrate the density
   over the support of the observations, in the units of the data, so that the
   ``cdf`` starts at 0 and ends at 1. :issue:`7195`, :pr:`10632`
+- ``filter``, ``smooth`` and ``fit`` of state space models with a stationary
+  initialization raise a ``LinAlgError`` if a parameter is fixed at a unit
+  root, for example with ``fix_params``, instead of returning results with an
+  ``llf`` of 0.0 that were computed from an initial state covariance with
+  negative variances. :issue:`5459`, :pr:`10747`
 - ``powerdiscrepancy`` with ``lambd=0`` (``"loglikeratio"``, the default, which
   is the G-test) returns valid test statistics when observed counts contain
   zeros, evaluating :math:`x \ln(x)` to 0, instead of returning
@@ -400,6 +405,24 @@ Performance
   regressors are close to collinear, so for such series the statistic can
   change in the later digits. The new values agree with R (urca) and with
   high-precision arithmetic. :issue:`10601`, :pr:`10602`, :pr:`10624`
+- ``OLS``, ``WLS`` and ``GLS`` have the new fit option ``method="chol"``,
+  which solves the normal equations with a Cholesky factorization of the
+  k x k cross product matrix of the whitened regressors instead of computing
+  the pseudoinverse or the QR factorization of the n x k design matrix. For
+  3,000,000 observations and 10 regressors, ``fit`` is about 20 times faster
+  than with the default ``method="pinv"``, and creating and fitting the model
+  needs more than 10 times less peak memory: the fit itself allocates no
+  array of the size of the design matrix, while ``"pinv"`` and ``"qr"`` need
+  about three times its size. The method squares the condition number of
+  the design with unit-norm columns and is less accurate than ``"pinv"`` and
+  ``"qr"`` on ill-conditioned designs, for example with an uncentered
+  regressor with a large mean next to the constant; it should only be used
+  when speed and memory usage matter more than numerical accuracy, see the
+  Notes of ``fit``. Collinear regressors by the tolerance of R's ``lm`` fall
+  back to the pseudoinverse with a ``SingularMatrixWarning``. The
+  pseudoinverse ``pinv_wexog`` is only computed when a covariance estimator
+  or an influence measure needs it.
+  :issue:`9317`, :pr:`10679`
 - ``get_margeff`` with the default ``at="overall"`` computes the delta method
   Jacobian of the average marginal effects directly instead of averaging the
   Jacobian at each observation. Memory use no longer grows with the number of
@@ -883,6 +906,14 @@ Time series analysis
   show one ``ConvergenceWarning`` with the number of replications whose
   maximum likelihood fit did not converge, instead of one warning for each of
   them. :pr:`10613`
+- At a unit root the stationary initialization could return an initial state
+  covariance with negative variances instead of raising, for example
+  ``-4.99e291`` for ``SARIMAX(np.zeros(10)).filter([1, 1])``. The filter then
+  reported a loglikelihood of exactly 0, above that of any stationary model.
+  This is now detected: ``filter`` raises a ``LinAlgError`` saying that the
+  model is not stationary to numerical precision, and ``MLEModel.loglike``
+  returns ``-inf``, as for the unit roots that already raised (:pr:`10611`).
+  :issue:`5459`, :pr:`10747`
 - ``IRAnalysis.plot`` and ``IRAnalysis.plot_cum_effects`` ignored the
   argument ``plot_params``. It is now applied to the response curves, so that
   their color, line width and other Matplotlib ``Line2D`` properties can be
