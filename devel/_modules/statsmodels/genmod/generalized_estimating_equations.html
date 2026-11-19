@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
-    <title>statsmodels.genmod.generalized_estimating_equations &#8212; statsmodels 0.15.1 (+1552)</title>
+    <title>statsmodels.genmod.generalized_estimating_equations &#8212; statsmodels 0.15.1 (+1565)</title>
   <link rel="icon" type="image/png" sizes="32x32" href="../../../_static/icons/favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="../../../_static/icons/favicon-16x16.png">
   <link rel="manifest" href="../../../_static/icons/site.webmanifest">
@@ -71,7 +71,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="color-scheme" content="light dark"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="0.15.1 (+1552)" />
+  <meta name="docsearch:version" content="0.15.1 (+1565)" />
     <meta name="docbuild:last-update" content="Nov 19, 2026"/>
   
     
@@ -955,10 +955,22 @@
 <span class="s2">    and Neerchal, 2003) is ``c * cov_robust + delta * xi * cov_naive``</span>
 <span class="s2">    with ``c = (N - 1) / (N - p) * K / (K - 1)``, ``delta = p / (K - p)``</span>
 <span class="s2">    if ``K &gt; (d + 1) p`` and ``1 / d`` otherwise, and</span>
-<span class="s2">    ``xi = max(r, trace(cov_naive M) / p)``, where ``N`` is the number of</span>
-<span class="s2">    observations, ``K`` the number of groups, ``p`` the number of</span>
-<span class="s2">    parameters, ``M`` the center of the robust covariance, ``d = 2`` and</span>
-<span class="s2">    ``r = 1``. These follow the R packages saws and geesmv.</span>
+<span class="s2">    ``xi = max(r, trace(cov_naive^{-1} cov_robust) / p)``, where ``N`` is</span>
+<span class="s2">    the number of observations, ``K`` the number of groups and ``p`` the</span>
+<span class="s2">    number of parameters. Here ``cov_robust`` is the uncorrected robust</span>
+<span class="s2">    covariance and ``c`` multiplies only the robust term, not the trace</span>
+<span class="s2">    in ``xi``. ``N`` is the number of rows of the data, also if weights</span>
+<span class="s2">    are used, and for `OrdinalGEE` and `NominalGEE` the number of rows</span>
+<span class="s2">    after the expansion to binary indicators. The formulas are those of</span>
+<span class="s2">    the two papers, with the constants ``b = 0.75``, ``d = 2`` and</span>
+<span class="s2">    ``r = 1``, which cannot be changed.</span>
+
+<span class="s2">    ``cov_type="fay_graubard"`` and ``"morel_bokossa_neerchal"`` have</span>
+<span class="s2">    been compared with the results of the R packages saws and geesmv for</span>
+<span class="s2">    `GEE` with the Gaussian, Poisson and binomial families and the</span>
+<span class="s2">    independence and exchangeable working correlations. `OrdinalGEE` and</span>
+<span class="s2">    `NominalGEE` accept both values and return covariances, which have</span>
+<span class="s2">    not been compared with another implementation.</span>
 
 <span class="s2">    References</span>
 <span class="s2">    ----------</span>
@@ -976,9 +988,9 @@
 <span class="s2">    MP Fay and BI Graubard (2001). Small-sample adjustments for Wald-type</span>
 <span class="s2">    tests using sandwich estimators. Biometrics, 57(4), 1198-1206.</span>
 
-<span class="s2">    Morel, Bokossa and Neerchal (2003). Small sample correction for the</span>
-<span class="s2">    variance of GEE estimators. Biometrical Journal, 45(4), 395-409.</span>
-<span class="s2">    doi:10.1002/bimj.200390021</span>
+<span class="s2">    JG Morel, MC Bokossa and NK Neerchal (2003). Small sample correction</span>
+<span class="s2">    for the variance of GEE estimators. Biometrical Journal, 45(4),</span>
+<span class="s2">    395-409. doi:10.1002/bimj.200390021</span>
 <span class="s2">"""</span>
 
 <span class="n">_gee_results_doc</span> <span class="o">=</span> <span class="s2">"""</span>
@@ -1992,7 +2004,11 @@
             <span class="n">bmats</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">dmat</span><span class="o">.</span><span class="n">T</span><span class="p">,</span> <span class="n">vinv_d</span><span class="p">))</span>
             <span class="n">scores</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">dmat</span><span class="o">.</span><span class="n">T</span><span class="p">,</span> <span class="n">vinv_resid</span><span class="p">))</span>
 
-        <span class="n">bmati</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">inv</span><span class="p">(</span><span class="nb">sum</span><span class="p">(</span><span class="n">bmats</span><span class="p">))</span>
+        <span class="n">bmat</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="n">bmats</span><span class="p">)</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">bmati</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">inv</span><span class="p">(</span><span class="n">bmat</span><span class="p">)</span>
+        <span class="k">except</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">LinAlgError</span><span class="p">:</span>
+            <span class="n">bmati</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">pinv</span><span class="p">(</span><span class="n">bmat</span><span class="p">)</span>
         <span class="n">scores</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">scores</span><span class="p">)</span>
 
         <span class="k">if</span> <span class="n">method</span> <span class="o">==</span> <span class="s2">"fg"</span><span class="p">:</span>
@@ -2007,6 +2023,15 @@
             <span class="n">k_params</span> <span class="o">=</span> <span class="n">bmati</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
             <span class="n">n_groups</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">num_group</span>
             <span class="n">nobs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span>
+            <span class="k">if</span> <span class="n">n_groups</span> <span class="o">&lt;</span> <span class="mi">2</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                    <span class="s1">'cov_type="morel_bokossa_neerchal" requires more than one group'</span>
+                <span class="p">)</span>
+            <span class="k">if</span> <span class="n">nobs</span> <span class="o">&lt;=</span> <span class="n">k_params</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                    <span class="s1">'cov_type="morel_bokossa_neerchal" requires more observations '</span>
+                    <span class="s2">"than parameters"</span>
+                <span class="p">)</span>
             <span class="n">meat</span> <span class="o">=</span> <span class="n">scores</span><span class="o">.</span><span class="n">T</span> <span class="o">@</span> <span class="n">scores</span>
             <span class="n">scale</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">estimate_scale</span><span class="p">()</span>
             <span class="n">c</span> <span class="o">=</span> <span class="p">(</span><span class="n">nobs</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="n">nobs</span> <span class="o">-</span> <span class="n">k_params</span><span class="p">)</span> <span class="o">*</span> <span class="n">n_groups</span> <span class="o">/</span> <span class="p">(</span><span class="n">n_groups</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
