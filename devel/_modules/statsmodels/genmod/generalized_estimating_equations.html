@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
-    <title>statsmodels.genmod.generalized_estimating_equations &#8212; statsmodels 0.15.1 (+1508)</title>
+    <title>statsmodels.genmod.generalized_estimating_equations &#8212; statsmodels 0.15.1 (+1531)</title>
   <link rel="icon" type="image/png" sizes="32x32" href="../../../_static/icons/favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="../../../_static/icons/favicon-16x16.png">
   <link rel="manifest" href="../../../_static/icons/site.webmanifest">
@@ -71,7 +71,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="color-scheme" content="light dark"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="0.15.1 (+1508)" />
+  <meta name="docsearch:version" content="0.15.1 (+1531)" />
     <meta name="docbuild:last-update" content="Nov 19, 2026"/>
   
     
@@ -940,8 +940,11 @@
 <span class="s2">    ``(I - H)^{-1/2}``. ``I - H`` is not symmetric unless the family is</span>
 <span class="s2">    Gaussian and the working correlation is independence, and the</span>
 <span class="s2">    principal square root is used. Its eigenvalues are positive, so the</span>
-<span class="s2">    root is real. Each group needs an ``O(m^3)`` matrix root, where</span>
-<span class="s2">    ``m`` is the group size, which can be slow for large groups.</span>
+<span class="s2">    root is real, unless a group has leverage 1, for example a single</span>
+<span class="s2">    observation with its own dummy variable. Both corrections are then</span>
+<span class="s2">    not defined and a ``ValueError`` is raised. Each group needs an</span>
+<span class="s2">    ``O(m^3)`` matrix root, where ``m`` is the group size, which can be</span>
+<span class="s2">    slow for large groups.</span>
 
 <span class="s2">    ``cov_type="fay_graubard"`` (Fay and Graubard, 2001) multiplies the</span>
 <span class="s2">    score of group ``i`` elementwise by</span>
@@ -1929,6 +1932,18 @@
             <span class="n">hmat</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">hmat</span><span class="p">,</span> <span class="n">dmat</span><span class="o">.</span><span class="n">T</span><span class="p">)</span><span class="o">.</span><span class="n">T</span>
 
             <span class="n">f</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">weights_li</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">weights</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="mf">1.0</span>
+
+            <span class="c1"># a leverage of 1 leaves the correction undefined; the nonzero</span>
+            <span class="c1"># eigenvalues of hmat are those of this p x p matrix</span>
+            <span class="n">lev</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">eigvals</span><span class="p">(</span><span class="n">cov_naive</span> <span class="o">@</span> <span class="p">(</span><span class="n">vinv_d</span><span class="o">.</span><span class="n">T</span> <span class="o">@</span> <span class="n">dmat</span><span class="p">))</span><span class="o">.</span><span class="n">real</span>
+            <span class="k">if</span> <span class="n">lev</span><span class="o">.</span><span class="n">max</span><span class="p">()</span> <span class="o">&gt;</span> <span class="mi">1</span> <span class="o">-</span> <span class="mf">1e-8</span><span class="p">:</span>
+                <span class="n">name</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"md"</span><span class="p">:</span> <span class="s2">"bias_reduced"</span><span class="p">,</span> <span class="s2">"kc"</span><span class="p">:</span> <span class="s2">"kauermann_carroll"</span><span class="p">}[</span><span class="n">method</span><span class="p">]</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                    <span class="sa">f</span><span class="s2">"Group </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">group_labels</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="si">}</span><span class="s2"> has leverage 1, for example a "</span>
+                    <span class="sa">f</span><span class="s2">"single observation with its own dummy variable, so "</span>
+                    <span class="sa">f</span><span class="s1">'cov_type="</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s1">" is not defined. Use cov_type="robust" or '</span>
+                    <span class="sa">f</span><span class="s2">"drop the group."</span>
+                <span class="p">)</span>
 
             <span class="n">imh</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">resid</span><span class="p">))</span> <span class="o">-</span> <span class="n">hmat</span>
             <span class="k">if</span> <span class="n">method</span> <span class="o">==</span> <span class="s2">"kc"</span><span class="p">:</span>
@@ -3124,6 +3139,10 @@
 <span class="w">        </span><span class="sd">"""</span>
 <span class="sd">        Get marginal effects of the fitted model</span>
 
+<span class="sd">        .. versionchanged:: 0.15.1</span>
+
+<span class="sd">           P-values and confidence intervals follow ``use_t`` of the results.</span>
+
 <span class="sd">        Parameters</span>
 <span class="sd">        ----------</span>
 <span class="sd">        at : str, optional</span>
@@ -3179,6 +3198,10 @@
 <span class="sd">        -----</span>
 <span class="sd">        When using after Poisson, returns the expected number of events</span>
 <span class="sd">        per period, assuming that the model is loglinear.</span>
+
+<span class="sd">        If the model was fit with ``use_t=True``, p-values and confidence</span>
+<span class="sd">        intervals use the t distribution with ``df_resid_inference``</span>
+<span class="sd">        degrees of freedom, as for the parameters.</span>
 <span class="sd">        """</span>
 
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">constraint</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
@@ -4178,6 +4201,16 @@
     <span class="k">def</span><span class="w"> </span><span class="nf">_reset</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_cache</span> <span class="o">=</span> <span class="p">{}</span>
 
+    <span class="k">def</span><span class="w"> </span><span class="nf">_dist</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c1"># follow use_t of the results, see GEEResults.conf_int</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">use_t</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">stats</span><span class="o">.</span><span class="n">t</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">df_resid_inference</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">stats</span><span class="o">.</span><span class="n">norm</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_stat_name</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s2">"t"</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">use_t</span> <span class="k">else</span> <span class="s2">"z"</span>
+
 <div class="viewcode-block" id="GEEMargins.tvalues">
 <a class="viewcode-back" href="../../../generated/statsmodels.genmod.generalized_estimating_equations.GEEMargins.tvalues.html#statsmodels.genmod.generalized_estimating_equations.GEEMargins.tvalues">[docs]</a>
     <span class="nd">@cache_readonly</span>
@@ -4209,8 +4242,8 @@
         <span class="n">names</span> <span class="o">=</span> <span class="p">[</span>
             <span class="n">_transform_names</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">margeff_options</span><span class="p">[</span><span class="s2">"method"</span><span class="p">]],</span>
             <span class="s2">"Std. Err."</span><span class="p">,</span>
-            <span class="s2">"z"</span><span class="p">,</span>
-            <span class="s2">"Pr(&gt;|z|)"</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_stat_name</span><span class="p">,</span>
+            <span class="sa">f</span><span class="s2">"Pr(&gt;|</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_stat_name</span><span class="si">}</span><span class="s2">|)"</span><span class="p">,</span>
             <span class="s2">"Conf. Int. Low"</span><span class="p">,</span>
             <span class="s2">"Cont. Int. Hi."</span><span class="p">,</span>
         <span class="p">]</span>
@@ -4234,7 +4267,7 @@
     <span class="nd">@cache_readonly</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">pvalues</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="n">_check_at_is_all</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">margeff_options</span><span class="p">)</span>
-        <span class="k">return</span> <span class="n">stats</span><span class="o">.</span><span class="n">norm</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">tvalues</span><span class="p">))</span> <span class="o">*</span> <span class="mi">2</span></div>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_dist</span><span class="p">()</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">tvalues</span><span class="p">))</span> <span class="o">*</span> <span class="mi">2</span></div>
 
 
 <div class="viewcode-block" id="GEEMargins.conf_int">
@@ -4257,7 +4290,7 @@
 <span class="sd">        """</span>
         <span class="n">_check_at_is_all</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">margeff_options</span><span class="p">)</span>
         <span class="n">me_se</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">margeff_se</span>
-        <span class="n">q</span> <span class="o">=</span> <span class="n">stats</span><span class="o">.</span><span class="n">norm</span><span class="o">.</span><span class="n">ppf</span><span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">alpha</span> <span class="o">/</span> <span class="mi">2</span><span class="p">)</span>
+        <span class="n">q</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_dist</span><span class="p">()</span><span class="o">.</span><span class="n">ppf</span><span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">alpha</span> <span class="o">/</span> <span class="mi">2</span><span class="p">)</span>
         <span class="n">lower</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">margeff</span> <span class="o">-</span> <span class="n">q</span> <span class="o">*</span> <span class="n">me_se</span>
         <span class="n">upper</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">margeff</span> <span class="o">+</span> <span class="n">q</span> <span class="o">*</span> <span class="n">me_se</span>
         <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">lzip</span><span class="p">(</span><span class="n">lower</span><span class="p">,</span> <span class="n">upper</span><span class="p">))</span></div>
@@ -4350,9 +4383,10 @@
                     <span class="s2">""</span><span class="p">,</span>
                     <span class="n">_transform_names</span><span class="p">[</span><span class="n">method</span><span class="p">],</span>
                     <span class="s2">"std err"</span><span class="p">,</span>
-                    <span class="s2">"z"</span><span class="p">,</span>
-                    <span class="s2">"P&gt;|z|"</span><span class="p">,</span>
-                    <span class="sa">f</span><span class="s2">"[</span><span class="si">{</span><span class="mi">100</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">alpha</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mi">100</span><span class="si">:</span><span class="s2">3.1f</span><span class="si">}</span><span class="s2">% Conf. Int.]"</span><span class="p">,</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">_stat_name</span><span class="p">,</span>
+                    <span class="sa">f</span><span class="s2">"P&gt;|</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_stat_name</span><span class="si">}</span><span class="s2">|"</span><span class="p">,</span>
+                    <span class="sa">f</span><span class="s2">"[</span><span class="si">{</span><span class="n">alpha</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mi">2</span><span class="si">}</span><span class="s2">"</span><span class="p">,</span>
+                    <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="mi">1</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">alpha</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mi">2</span><span class="si">}</span><span class="s2">]"</span><span class="p">,</span>
                 <span class="p">]</span>
                 <span class="n">tble</span><span class="o">.</span><span class="n">insert_header_row</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">header</span><span class="p">)</span>
                 <span class="c1"># from IPython.core.debugger import Pdb; Pdb().set_trace()</span>
@@ -4373,9 +4407,10 @@
                 <span class="s2">""</span><span class="p">,</span>
                 <span class="n">_transform_names</span><span class="p">[</span><span class="n">method</span><span class="p">],</span>
                 <span class="s2">"std err"</span><span class="p">,</span>
-                <span class="s2">"z"</span><span class="p">,</span>
-                <span class="s2">"P&gt;|z|"</span><span class="p">,</span>
-                <span class="sa">f</span><span class="s2">"[</span><span class="si">{</span><span class="mi">100</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">alpha</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mi">100</span><span class="si">:</span><span class="s2">3.1f</span><span class="si">}</span><span class="s2">% Conf. Int.]"</span><span class="p">,</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_stat_name</span><span class="p">,</span>
+                <span class="sa">f</span><span class="s2">"P&gt;|</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_stat_name</span><span class="si">}</span><span class="s2">|"</span><span class="p">,</span>
+                <span class="sa">f</span><span class="s2">"[</span><span class="si">{</span><span class="n">alpha</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mi">2</span><span class="si">}</span><span class="s2">"</span><span class="p">,</span>
+                <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="mi">1</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">alpha</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mi">2</span><span class="si">}</span><span class="s2">]"</span><span class="p">,</span>
             <span class="p">]</span>
             <span class="n">table</span><span class="o">.</span><span class="n">insert_header_row</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">header</span><span class="p">)</span>
 

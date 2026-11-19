@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
-    <title>statsmodels.stats.inter_rater &#8212; statsmodels 0.15.1 (+1508)</title>
+    <title>statsmodels.stats.inter_rater &#8212; statsmodels 0.15.1 (+1531)</title>
   <link rel="icon" type="image/png" sizes="32x32" href="../../../_static/icons/favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="../../../_static/icons/favicon-16x16.png">
   <link rel="manifest" href="../../../_static/icons/site.webmanifest">
@@ -71,7 +71,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="color-scheme" content="light dark"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="0.15.1 (+1508)" />
+  <meta name="docsearch:version" content="0.15.1 (+1531)" />
     <meta name="docbuild:last-update" content="Nov 19, 2026"/>
   
     
@@ -1103,6 +1103,17 @@
 <span class="sd">    weights = [0, 1, 2, 3] and wt = 'quadratic' is the same as squaring these</span>
 <span class="sd">    weights and using wt = 'toeplitz'.</span>
 
+<span class="sd">    If one rater uses a single category, then kappa is 0, its standard</span>
+<span class="sd">    errors and confidence limits are 0, and the z statistic and the p-values</span>
+<span class="sd">    are nan. If both raters use the same single category, then kappa and all</span>
+<span class="sd">    other statistics are nan.</span>
+
+<span class="sd">    .. versionchanged:: 0.15.1</span>
+
+<span class="sd">       The results if a rater uses a single category are set explicitly.</span>
+<span class="sd">       Before, they depended on rounding errors, and NumPy emitted a</span>
+<span class="sd">       ``RuntimeWarning``.</span>
+
 <span class="sd">    References</span>
 <span class="sd">    ----------</span>
 <span class="sd">    Wikipedia</span>
@@ -1126,11 +1137,26 @@
     <span class="k">assert</span> <span class="n">np</span><span class="o">.</span><span class="n">allclose</span><span class="p">(</span><span class="n">prob_exp</span><span class="o">.</span><span class="n">sum</span><span class="p">(),</span> <span class="mi">1</span><span class="p">)</span>
     <span class="c1"># print prob_exp.sum()</span>
     <span class="n">agree_exp</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">diag</span><span class="p">(</span><span class="n">prob_exp</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>  <span class="c1"># need for kappa_max</span>
+    <span class="c1"># If a rater uses a single category, then kappa and its variances are 0,</span>
+    <span class="c1"># and if both raters use the same single category, then they are 0 / 0.</span>
+    <span class="c1"># The computation below gives rounding errors or 0 / 0 in these cases.</span>
+    <span class="n">rows_used</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">flatnonzero</span><span class="p">(</span><span class="n">table</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="mi">1</span><span class="p">))</span>
+    <span class="n">cols_used</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">flatnonzero</span><span class="p">(</span><span class="n">table</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="mi">0</span><span class="p">))</span>
+    <span class="n">one_category</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">rows_used</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span> <span class="ow">or</span> <span class="nb">len</span><span class="p">(</span><span class="n">cols_used</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span>
+    <span class="n">same_category</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="nb">len</span><span class="p">(</span><span class="n">rows_used</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">cols_used</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span> <span class="ow">and</span> <span class="n">rows_used</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="n">cols_used</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="p">)</span>
+    <span class="n">one_category_value</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span> <span class="k">if</span> <span class="n">same_category</span> <span class="k">else</span> <span class="mf">0.0</span>
     <span class="k">if</span> <span class="n">weights</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">wt</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
         <span class="n">kind</span> <span class="o">=</span> <span class="s2">"Simple"</span>
-        <span class="n">kappa</span> <span class="o">=</span> <span class="p">(</span><span class="n">agree</span> <span class="o">/</span> <span class="n">nobs</span> <span class="o">-</span> <span class="n">agree_exp</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">agree_exp</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">one_category</span><span class="p">:</span>
+            <span class="n">kappa</span> <span class="o">=</span> <span class="n">one_category_value</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">kappa</span> <span class="o">=</span> <span class="p">(</span><span class="n">agree</span> <span class="o">/</span> <span class="n">nobs</span> <span class="o">-</span> <span class="n">agree_exp</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">agree_exp</span><span class="p">)</span>
 
-        <span class="k">if</span> <span class="n">return_results</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">return_results</span> <span class="ow">and</span> <span class="n">one_category</span><span class="p">:</span>
+            <span class="n">var_kappa</span> <span class="o">=</span> <span class="n">var_kappa0</span> <span class="o">=</span> <span class="n">one_category_value</span>
+        <span class="k">elif</span> <span class="n">return_results</span><span class="p">:</span>
             <span class="c1"># variance</span>
             <span class="n">term_a</span> <span class="o">=</span> <span class="n">probs_diag</span> <span class="o">*</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="p">(</span><span class="n">freq_row</span> <span class="o">+</span> <span class="n">freq_col</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">kappa</span><span class="p">))</span><span class="o">**</span><span class="mi">2</span>
             <span class="n">term_a</span> <span class="o">=</span> <span class="n">term_a</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
@@ -1171,9 +1197,14 @@
             <span class="k">if</span> <span class="p">(</span><span class="n">table</span><span class="o">.</span><span class="n">shape</span> <span class="o">!=</span> <span class="n">weights</span><span class="o">.</span><span class="n">shape</span><span class="p">):</span>
                 <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"weights are not square"</span><span class="p">)</span>
         <span class="c1"># this is formula from Wikipedia</span>
-        <span class="n">kappa</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">-</span> <span class="p">(</span><span class="n">weights</span> <span class="o">*</span> <span class="n">table</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span> <span class="o">/</span> <span class="n">nobs</span> <span class="o">/</span> <span class="p">(</span><span class="n">weights</span> <span class="o">*</span> <span class="n">prob_exp</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">one_category</span><span class="p">:</span>
+            <span class="n">kappa</span> <span class="o">=</span> <span class="n">one_category_value</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">kappa</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">-</span> <span class="p">(</span><span class="n">weights</span> <span class="o">*</span> <span class="n">table</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span> <span class="o">/</span> <span class="n">nobs</span> <span class="o">/</span> <span class="p">(</span><span class="n">weights</span> <span class="o">*</span> <span class="n">prob_exp</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
         <span class="c1"># TODO: add var_kappa for weighted version</span>
-        <span class="k">if</span> <span class="n">return_results</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">return_results</span> <span class="ow">and</span> <span class="n">one_category</span><span class="p">:</span>
+            <span class="n">var_kappa</span> <span class="o">=</span> <span class="n">var_kappa0</span> <span class="o">=</span> <span class="n">one_category_value</span>
+        <span class="k">elif</span> <span class="n">return_results</span><span class="p">:</span>
             <span class="n">var_kappa</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span>
             <span class="n">var_kappa0</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span>
             <span class="c1"># switch to SAS manual weights, problem if user specifies weights</span>
@@ -1193,8 +1224,11 @@
             <span class="n">var_kappa0</span> <span class="o">-=</span> <span class="n">agree_wexp</span><span class="o">**</span><span class="mi">2</span>
             <span class="n">var_kappa0</span> <span class="o">*=</span> <span class="n">fac</span>
 
-    <span class="n">kappa_max</span> <span class="o">=</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">minimum</span><span class="p">(</span><span class="n">freq_row</span><span class="p">,</span> <span class="n">freq_col</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span> <span class="o">-</span> <span class="n">agree_exp</span><span class="p">)</span> <span class="o">/</span> \
-                <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">agree_exp</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">same_category</span><span class="p">:</span>
+        <span class="n">kappa_max</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">kappa_max</span> <span class="o">=</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">minimum</span><span class="p">(</span><span class="n">freq_row</span><span class="p">,</span> <span class="n">freq_col</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span> <span class="o">-</span> <span class="n">agree_exp</span><span class="p">)</span> <span class="o">/</span> \
+                    <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">agree_exp</span><span class="p">)</span>
 
     <span class="k">if</span> <span class="n">return_results</span><span class="p">:</span>
         <span class="n">res</span> <span class="o">=</span> <span class="n">KappaResults</span><span class="p">(</span>
@@ -1301,7 +1335,11 @@
         <span class="bp">self</span><span class="p">[</span><span class="s2">"std_kappa"</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="bp">self</span><span class="p">[</span><span class="s2">"var_kappa"</span><span class="p">])</span>
         <span class="bp">self</span><span class="p">[</span><span class="s2">"std_kappa0"</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="bp">self</span><span class="p">[</span><span class="s2">"var_kappa0"</span><span class="p">])</span>
 
-        <span class="bp">self</span><span class="p">[</span><span class="s2">"z_value"</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="p">[</span><span class="s2">"kappa"</span><span class="p">]</span> <span class="o">/</span> <span class="bp">self</span><span class="p">[</span><span class="s2">"std_kappa0"</span><span class="p">]</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="p">[</span><span class="s2">"std_kappa0"</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="bp">self</span><span class="p">[</span><span class="s2">"z_value"</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="p">[</span><span class="s2">"kappa"</span><span class="p">]</span> <span class="o">/</span> <span class="bp">self</span><span class="p">[</span><span class="s2">"std_kappa0"</span><span class="p">]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># kappa is 0 or nan if its variance under H0 is 0 or nan</span>
+            <span class="bp">self</span><span class="p">[</span><span class="s2">"z_value"</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span>
 
         <span class="bp">self</span><span class="p">[</span><span class="s2">"pvalue_one_sided"</span><span class="p">]</span> <span class="o">=</span> <span class="n">stats</span><span class="o">.</span><span class="n">norm</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="bp">self</span><span class="p">[</span><span class="s2">"z_value"</span><span class="p">])</span>
         <span class="bp">self</span><span class="p">[</span><span class="s2">"pvalue_two_sided"</span><span class="p">]</span> <span class="o">=</span> <span class="n">stats</span><span class="o">.</span><span class="n">norm</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="bp">self</span><span class="p">[</span><span class="s2">"z_value"</span><span class="p">]))</span> <span class="o">*</span> <span class="mi">2</span>
