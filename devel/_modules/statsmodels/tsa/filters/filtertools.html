@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
-    <title>statsmodels.tsa.filters.filtertools &#8212; statsmodels 0.15.1 (+1664)</title>
+    <title>statsmodels.tsa.filters.filtertools &#8212; statsmodels 0.15.1 (+1670)</title>
   <link rel="icon" type="image/png" sizes="32x32" href="../../../../_static/icons/favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="../../../../_static/icons/favicon-16x16.png">
   <link rel="manifest" href="../../../../_static/icons/site.webmanifest">
@@ -71,7 +71,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="color-scheme" content="light dark"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="0.15.1 (+1664)" />
+  <meta name="docsearch:version" content="0.15.1 (+1670)" />
     <meta name="docbuild:last-update" content="Nov 20, 2026"/>
   
     
@@ -576,6 +576,7 @@
 <span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">TYPE_CHECKING</span><span class="p">,</span> <span class="n">NamedTuple</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">warnings</span>
 
 <span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">scipy</span><span class="w"> </span><span class="kn">import</span> <span class="n">signal</span>
@@ -802,7 +803,28 @@
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
 <span class="sd">    x : array_like</span>
-<span class="sd">        Time-series data. Should be 1d or n x 1.</span>
+<span class="sd">        Time-series data, either 1-D with shape (n,) or a single column with</span>
+<span class="sd">        shape (n, 1), such as a one-column DataFrame. Both are filtered along</span>
+<span class="sd">        the n observations. An array with shape (1, ..., 1) is a single</span>
+<span class="sd">        observation.</span>
+
+<span class="sd">        .. versionchanged:: 0.15.1</span>
+
+<span class="sd">           An (n, 1) column is now filtered along its rows, the same as 1-D</span>
+<span class="sd">           input. Previously no recursion was applied, so the column was</span>
+<span class="sd">           returned unchanged. ``init`` now works with an (n, 1) column, a</span>
+<span class="sd">           row and a single observation, where it raised a ValueError. Other</span>
+<span class="sd">           input with more than one column or more than two dimensions now</span>
+<span class="sd">           raises a ValueError.</span>
+
+<span class="sd">        .. deprecated:: 0.15.1</span>
+
+<span class="sd">           A row, an array with shape (1, n) or (1, ..., 1, n) with n &gt; 1, is</span>
+<span class="sd">           filtered along its last axis, as a 1-D series of n observations,</span>
+<span class="sd">           and returned with the shape of ``x``. ``x`` must have the correct</span>
+<span class="sd">           shape, 1-D or an (n, 1) column, so a row now warns and will raise</span>
+<span class="sd">           a ValueError in statsmodels 0.17.0. Pass the row as a 1-D array</span>
+<span class="sd">           instead.</span>
 <span class="sd">    ar_coeff : array_like</span>
 <span class="sd">        AR coefficients in reverse time order. See Notes for details.</span>
 <span class="sd">    init : array_like, optional</span>
@@ -811,9 +833,24 @@
 
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
-<span class="sd">    ndarray or Series</span>
-<span class="sd">        Filtered array, number of columns determined by x and ar_coeff. If x</span>
-<span class="sd">        is a pandas object than a Series is returned.</span>
+<span class="sd">    ndarray, Series or DataFrame</span>
+<span class="sd">        The filtered series, with the same shape as ``x``. A Series input</span>
+<span class="sd">        returns a Series and a DataFrame returns a DataFrame, each with the</span>
+<span class="sd">        index and name or columns of ``x``.</span>
+
+<span class="sd">    Raises</span>
+<span class="sd">    ------</span>
+<span class="sd">    ValueError</span>
+<span class="sd">        If ``x`` is not 1-D, an (n, 1) column, a row with shape (1, n) or</span>
+<span class="sd">        (1, ..., 1, n), or a single observation with shape (1, ..., 1), or if</span>
+<span class="sd">        ``init`` and ``ar_coeff`` have different lengths.</span>
+
+<span class="sd">    Warns</span>
+<span class="sd">    -----</span>
+<span class="sd">    FutureWarning</span>
+<span class="sd">        If ``x`` is a row with shape (1, n) or (1, ..., 1, n), which is</span>
+<span class="sd">        deprecated. A (1, 1) or (1, ..., 1) array is a single observation and</span>
+<span class="sd">        does not warn.</span>
 
 <span class="sd">    Notes</span>
 <span class="sd">    -----</span>
@@ -826,6 +863,28 @@
 <span class="sd">    """</span>
     <span class="n">pw</span> <span class="o">=</span> <span class="n">PandasWrapper</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
     <span class="n">x</span> <span class="o">=</span> <span class="n">array_like</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="s2">"x"</span><span class="p">)</span>
+    <span class="n">shape</span> <span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">shape</span>
+    <span class="k">if</span> <span class="n">x</span><span class="o">.</span><span class="n">ndim</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="c1"># an (n, 1) column, or a single observation with shape (1, ..., 1)</span>
+        <span class="n">is_column</span> <span class="o">=</span> <span class="p">(</span><span class="n">x</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">2</span> <span class="ow">and</span> <span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="mi">1</span><span class="p">)</span> <span class="ow">or</span> <span class="n">x</span><span class="o">.</span><span class="n">size</span> <span class="o">==</span> <span class="mi">1</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">is_column</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">any</span><span class="p">(</span><span class="n">nobs</span> <span class="o">!=</span> <span class="mi">1</span> <span class="k">for</span> <span class="n">nobs</span> <span class="ow">in</span> <span class="n">shape</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]):</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                    <span class="sa">f</span><span class="s2">"x must be 1-D or an (n, 1) column, but has shape </span><span class="si">{</span><span class="n">shape</span><span class="si">}</span><span class="s2">. "</span>
+                    <span class="s2">"Filter each series separately."</span>
+                <span class="p">)</span>
+            <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">"x must be 1-D or an (n, 1) column, but has shape </span><span class="si">{</span><span class="n">shape</span><span class="si">}</span><span class="s2">. "</span>
+                <span class="s2">"A row with shape (1, n) or (1, ..., 1, n) is filtered as a "</span>
+                <span class="s2">"1-D series of n observations, but this is deprecated and "</span>
+                <span class="s2">"will raise a ValueError in statsmodels 0.17.0. Pass the row "</span>
+                <span class="s2">"as a 1-D array instead."</span><span class="p">,</span>
+                <span class="ne">FutureWarning</span><span class="p">,</span>
+                <span class="n">stacklevel</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="c1"># lfilter works along the last axis, so filter x as 1-D and give the</span>
+        <span class="c1"># result the shape of x</span>
+        <span class="n">x</span> <span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">ravel</span><span class="p">()</span>
     <span class="n">ar_coeff</span> <span class="o">=</span> <span class="n">array_like</span><span class="p">(</span><span class="n">ar_coeff</span><span class="p">,</span> <span class="s2">"ar_coeff"</span><span class="p">)</span>
 
     <span class="k">if</span> <span class="n">init</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>  <span class="c1"># integer init are treated differently in lfiltic</span>
@@ -845,7 +904,7 @@
     <span class="k">else</span><span class="p">:</span>
         <span class="n">result</span> <span class="o">=</span> <span class="n">y</span>
 
-    <span class="k">return</span> <span class="n">pw</span><span class="o">.</span><span class="n">wrap</span><span class="p">(</span><span class="n">result</span><span class="p">)</span></div>
+    <span class="k">return</span> <span class="n">pw</span><span class="o">.</span><span class="n">wrap</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">shape</span><span class="p">))</span></div>
 
 
 
