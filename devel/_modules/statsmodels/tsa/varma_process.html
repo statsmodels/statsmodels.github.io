@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
-    <title>statsmodels.tsa.varma_process &#8212; statsmodels 0.15.1 (+1588)</title>
+    <title>statsmodels.tsa.varma_process &#8212; statsmodels 0.15.1 (+1595)</title>
   <link rel="icon" type="image/png" sizes="32x32" href="../../../_static/icons/favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="../../../_static/icons/favicon-16x16.png">
   <link rel="manifest" href="../../../_static/icons/site.webmanifest">
@@ -71,8 +71,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="color-scheme" content="light dark"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="0.15.1 (+1588)" />
-    <meta name="docbuild:last-update" content="Nov 19, 2026"/>
+  <meta name="docsearch:version" content="0.15.1 (+1595)" />
+    <meta name="docbuild:last-update" content="Nov 20, 2026"/>
   
     
     <script src="../../../_static/searchtools.js"></script>
@@ -958,18 +958,28 @@
 <span class="w">    </span><span class="sd">"""</span>
 <span class="sd">    Obsolete VAR class, use tsa.VAR instead, for internal use only</span>
 
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    y : ndarray or DataFrame</span>
+<span class="sd">        The data, of shape (nobs, nvars), with observations in rows.</span>
+
 <span class="sd">    Examples</span>
 <span class="sd">    --------</span>
-
-<span class="sd">    &gt;&gt;&gt; v = Var(ar2s)</span>
+<span class="sd">    &gt;&gt;&gt; import numpy as np</span>
+<span class="sd">    &gt;&gt;&gt; from statsmodels.tsa.varma_process import _Var</span>
+<span class="sd">    &gt;&gt;&gt; rng = np.random.default_rng(0)</span>
+<span class="sd">    &gt;&gt;&gt; a = np.array([[0.8, 0.0], [-0.1, 0.8]])</span>
+<span class="sd">    &gt;&gt;&gt; y = np.zeros((500, 2))</span>
+<span class="sd">    &gt;&gt;&gt; for t in range(1, 500):</span>
+<span class="sd">    ...     y[t] = a @ y[t - 1] + rng.standard_normal(2)</span>
+<span class="sd">    &gt;&gt;&gt; v = _Var(y)</span>
 <span class="sd">    &gt;&gt;&gt; v.fit(1)</span>
-<span class="sd">    &gt;&gt;&gt; v.arhat</span>
-<span class="sd">    array([[[ 1.        ,  0.        ],</span>
-<span class="sd">            [ 0.        ,  1.        ]],</span>
-
-<span class="sd">           [[-0.77784898,  0.01726193],</span>
-<span class="sd">            [ 0.10733009, -0.78665335]]])</span>
-
+<span class="sd">    &gt;&gt;&gt; v.arhat.round(2)</span>
+<span class="sd">    array([[[ 1.  ,  0.  ],</span>
+<span class="sd">            [ 0.  ,  1.  ]],</span>
+<span class="sd">    &lt;BLANKLINE&gt;</span>
+<span class="sd">           [[-0.83,  0.09],</span>
+<span class="sd">            [ 0.02, -0.75]]])</span>
 <span class="sd">    """</span>
 
     <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">y</span><span class="p">):</span>
@@ -1008,13 +1018,21 @@
 
 <span class="sd">        The following are attached to the instance:</span>
 
-<span class="sd">        arhat : ndarray of shape (nlags, nvar, nvar)</span>
-<span class="sd">            Full lag polynomial array.</span>
-<span class="sd">        arlhs : ndarray of shape (nlags - 1, nvar, nvar)</span>
-<span class="sd">            Reduced lag polynomial for the left-hand side.</span>
+<span class="sd">        arhat : ndarray of shape (nlags + 1, nvar, nvar)</span>
+<span class="sd">            Full lag polynomial array, the identity followed by ``-arlhs``.</span>
+<span class="sd">        arlhs : ndarray of shape (nlags, nvar, nvar)</span>
+<span class="sd">            Reduced lag polynomial for the left-hand side. ``arlhs[i]`` is</span>
+<span class="sd">            the transpose of the coefficient matrix of lag ``i + 1``.</span>
 <span class="sd">        estresults</span>
 <span class="sd">            The full result tuple as returned by ``linalg.lstsq``; other</span>
 <span class="sd">            statistics still need to be completed.</span>
+<span class="sd">        rss : ndarray of shape (nvar,)</span>
+<span class="sd">            The residual sum of squares of each equation.</span>
+<span class="sd">        xredrank : int</span>
+<span class="sd">            The rank of the regressor matrix.</span>
+<span class="sd">        yred, xred : ndarray</span>
+<span class="sd">            The dependent variables and the lagged regressors used in the</span>
+<span class="sd">            regression.</span>
 <span class="sd">        """</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">nlags</span> <span class="o">=</span> <span class="n">nlags</span>  <span class="c1"># without current period</span>
         <span class="n">nvars</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">nvars</span>
@@ -1040,6 +1058,13 @@
     <span class="k">def</span><span class="w"> </span><span class="nf">covmat</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">"""</span>
 <span class="sd">        Covariance matrix of estimate</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        None</span>
+<span class="sd">            Nothing is returned; the result is attached to the instance as</span>
+<span class="sd">            ``paramcov``, of shape (nlags * nvar, nlags * nvar, nvar), where</span>
+<span class="sd">            ``paramcov[:, :, i]`` belongs to equation ``i``.</span>
 
 <span class="sd">        Notes</span>
 <span class="sd">        -----</span>
@@ -1076,7 +1101,8 @@
 <span class="sd">        Parameters</span>
 <span class="sd">        ----------</span>
 <span class="sd">        horiz : int, optional</span>
-<span class="sd">            Forecast horizon.</span>
+<span class="sd">            Forecast horizon. Ignored if `u` is given, in which case the</span>
+<span class="sd">            horizon is the number of rows of `u`.</span>
 <span class="sd">        u : ndarray, optional</span>
 <span class="sd">            Error term for forecast periods, of shape (horiz, nvars). If</span>
 <span class="sd">            None, then u is zero.</span>
