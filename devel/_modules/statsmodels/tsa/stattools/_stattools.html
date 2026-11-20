@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
-    <title>statsmodels.tsa.stattools._stattools &#8212; statsmodels 0.15.1 (+1714)</title>
+    <title>statsmodels.tsa.stattools._stattools &#8212; statsmodels 0.15.1 (+1717)</title>
   <link rel="icon" type="image/png" sizes="32x32" href="../../../../_static/icons/favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="../../../../_static/icons/favicon-16x16.png">
   <link rel="manifest" href="../../../../_static/icons/site.webmanifest">
@@ -71,7 +71,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="color-scheme" content="light dark"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="0.15.1 (+1714)" />
+  <meta name="docsearch:version" content="0.15.1 (+1717)" />
     <meta name="docbuild:last-update" content="Nov 20, 2026"/>
   
     
@@ -2634,8 +2634,16 @@
 <span class="k">def</span><span class="w"> </span><span class="nf">_pccf_yw</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">nlags</span><span class="p">,</span> <span class="n">adjusted</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""PCCF via multivariate Levinson-Durbin recursion."""</span>
     <span class="n">nobs</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">ptp</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">or</span> <span class="n">np</span><span class="o">.</span><span class="n">ptp</span><span class="p">(</span><span class="n">y</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">full</span><span class="p">(</span><span class="n">nlags</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span><span class="p">)</span>
     <span class="n">xo</span> <span class="o">=</span> <span class="n">x</span> <span class="o">-</span> <span class="n">x</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span>
     <span class="n">yo</span> <span class="o">=</span> <span class="n">y</span> <span class="o">-</span> <span class="n">y</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span>
+    <span class="c1"># Standardizing does not change the PCCF, and it makes the checks below</span>
+    <span class="c1"># relative to the variances of x and y. Dividing by the largest absolute</span>
+    <span class="c1"># value first avoids overflow and underflow.</span>
+    <span class="k">for</span> <span class="n">z</span> <span class="ow">in</span> <span class="p">(</span><span class="n">xo</span><span class="p">,</span> <span class="n">yo</span><span class="p">):</span>
+        <span class="n">z</span> <span class="o">/=</span> <span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">z</span><span class="p">))</span>
+        <span class="n">z</span> <span class="o">/=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">z</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">z</span><span class="p">)</span> <span class="o">/</span> <span class="n">nobs</span><span class="p">)</span>
 
     <span class="n">gamma</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">((</span><span class="n">nlags</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">))</span>
     <span class="k">for</span> <span class="n">h</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nlags</span> <span class="o">+</span> <span class="mi">1</span><span class="p">):</span>
@@ -2648,7 +2656,15 @@
             <span class="p">]</span>
         <span class="n">gamma</span><span class="p">[</span><span class="n">h</span><span class="p">]</span> <span class="o">/=</span> <span class="n">nobs</span> <span class="o">-</span> <span class="n">h</span> <span class="k">if</span> <span class="n">adjusted</span> <span class="k">else</span> <span class="n">nobs</span>
 
-    <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">matrix_rank</span><span class="p">(</span><span class="n">gamma</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="o">&lt;</span> <span class="mi">2</span><span class="p">:</span>
+    <span class="c1"># Rounding leaves the smallest singular value of a singular matrix at up</span>
+    <span class="c1"># to about nobs * eps times the largest; the factor 100 is a margin.</span>
+    <span class="n">tol</span> <span class="o">=</span> <span class="mi">100</span> <span class="o">*</span> <span class="n">nobs</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">finfo</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span><span class="o">.</span><span class="n">eps</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">singular</span><span class="p">(</span><span class="n">cov</span><span class="p">):</span>
+        <span class="n">sv</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">svd</span><span class="p">(</span><span class="n">cov</span><span class="p">,</span> <span class="n">compute_uv</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">sv</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">&lt;=</span> <span class="n">tol</span> <span class="o">*</span> <span class="n">sv</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+    <span class="k">if</span> <span class="n">singular</span><span class="p">(</span><span class="n">gamma</span><span class="p">[</span><span class="mi">0</span><span class="p">]):</span>
         <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">full</span><span class="p">(</span><span class="n">nlags</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span><span class="p">)</span>
 
     <span class="n">sig_f</span> <span class="o">=</span> <span class="n">gamma</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
@@ -2668,10 +2684,6 @@
 
         <span class="n">v_f</span> <span class="o">=</span> <span class="n">sig_f</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span>
         <span class="n">v_b</span> <span class="o">=</span> <span class="n">sig_b</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span>
-        <span class="k">if</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">v_f</span><span class="p">)</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">v_b</span><span class="p">):</span>
-            <span class="n">pccf_vals</span><span class="p">[</span><span class="n">s</span> <span class="o">-</span> <span class="mi">1</span> <span class="p">:]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span>
-            <span class="k">break</span>
-        <span class="n">tol</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">finfo</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span><span class="o">.</span><span class="n">eps</span> <span class="o">*</span> <span class="n">gamma</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">trace</span><span class="p">()</span>
         <span class="k">if</span> <span class="n">v_f</span> <span class="o">&lt;=</span> <span class="n">tol</span> <span class="ow">or</span> <span class="n">v_b</span> <span class="o">&lt;=</span> <span class="n">tol</span><span class="p">:</span>
             <span class="n">pccf_vals</span><span class="p">[</span><span class="n">s</span> <span class="o">-</span> <span class="mi">1</span> <span class="p">:]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span>
             <span class="k">break</span>
@@ -2681,12 +2693,14 @@
 
         <span class="n">pccf_vals</span><span class="p">[</span><span class="n">s</span> <span class="o">-</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">delta_f</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">/</span> <span class="p">(</span><span class="n">d_f</span> <span class="o">*</span> <span class="n">d_b</span><span class="p">)</span>
 
-        <span class="k">try</span><span class="p">:</span>
-            <span class="n">phi_ss</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">solve</span><span class="p">(</span><span class="n">sig_b</span><span class="o">.</span><span class="n">T</span><span class="p">,</span> <span class="n">delta_f</span><span class="o">.</span><span class="n">T</span><span class="p">)</span><span class="o">.</span><span class="n">T</span>
-            <span class="n">psi_ss</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">solve</span><span class="p">(</span><span class="n">sig_f</span><span class="o">.</span><span class="n">T</span><span class="p">,</span> <span class="n">delta_b</span><span class="o">.</span><span class="n">T</span><span class="p">)</span><span class="o">.</span><span class="n">T</span>
-        <span class="k">except</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">LinAlgError</span><span class="p">:</span>
-            <span class="n">pccf_vals</span><span class="p">[</span><span class="n">s</span> <span class="o">-</span> <span class="mi">1</span> <span class="p">:]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span>
+        <span class="c1"># Lag s only uses the diagonals of sig_f and sig_b; the later lags</span>
+        <span class="c1"># need their inverses</span>
+        <span class="k">if</span> <span class="n">singular</span><span class="p">(</span><span class="n">sig_f</span><span class="p">)</span> <span class="ow">or</span> <span class="n">singular</span><span class="p">(</span><span class="n">sig_b</span><span class="p">):</span>
+            <span class="n">pccf_vals</span><span class="p">[</span><span class="n">s</span><span class="p">:]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span>
             <span class="k">break</span>
+
+        <span class="n">phi_ss</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">solve</span><span class="p">(</span><span class="n">sig_b</span><span class="o">.</span><span class="n">T</span><span class="p">,</span> <span class="n">delta_f</span><span class="o">.</span><span class="n">T</span><span class="p">)</span><span class="o">.</span><span class="n">T</span>
+        <span class="n">psi_ss</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">solve</span><span class="p">(</span><span class="n">sig_f</span><span class="o">.</span><span class="n">T</span><span class="p">,</span> <span class="n">delta_b</span><span class="o">.</span><span class="n">T</span><span class="p">)</span><span class="o">.</span><span class="n">T</span>
 
         <span class="n">phi_new</span> <span class="o">=</span> <span class="p">[</span><span class="kc">None</span><span class="p">]</span> <span class="o">*</span> <span class="p">(</span><span class="n">nlags</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span>
         <span class="n">psi_new</span> <span class="o">=</span> <span class="p">[</span><span class="kc">None</span><span class="p">]</span> <span class="o">*</span> <span class="p">(</span><span class="n">nlags</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span>
@@ -2885,9 +2899,28 @@
 <span class="sd">    For a bivariate VAR(p) process, P(h) = 0 for h &gt; p,</span>
 <span class="sd">    providing a useful identification tool.</span>
 
-<span class="sd">    If the series are perfectly collinear or constant, the sample</span>
-<span class="sd">    autocovariance matrix is singular and the Yule-Walker methods</span>
-<span class="sd">    return NaN for all lags.</span>
+<span class="sd">    The Yule-Walker methods return NaN for all lags if x or y is</span>
+<span class="sd">    constant or the covariance matrix of x and y is singular, that is,</span>
+<span class="sd">    x and y are perfectly collinear. Their recursion stops when a</span>
+<span class="sd">    prediction error variance is not positive or a prediction error</span>
+<span class="sd">    covariance matrix is singular, as happens when the lagged values are</span>
+<span class="sd">    perfectly collinear: the lags that would divide by that variance, or</span>
+<span class="sd">    need the inverse of that matrix, are NaN. These decisions are made on</span>
+<span class="sd">    the standardized series, so they do not depend on the scales of x</span>
+<span class="sd">    and y. A variance counts as not positive when it is at most</span>
+<span class="sd">    ``100 * nobs * eps``, where ``eps`` is the machine epsilon of float64,</span>
+<span class="sd">    and a matrix as singular when its smallest singular value is at most</span>
+<span class="sd">    ``100 * nobs * eps`` times its largest.</span>
+
+<span class="sd">    .. versionchanged:: 0.15.1</span>
+
+<span class="sd">       These decisions no longer depend on the scales of x and y</span>
+<span class="sd">       (rescaling one series could make every lag NaN). Series that are</span>
+<span class="sd">       collinear to working precision give NaN instead of inaccurate</span>
+<span class="sd">       values. The lags after a singular prediction error covariance</span>
+<span class="sd">       matrix are NaN on every platform instead of depending on</span>
+<span class="sd">       rounding, and the lag computed just before it is no longer</span>
+<span class="sd">       dropped.</span>
 
 <span class="sd">    The OLS method returns NaN for lags where either residual series</span>
 <span class="sd">    has zero variance.</span>
