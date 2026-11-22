@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
-    <title>statsmodels.tsa.stattools._stattools &#8212; statsmodels 0.15.1 (+1876)</title>
+    <title>statsmodels.tsa.stattools._stattools &#8212; statsmodels 0.15.1 (+1883)</title>
   <link rel="icon" type="image/png" sizes="32x32" href="../../../../_static/icons/favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="../../../../_static/icons/favicon-16x16.png">
   <link rel="manifest" href="../../../../_static/icons/site.webmanifest">
@@ -71,7 +71,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="color-scheme" content="light dark"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="0.15.1 (+1876)" />
+  <meta name="docsearch:version" content="0.15.1 (+1883)" />
     <meta name="docbuild:last-update" content="Nov 22, 2026"/>
   
     
@@ -5769,6 +5769,27 @@
 <span class="sd">        statistics than the original Zivot-Andrews method, although no attempt</span>
 <span class="sd">        has been made to characterize the size/power trade-off.</span>
 
+<span class="sd">        A candidate break is skipped if its dummies are collinear with the</span>
+<span class="sd">        constant and the trend over the rows of the regression, which start</span>
+<span class="sd">        at observation ``baselag + 1``, since it then has no test statistic.</span>
+<span class="sd">        A level shift needs at least one row before the break and one after</span>
+<span class="sd">        it, and a trend shift two rows before it (and, next to a level</span>
+<span class="sd">        shift, two after it). So the last observation before the break is at</span>
+<span class="sd">        least ``baselag + 1`` ("c") or ``baselag + 2`` ("t" and "ct"), and at</span>
+<span class="sd">        most ``nobs - 2`` ("c") or ``nobs - 3`` ("ct"). The returned</span>
+<span class="sd">        ``bpidx`` is that observation for "c" and "ct", but the first</span>
+<span class="sd">        observation of the trend shift, one later, for "t", so the smallest</span>
+<span class="sd">        ``bpidx`` is ``baselag + 1`` ("c"), ``baselag + 3`` ("t") or</span>
+<span class="sd">        ``baselag + 2`` ("ct"). A ValueError is raised if no candidate break</span>
+<span class="sd">        is left.</span>
+
+<span class="sd">        .. versionchanged:: 0.15.1</span>
+
+<span class="sd">           These break periods are skipped. They used to give a NaN or</span>
+<span class="sd">           meaningless statistic, or raise, when the number of lags was not</span>
+<span class="sd">           smaller than the number of trimmed observations, or with</span>
+<span class="sd">           ``trim=0``.</span>
+
 <span class="sd">        References</span>
 <span class="sd">        ----------</span>
 <span class="sd">        .. [1] Baum, C.F. (2004). "ZANDREWS: Stata module to calculate</span>
@@ -5813,6 +5834,30 @@
         <span class="n">trimcnt</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">nobs</span> <span class="o">*</span> <span class="n">trim</span><span class="p">)</span>
         <span class="n">start_period</span> <span class="o">=</span> <span class="n">trimcnt</span>
         <span class="n">end_period</span> <span class="o">=</span> <span class="n">nobs</span> <span class="o">-</span> <span class="n">trimcnt</span>
+        <span class="c1"># The regressions start at period baselags + 1. For a break period</span>
+        <span class="c1"># whose dummies are zero, constant or a linear trend over those rows,</span>
+        <span class="c1"># the dummies are collinear with the constant and the trend, so the</span>
+        <span class="c1"># period has no t-statistic and is skipped. The level shift needs a</span>
+        <span class="c1"># zero and a nonzero row, the trend shift two zero rows and, next to</span>
+        <span class="c1"># the level shift ("ct"), two nonzero rows. The shifts of period p</span>
+        <span class="c1"># start at observation p for "c" and "ct" but at p - 1 for "t" (see</span>
+        <span class="c1"># _update_regression_exog), so the first valid period of "t" is one</span>
+        <span class="c1"># larger than that of "ct" although both need two zero rows.</span>
+        <span class="k">if</span> <span class="n">regression</span> <span class="o">==</span> <span class="s2">"c"</span><span class="p">:</span>
+            <span class="n">first_valid</span><span class="p">,</span> <span class="n">last_valid</span> <span class="o">=</span> <span class="n">baselags</span> <span class="o">+</span> <span class="mi">2</span><span class="p">,</span> <span class="n">nobs</span> <span class="o">-</span> <span class="mi">1</span>
+        <span class="k">elif</span> <span class="n">regression</span> <span class="o">==</span> <span class="s2">"t"</span><span class="p">:</span>
+            <span class="n">first_valid</span><span class="p">,</span> <span class="n">last_valid</span> <span class="o">=</span> <span class="n">baselags</span> <span class="o">+</span> <span class="mi">4</span><span class="p">,</span> <span class="n">nobs</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">first_valid</span><span class="p">,</span> <span class="n">last_valid</span> <span class="o">=</span> <span class="n">baselags</span> <span class="o">+</span> <span class="mi">3</span><span class="p">,</span> <span class="n">nobs</span> <span class="o">-</span> <span class="mi">2</span>
+        <span class="n">periods</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span>
+            <span class="nb">max</span><span class="p">(</span><span class="n">start_period</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="n">first_valid</span><span class="p">),</span> <span class="nb">min</span><span class="p">(</span><span class="n">end_period</span><span class="p">,</span> <span class="n">last_valid</span><span class="p">)</span> <span class="o">+</span> <span class="mi">1</span>
+        <span class="p">)</span>
+        <span class="k">if</span> <span class="n">periods</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">"No break period is left: with </span><span class="si">{</span><span class="n">baselags</span><span class="si">}</span><span class="s2"> lags and trim=</span><span class="si">{</span><span class="n">trim</span><span class="si">}</span><span class="s2">, "</span>
+                <span class="s2">"the break dummies of every candidate period are collinear with "</span>
+                <span class="s2">"the constant and the trend. Use fewer lags or a smaller trim."</span>
+            <span class="p">)</span>
         <span class="k">if</span> <span class="n">regression</span> <span class="o">==</span> <span class="s2">"ct"</span><span class="p">:</span>
             <span class="n">basecols</span> <span class="o">=</span> <span class="mi">5</span>
         <span class="k">else</span><span class="p">:</span>
@@ -5826,7 +5871,6 @@
             <span class="n">x</span><span class="p">,</span> <span class="n">nobs</span><span class="p">,</span> <span class="n">c_const</span><span class="p">,</span> <span class="n">t_const</span><span class="p">,</span> <span class="n">basecols</span><span class="p">,</span> <span class="n">baselags</span>
         <span class="p">)</span>
         <span class="n">stats</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">full</span><span class="p">(</span><span class="n">end_period</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">)</span>
-        <span class="n">periods</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">start_period</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="n">end_period</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span>
         <span class="n">tvalues</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_break_tvalues</span><span class="p">(</span>
             <span class="n">endog</span><span class="p">[</span><span class="n">baselags</span><span class="p">:],</span>
             <span class="n">exog</span><span class="p">,</span>
@@ -5842,7 +5886,7 @@
             <span class="n">stats</span><span class="p">[</span><span class="n">periods</span><span class="p">]</span> <span class="o">=</span> <span class="n">tvalues</span>
         <span class="k">else</span><span class="p">:</span>
             <span class="c1"># iterate through the time periods</span>
-            <span class="k">for</span> <span class="n">bp</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">start_period</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="n">end_period</span> <span class="o">+</span> <span class="mi">1</span><span class="p">):</span>
+            <span class="k">for</span> <span class="n">bp</span> <span class="ow">in</span> <span class="n">periods</span><span class="p">:</span>
                 <span class="c1"># update intercept dummy / trend / trend dummy</span>
                 <span class="n">exog</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_update_regression_exog</span><span class="p">(</span>
                     <span class="n">exog</span><span class="p">,</span>
@@ -5855,7 +5899,7 @@
                     <span class="n">baselags</span><span class="p">,</span>
                 <span class="p">)</span>
                 <span class="c1"># check exog rank on first iteration</span>
-                <span class="k">if</span> <span class="n">bp</span> <span class="o">==</span> <span class="n">start_period</span> <span class="o">+</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">bp</span> <span class="o">==</span> <span class="n">periods</span><span class="p">[</span><span class="mi">0</span><span class="p">]:</span>
                     <span class="n">o</span> <span class="o">=</span> <span class="n">OLS</span><span class="p">(</span><span class="n">endog</span><span class="p">[</span><span class="n">baselags</span><span class="p">:],</span> <span class="n">exog</span><span class="p">,</span> <span class="n">hasconst</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">fit</span><span class="p">()</span>
                     <span class="k">if</span> <span class="n">o</span><span class="o">.</span><span class="n">df_model</span> <span class="o">&lt;</span> <span class="n">exog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">-</span> <span class="mi">1</span><span class="p">:</span>
                         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
