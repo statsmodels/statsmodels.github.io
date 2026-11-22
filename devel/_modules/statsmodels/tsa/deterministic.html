@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
-    <title>statsmodels.tsa.deterministic &#8212; statsmodels 0.15.1 (+1910)</title>
+    <title>statsmodels.tsa.deterministic &#8212; statsmodels 0.15.1 (+1929)</title>
   <link rel="icon" type="image/png" sizes="32x32" href="../../../_static/icons/favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="../../../_static/icons/favicon-16x16.png">
   <link rel="manifest" href="../../../_static/icons/site.webmanifest">
@@ -71,7 +71,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="color-scheme" content="light dark"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="0.15.1 (+1910)" />
+  <meta name="docsearch:version" content="0.15.1 (+1929)" />
     <meta name="docbuild:last-update" content="Nov 22, 2026"/>
   
     
@@ -562,8 +562,11 @@
 <span></span><span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.compat.pandas</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">MONTH_END</span><span class="p">,</span>
     <span class="n">PD_LT_2_2_0</span><span class="p">,</span>
     <span class="n">PD_LT_3_1_0</span><span class="p">,</span>
+    <span class="n">QUARTER_END</span><span class="p">,</span>
+    <span class="n">YEAR_END</span><span class="p">,</span>
     <span class="n">_infer_freq_returns_offset</span><span class="p">,</span>
     <span class="n">is_int_index</span><span class="p">,</span>
     <span class="n">to_numpy</span><span class="p">,</span>
@@ -572,6 +575,7 @@
 <span class="kn">from</span><span class="w"> </span><span class="nn">abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">ABC</span><span class="p">,</span> <span class="n">abstractmethod</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">datetime</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">dt</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">TYPE_CHECKING</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">warnings</span>
 
 <span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
@@ -1185,17 +1189,66 @@
 
 
 
+<span class="k">def</span><span class="w"> </span><span class="nf">_end_anchored</span><span class="p">(</span><span class="n">offset</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DateOffset</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DateOffset</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""</span>
+<span class="sd">    The end-anchored offset with the same periods as a start-anchored one</span>
+
+<span class="sd">    "MS" -&gt; "ME", "QS-m" -&gt; "QE-(m - 1)" and "YS-m" -&gt; "YE-(m - 1)", where the</span>
+<span class="sd">    month before January is December. The calendar quarters, "QS-m" for m in</span>
+<span class="sd">    JAN, APR, JUL and OCT, are "QE-DEC", as in pandas 2.2 and 2.3. The</span>
+<span class="sd">    business-day freqs "BMS", "BQS-m" and "BYS-m" are mapped as "MS", "QS-m"</span>
+<span class="sd">    and "YS-m". Other offsets are returned unchanged.</span>
+<span class="sd">    """</span>
+    <span class="n">offsets</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">offsets</span>
+    <span class="k">if</span> <span class="nb">type</span><span class="p">(</span><span class="n">offset</span><span class="p">)</span> <span class="ow">in</span> <span class="p">(</span><span class="n">offsets</span><span class="o">.</span><span class="n">MonthBegin</span><span class="p">,</span> <span class="n">offsets</span><span class="o">.</span><span class="n">BusinessMonthBegin</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">offsets</span><span class="o">.</span><span class="n">MonthEnd</span><span class="p">(</span><span class="n">offset</span><span class="o">.</span><span class="n">n</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nb">type</span><span class="p">(</span><span class="n">offset</span><span class="p">)</span> <span class="ow">in</span> <span class="p">(</span><span class="n">offsets</span><span class="o">.</span><span class="n">QuarterBegin</span><span class="p">,</span> <span class="n">offsets</span><span class="o">.</span><span class="n">BQuarterBegin</span><span class="p">):</span>
+        <span class="n">month</span> <span class="o">=</span> <span class="p">(</span><span class="n">offset</span><span class="o">.</span><span class="n">startingMonth</span> <span class="o">-</span> <span class="mi">2</span><span class="p">)</span> <span class="o">%</span> <span class="mi">12</span> <span class="o">+</span> <span class="mi">1</span>
+        <span class="k">if</span> <span class="n">month</span> <span class="o">%</span> <span class="mi">3</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="c1"># The calendar quarters</span>
+            <span class="n">month</span> <span class="o">=</span> <span class="mi">12</span>
+        <span class="k">return</span> <span class="n">offsets</span><span class="o">.</span><span class="n">QuarterEnd</span><span class="p">(</span><span class="n">offset</span><span class="o">.</span><span class="n">n</span><span class="p">,</span> <span class="n">startingMonth</span><span class="o">=</span><span class="n">month</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nb">type</span><span class="p">(</span><span class="n">offset</span><span class="p">)</span> <span class="ow">in</span> <span class="p">(</span><span class="n">offsets</span><span class="o">.</span><span class="n">YearBegin</span><span class="p">,</span> <span class="n">offsets</span><span class="o">.</span><span class="n">BYearBegin</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">offsets</span><span class="o">.</span><span class="n">YearEnd</span><span class="p">(</span><span class="n">offset</span><span class="o">.</span><span class="n">n</span><span class="p">,</span> <span class="n">month</span><span class="o">=</span><span class="p">(</span><span class="n">offset</span><span class="o">.</span><span class="n">month</span> <span class="o">-</span> <span class="mi">2</span><span class="p">)</span> <span class="o">%</span> <span class="mi">12</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">offset</span>
+
+
 <div class="viewcode-block" id="CalendarDeterministicTerm">
 <a class="viewcode-back" href="../../../generated/statsmodels.tsa.deterministic.CalendarDeterministicTerm.html#statsmodels.tsa.deterministic.CalendarDeterministicTerm">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">CalendarDeterministicTerm</span><span class="p">(</span><span class="n">DeterministicTerm</span><span class="p">,</span> <span class="n">ABC</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Abstract Base Class for calendar deterministic terms"""</span>
 
-    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">freq</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="c1"># Set _uses_periods to False if the terms do not use periods of freq</span>
+    <span class="n">_uses_periods</span> <span class="o">=</span> <span class="kc">True</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">freq</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">map_start_anchored</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">map_start_anchored</span> <span class="o">=</span> <span class="n">bool_like</span><span class="p">(</span><span class="n">map_start_anchored</span><span class="p">,</span> <span class="s2">"map_start_anchored"</span><span class="p">)</span>
         <span class="k">try</span><span class="p">:</span>
             <span class="n">index</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">date_range</span><span class="p">(</span><span class="s2">"2020-01-01"</span><span class="p">,</span> <span class="n">freq</span><span class="o">=</span><span class="n">freq</span><span class="p">,</span> <span class="n">periods</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_freq</span> <span class="o">=</span> <span class="n">index</span><span class="o">.</span><span class="n">freq</span>
         <span class="k">except</span> <span class="ne">ValueError</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
             <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"freq is not understood by pandas"</span><span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">exc</span>
+        <span class="c1"># The freq of the periods that the terms are computed from</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_period_freq</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_freq</span>
+        <span class="k">if</span> <span class="n">map_start_anchored</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_period_freq</span> <span class="o">=</span> <span class="n">_end_anchored</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_freq</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_uses_periods</span><span class="p">:</span>
+            <span class="k">return</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">with</span> <span class="n">warnings</span><span class="o">.</span><span class="n">catch_warnings</span><span class="p">():</span>
+                <span class="c1"># Periods with freq "B" are deprecated in pandas, but work</span>
+                <span class="n">warnings</span><span class="o">.</span><span class="n">simplefilter</span><span class="p">(</span><span class="s2">"ignore"</span><span class="p">,</span> <span class="ne">FutureWarning</span><span class="p">)</span>
+                <span class="n">index</span><span class="o">.</span><span class="n">to_period</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_period_freq</span><span class="p">)</span>
+        <span class="k">except</span> <span class="p">(</span><span class="ne">AttributeError</span><span class="p">,</span> <span class="ne">ValueError</span><span class="p">)</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s1">'freq "</span><span class="si">{</span><span class="n">freq</span><span class="si">}</span><span class="s1">" is not supported by </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s1">. Its '</span>
+                <span class="s2">"terms are computed from periods, so freq must be a frequency "</span>
+                <span class="s2">"that pandas supports for periods, for example "</span>
+                <span class="sa">f</span><span class="s1">'"D", "W", "</span><span class="si">{</span><span class="n">MONTH_END</span><span class="si">}</span><span class="s1">", "</span><span class="si">{</span><span class="n">QUARTER_END</span><span class="si">}</span><span class="s1">" or "</span><span class="si">{</span><span class="n">YEAR_END</span><span class="si">}</span><span class="s1">", or '</span>
+                <span class="s1">'one of the start-anchored frequencies "MS", "QS" and "YS" (or '</span>
+                <span class="s1">'"BMS", "BQS" and "BYS"), which are mapped to end-anchored ones '</span>
+                <span class="s2">"unless map_start_anchored is False."</span>
+            <span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">exc</span>
 
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">freq</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
@@ -1207,8 +1260,8 @@
     <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
         <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">index</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">PeriodIndex</span><span class="p">):</span>
             <span class="n">index</span> <span class="o">=</span> <span class="n">index</span><span class="o">.</span><span class="n">to_timestamp</span><span class="p">()</span>
-        <span class="n">delta</span> <span class="o">=</span> <span class="n">index</span> <span class="o">-</span> <span class="n">index</span><span class="o">.</span><span class="n">to_period</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_freq</span><span class="p">)</span><span class="o">.</span><span class="n">to_timestamp</span><span class="p">()</span>
-        <span class="n">pi</span> <span class="o">=</span> <span class="n">index</span><span class="o">.</span><span class="n">to_period</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_freq</span><span class="p">)</span>
+        <span class="n">delta</span> <span class="o">=</span> <span class="n">index</span> <span class="o">-</span> <span class="n">index</span><span class="o">.</span><span class="n">to_period</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_period_freq</span><span class="p">)</span><span class="o">.</span><span class="n">to_timestamp</span><span class="p">()</span>
+        <span class="n">pi</span> <span class="o">=</span> <span class="n">index</span><span class="o">.</span><span class="n">to_period</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_period_freq</span><span class="p">)</span>
         <span class="n">gap</span> <span class="o">=</span> <span class="p">(</span><span class="n">pi</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">to_timestamp</span><span class="p">()</span> <span class="o">-</span> <span class="n">pi</span><span class="o">.</span><span class="n">to_timestamp</span><span class="p">()</span>
         <span class="k">return</span> <span class="n">to_numpy</span><span class="p">(</span><span class="n">delta</span><span class="p">)</span> <span class="o">/</span> <span class="n">to_numpy</span><span class="p">(</span><span class="n">gap</span><span class="p">)</span>
 
@@ -1249,9 +1302,38 @@
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
 <span class="sd">    freq : str</span>
-<span class="sd">        A string convertible to a pandas frequency.</span>
+<span class="sd">        A string convertible to a pandas frequency that pandas supports for</span>
+<span class="sd">        periods, for example "D", "W", "ME", "QE" or "YE", or a</span>
+<span class="sd">        start-anchored frequency ("MS", "QS-m", "YS-m", "BMS", "BQS-m" or</span>
+<span class="sd">        "BYS-m"), which is mapped to the end-anchored frequency with the same</span>
+<span class="sd">        periods (see ``map_start_anchored``).</span>
+
+<span class="sd">        .. versionchanged:: 0.15.1</span>
+
+<span class="sd">           A frequency that pandas does not support for periods raises a</span>
+<span class="sd">           ``ValueError``. Before, an error, usually an ``AttributeError``, was</span>
+<span class="sd">           raised when the terms were computed. Start-anchored frequencies are</span>
+<span class="sd">           mapped to end-anchored ones.</span>
 <span class="sd">    order : int</span>
 <span class="sd">        The number of Fourier components to include.</span>
+<span class="sd">    map_start_anchored : bool, optional</span>
+<span class="sd">        Whether to compute the terms of a start-anchored freq from the periods</span>
+<span class="sd">        of the end-anchored freq with the same periods. The default is True.</span>
+<span class="sd">        "MS" is mapped to "ME", "QS-m" to "QE" anchored in the month before</span>
+<span class="sd">        m (so "QS-FEB" to "QE-JAN"), except that the calendar quarters, "QS"</span>
+<span class="sd">        and "QS-m" for m in JAN, APR, JUL and OCT, are mapped to "QE-DEC",</span>
+<span class="sd">        and "YS-m" to "YE" anchored in the month before m (so "YS" to</span>
+<span class="sd">        "YE-DEC", and "YS-JUL" to "YE-JUN"), keeping the multiple ("2MS" to</span>
+<span class="sd">        "2ME"). The business-day frequencies "BMS", "BQS-m" and "BYS-m" are</span>
+<span class="sd">        mapped as "MS", "QS-m" and "YS-m", and older aliases such as "AS-JUL"</span>
+<span class="sd">        and "BAS-JUL" as "YS-JUL" and "BYS-JUL". "SMS" has no end-anchored</span>
+<span class="sd">        equivalent and is not mapped. If False, freq is passed to pandas as</span>
+<span class="sd">        given. pandas supports periods of start-anchored frequencies, except</span>
+<span class="sd">        "BMS", only in versions 2.2 and 2.3, which anchor the periods of</span>
+<span class="sd">        "QS-m", "YS-m", "BQS-m" and "BYS-m" in December for every</span>
+<span class="sd">        m, so that, for example, "QS-FEB" has the quarters of "QE-DEC".</span>
+
+<span class="sd">        .. versionadded:: 0.15.1</span>
 
 <span class="sd">    See Also</span>
 <span class="sd">    --------</span>
@@ -1291,8 +1373,10 @@
 <span class="sd">    &gt;&gt;&gt; cal_fourier_gen.in_sample(index)</span>
 <span class="sd">    """</span>
 
-    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">freq</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">order</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">freq</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span> <span class="n">freq</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">order</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">map_start_anchored</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">freq</span><span class="p">,</span> <span class="n">map_start_anchored</span><span class="o">=</span><span class="n">map_start_anchored</span><span class="p">)</span>
         <span class="n">FourierDeterministicTerm</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">order</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_order</span> <span class="o">=</span> <span class="n">required_int_like</span><span class="p">(</span><span class="n">order</span><span class="p">,</span> <span class="s2">"terms"</span><span class="p">)</span>
 
@@ -1337,7 +1421,7 @@
 
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">_eq_attr</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">Hashable</span><span class="p">,</span> <span class="o">...</span><span class="p">]:</span>
-        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_freq</span><span class="o">.</span><span class="n">freqstr</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_order</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_freq</span><span class="o">.</span><span class="n">freqstr</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_order</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_period_freq</span><span class="o">.</span><span class="n">freqstr</span>
 
     <span class="k">def</span><span class="w"> </span><span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
         <span class="k">return</span> <span class="sa">f</span><span class="s2">"Fourier(freq=</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_freq</span><span class="o">.</span><span class="n">freqstr</span><span class="si">}</span><span class="s2">, order=</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_order</span><span class="si">}</span><span class="s2">)"</span></div>
@@ -1383,6 +1467,9 @@
 <span class="sd">    """</span>
 
     <span class="n">_is_dummy</span> <span class="o">=</span> <span class="kc">True</span>
+    <span class="c1"># The dummies are computed from the fields of the time stamps, so "MS"</span>
+    <span class="c1"># can be used</span>
+    <span class="n">_uses_periods</span> <span class="o">=</span> <span class="kc">False</span>
 
     <span class="c1"># out_of: freq</span>
     <span class="k">if</span> <span class="n">PD_LT_2_2_0</span><span class="p">:</span>
@@ -1536,7 +1623,18 @@
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
 <span class="sd">    freq : str</span>
-<span class="sd">        A string convertible to a pandas frequency.</span>
+<span class="sd">        A string convertible to a pandas frequency that pandas supports for</span>
+<span class="sd">        periods, for example "D", "W", "ME", "QE" or "YE", or a</span>
+<span class="sd">        start-anchored frequency ("MS", "QS-m", "YS-m", "BMS", "BQS-m" or</span>
+<span class="sd">        "BYS-m"), which is mapped to the end-anchored frequency with the same</span>
+<span class="sd">        periods (see ``map_start_anchored``).</span>
+
+<span class="sd">        .. versionchanged:: 0.15.1</span>
+
+<span class="sd">           A frequency that pandas does not support for periods raises a</span>
+<span class="sd">           ``ValueError``. Before, an error, usually an ``AttributeError``, was</span>
+<span class="sd">           raised when the terms were computed. Start-anchored frequencies are</span>
+<span class="sd">           mapped to end-anchored ones.</span>
 <span class="sd">    constant : bool, optional</span>
 <span class="sd">        Flag indicating whether a constant should be included.</span>
 <span class="sd">    order : int, optional</span>
@@ -1551,6 +1649,25 @@
 <span class="sd">        treated as 1 and so all other time indices are defined as the number</span>
 <span class="sd">        of periods since or before this time stamp. If not provided, defaults</span>
 <span class="sd">        to pandas base period for a PeriodIndex.</span>
+<span class="sd">    map_start_anchored : bool, optional</span>
+<span class="sd">        Whether to compute the terms of a start-anchored freq from the periods</span>
+<span class="sd">        of the end-anchored freq with the same periods. The default is True.</span>
+<span class="sd">        "MS" is mapped to "ME", "QS-m" to "QE" anchored in the month before</span>
+<span class="sd">        m (so "QS-FEB" to "QE-JAN"), except that the calendar quarters, "QS"</span>
+<span class="sd">        and "QS-m" for m in JAN, APR, JUL and OCT, are mapped to "QE-DEC",</span>
+<span class="sd">        and "YS-m" to "YE" anchored in the month before m (so "YS" to</span>
+<span class="sd">        "YE-DEC", and "YS-JUL" to "YE-JUN"), keeping the multiple ("2MS" to</span>
+<span class="sd">        "2ME"). The business-day frequencies "BMS", "BQS-m" and "BYS-m" are</span>
+<span class="sd">        mapped as "MS", "QS-m" and "YS-m", and older aliases such as "AS-JUL"</span>
+<span class="sd">        and "BAS-JUL" as "YS-JUL" and "BYS-JUL". "SMS" has no end-anchored</span>
+<span class="sd">        equivalent and is not mapped. If False, freq is passed to pandas as</span>
+<span class="sd">        given. pandas supports periods of start-anchored frequencies, except</span>
+<span class="sd">        "BMS", only in versions 2.2 and 2.3, which anchor the periods of</span>
+<span class="sd">        "QS-m", "YS-m", "BQS-m" and "BYS-m" in December for every</span>
+<span class="sd">        m, so that, for example, "QS-FEB" has the quarters of "QE-DEC", and</span>
+<span class="sd">        which cannot use a base_period with them.</span>
+
+<span class="sd">        .. versionadded:: 0.15.1</span>
 
 <span class="sd">    See Also</span>
 <span class="sd">    --------</span>
@@ -1604,12 +1721,13 @@
         <span class="n">order</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span>
         <span class="o">*</span><span class="p">,</span>
         <span class="n">base_period</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">DateLike</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">map_start_anchored</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
     <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">freq</span><span class="p">)</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">freq</span><span class="p">,</span> <span class="n">map_start_anchored</span><span class="o">=</span><span class="n">map_start_anchored</span><span class="p">)</span>
         <span class="n">TimeTrendDeterministicTerm</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">constant</span><span class="o">=</span><span class="n">constant</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="n">order</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_ref_i8</span> <span class="o">=</span> <span class="mi">0</span>
         <span class="k">if</span> <span class="n">base_period</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="n">pr</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">period_range</span><span class="p">(</span><span class="n">base_period</span><span class="p">,</span> <span class="n">periods</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">freq</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_freq</span><span class="p">)</span>
+            <span class="n">pr</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">period_range</span><span class="p">(</span><span class="n">base_period</span><span class="p">,</span> <span class="n">periods</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">freq</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_period_freq</span><span class="p">)</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_ref_i8</span> <span class="o">=</span> <span class="n">pr</span><span class="o">.</span><span class="n">asi8</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_base_period</span> <span class="o">=</span> <span class="kc">None</span> <span class="k">if</span> <span class="n">base_period</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="nb">str</span><span class="p">(</span><span class="n">base_period</span><span class="p">)</span>
 
@@ -1626,6 +1744,8 @@
         <span class="n">freq</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
         <span class="n">trend</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
         <span class="n">base_period</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">DateLike</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="o">*</span><span class="p">,</span>
+        <span class="n">map_start_anchored</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
     <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">CalendarTimeTrend</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">"""</span>
 <span class="sd">        Create a TimeTrend from a string description.</span>
@@ -1635,7 +1755,10 @@
 <span class="sd">        Parameters</span>
 <span class="sd">        ----------</span>
 <span class="sd">        freq : str</span>
-<span class="sd">            A string convertible to a pandas frequency.</span>
+<span class="sd">            A string convertible to a pandas frequency that pandas supports</span>
+<span class="sd">            for periods, or a start-anchored frequency, "MS", "QS-m" or</span>
+<span class="sd">            "YS-m", which is mapped to the end-anchored frequency with the</span>
+<span class="sd">            same periods (see ``map_start_anchored``).</span>
 <span class="sd">        trend : {"n", "c", "t", "ct", "ctt"}</span>
 <span class="sd">            The string representation of the time trend. The terms are:</span>
 
@@ -1649,6 +1772,12 @@
 <span class="sd">            is treated as 1 and so all other time indices are defined as the</span>
 <span class="sd">            number of periods since or before this time stamp. If not</span>
 <span class="sd">            provided, defaults to pandas base period for a PeriodIndex.</span>
+<span class="sd">        map_start_anchored : bool, optional</span>
+<span class="sd">            Whether to compute the terms of a start-anchored freq from the</span>
+<span class="sd">            periods of the end-anchored freq with the same periods. The</span>
+<span class="sd">            default is True. See ``CalendarTimeTrend``.</span>
+
+<span class="sd">            .. versionadded:: 0.15.1</span>
 
 <span class="sd">        Returns</span>
 <span class="sd">        -------</span>
@@ -1662,18 +1791,24 @@
             <span class="n">order</span> <span class="o">=</span> <span class="mi">2</span>
         <span class="k">elif</span> <span class="s2">"t"</span> <span class="ow">in</span> <span class="n">trend</span><span class="p">:</span>
             <span class="n">order</span> <span class="o">=</span> <span class="mi">1</span>
-        <span class="k">return</span> <span class="bp">cls</span><span class="p">(</span><span class="n">freq</span><span class="p">,</span> <span class="n">constant</span><span class="p">,</span> <span class="n">order</span><span class="p">,</span> <span class="n">base_period</span><span class="o">=</span><span class="n">base_period</span><span class="p">)</span></div>
+        <span class="k">return</span> <span class="bp">cls</span><span class="p">(</span>
+            <span class="n">freq</span><span class="p">,</span>
+            <span class="n">constant</span><span class="p">,</span>
+            <span class="n">order</span><span class="p">,</span>
+            <span class="n">base_period</span><span class="o">=</span><span class="n">base_period</span><span class="p">,</span>
+            <span class="n">map_start_anchored</span><span class="o">=</span><span class="n">map_start_anchored</span><span class="p">,</span>
+        <span class="p">)</span></div>
 
 
     <span class="k">def</span><span class="w"> </span><span class="nf">_terms</span><span class="p">(</span>
         <span class="bp">self</span><span class="p">,</span> <span class="n">index</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DatetimeIndex</span> <span class="o">|</span> <span class="n">pd</span><span class="o">.</span><span class="n">PeriodIndex</span><span class="p">,</span> <span class="n">ratio</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span>
     <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
-        <span class="c1"># Count the periods in the freq of the term, from the start of each</span>
-        <span class="c1"># period of a PeriodIndex as in _compute_ratio</span>
+        <span class="c1"># Count the periods in the (end-anchored) freq of the term, from the</span>
+        <span class="c1"># start of each period of a PeriodIndex as in _compute_ratio</span>
         <span class="n">timestamps</span> <span class="o">=</span> <span class="n">index</span>
         <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">index</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">PeriodIndex</span><span class="p">):</span>
             <span class="n">timestamps</span> <span class="o">=</span> <span class="n">index</span><span class="o">.</span><span class="n">to_timestamp</span><span class="p">()</span>
-        <span class="n">index_i8</span> <span class="o">=</span> <span class="n">timestamps</span><span class="o">.</span><span class="n">to_period</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_freq</span><span class="p">)</span><span class="o">.</span><span class="n">asi8</span>
+        <span class="n">index_i8</span> <span class="o">=</span> <span class="n">timestamps</span><span class="o">.</span><span class="n">to_period</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_period_freq</span><span class="p">)</span><span class="o">.</span><span class="n">asi8</span>
         <span class="n">index_i8</span> <span class="o">=</span> <span class="n">index_i8</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ref_i8</span> <span class="o">+</span> <span class="mi">1</span>
         <span class="n">time</span> <span class="o">=</span> <span class="n">index_i8</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">double</span><span class="p">)</span> <span class="o">+</span> <span class="n">ratio</span>
         <span class="n">time</span> <span class="o">=</span> <span class="n">time</span><span class="p">[:,</span> <span class="kc">None</span><span class="p">]</span>
@@ -1713,6 +1848,7 @@
             <span class="bp">self</span><span class="o">.</span><span class="n">_constant</span><span class="p">,</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_order</span><span class="p">,</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_freq</span><span class="o">.</span><span class="n">freqstr</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_period_freq</span><span class="o">.</span><span class="n">freqstr</span><span class="p">,</span>
         <span class="p">)</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_base_period</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
             <span class="n">attr</span> <span class="o">+=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_base_period</span><span class="p">,)</span>

@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
-    <title>statsmodels.tsa.filters.filtertools &#8212; statsmodels 0.15.1 (+1910)</title>
+    <title>statsmodels.tsa.filters.filtertools &#8212; statsmodels 0.15.1 (+1929)</title>
   <link rel="icon" type="image/png" sizes="32x32" href="../../../../_static/icons/favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="../../../../_static/icons/favicon-16x16.png">
   <link rel="manifest" href="../../../../_static/icons/site.webmanifest">
@@ -71,7 +71,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="color-scheme" content="light dark"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="0.15.1 (+1910)" />
+  <meta name="docsearch:version" content="0.15.1 (+1929)" />
     <meta name="docbuild:last-update" content="Nov 22, 2026"/>
   
     
@@ -866,7 +866,12 @@
 <span class="sd">        y[n] = ar_coeff[0] * y[n-1] + ...</span>
 <span class="sd">                + ar_coeff[n_coeff - 1] * y[n - n_coeff] + x[n]</span>
 
-<span class="sd">    where n_coeff = len(ar_coeff).</span>
+<span class="sd">    where n_coeff = len(ar_coeff). The values before the first observation</span>
+<span class="sd">    are ``init`` in reverse time order, ``y[-1] = init[0]``, ...,</span>
+<span class="sd">    ``y[-n_coeff] = init[n_coeff - 1]``, or zero if ``init`` is None. This is</span>
+<span class="sd">    the recursive filter of ``stats::filter`` in R. For example, with</span>
+<span class="sd">    ``ar_coeff=[0.5, 0.25]``, ``init=[1, 2]`` and ``x`` zero, y starts</span>
+<span class="sd">    ``1, 0.75, 0.625``.</span>
 <span class="sd">    """</span>
     <span class="n">pw</span> <span class="o">=</span> <span class="n">PandasWrapper</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
     <span class="n">x</span> <span class="o">=</span> <span class="n">array_like</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="s2">"x"</span><span class="p">)</span>
@@ -942,25 +947,31 @@
 
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
-<span class="sd">    y : ndarray, 2d</span>
-<span class="sd">        Filtered array, number of columns determined by x and filt. If a</span>
-<span class="sd">        pandas object is given, a pandas object is returned. The index of</span>
-<span class="sd">        the return is the exact same as the time period in ``x``</span>
+<span class="sd">    ndarray, Series or DataFrame</span>
+<span class="sd">        The filtered array, with the number of observations of ``x``. It is</span>
+<span class="sd">        1d if ``x`` is 1d, and otherwise has one column per column of ``x``.</span>
+<span class="sd">        The values that the filter cannot compute at the ends are NaN. A</span>
+<span class="sd">        Series or DataFrame ``x`` returns a Series or DataFrame with the</span>
+<span class="sd">        index and the name or columns of ``x``.</span>
 
 <span class="sd">    Notes</span>
 <span class="sd">    -----</span>
-<span class="sd">    In nsides == 1, x is filtered ::</span>
+<span class="sd">    The filters are the convolution filters of ``stats::filter`` in R.</span>
 
-<span class="sd">        y[n] = filt[0]*x[n-1] + ... + filt[n_filt-1]*x[n-n_filt]</span>
+<span class="sd">    If nsides == 1, x is filtered with its current and past values ::</span>
 
-<span class="sd">    where n_filt is len(filt).</span>
+<span class="sd">        y[n] = filt[0]*x[n] + filt[1]*x[n-1] + ...</span>
+<span class="sd">               + filt[n_filt-1]*x[n-n_filt+1]</span>
+
+<span class="sd">    where n_filt is len(filt). The first n_filt - 1 values are NaN.</span>
 
 <span class="sd">    If nsides == 2, x is filtered around lag 0 ::</span>
 
-<span class="sd">        y[n] = filt[0]*x[n - n_filt/2] + ... + filt[n_filt / 2] * x[n]</span>
-<span class="sd">               + ... + x[n + n_filt/2]</span>
+<span class="sd">        y[n] = filt[0]*x[n+m] + ... + filt[m]*x[n] + ...</span>
+<span class="sd">               + filt[n_filt-1]*x[n+m-n_filt+1]</span>
 
-<span class="sd">    where n_filt is len(filt). If n_filt is even, then more of the filter</span>
+<span class="sd">    where n_filt is len(filt) and m = n_filt // 2. The first n_filt - 1 - m</span>
+<span class="sd">    and the last m values are NaN. If n_filt is even, then more of the filter</span>
 <span class="sd">    is forward in time than backward.</span>
 
 <span class="sd">    If filt is 1d or (nlags,1) one lag polynomial is applied to all</span>
@@ -1024,9 +1035,10 @@
 <span class="sd">        The 2-d input data series, time in rows, variables in columns.</span>
 <span class="sd">    useic : array_like or bool, optional</span>
 <span class="sd">        Initial conditions for the AR filter, as accepted by</span>
-<span class="sd">        ``scipy.signal.lfiltic`` (i.e. an array_like of the initial values</span>
-<span class="sd">        of the filtered series, of length ``ar.shape[0] - 1``). Use the</span>
-<span class="sd">        default, False, for zero initial conditions.</span>
+<span class="sd">        ``scipy.signal.lfiltic``: the values of the filtered series before</span>
+<span class="sd">        the first observation in reverse time order (``useic[0]`` is</span>
+<span class="sd">        ``y[-1]``), of length ``ar.shape[0] - 1``. Use the default, False,</span>
+<span class="sd">        for zero initial conditions.</span>
 
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
