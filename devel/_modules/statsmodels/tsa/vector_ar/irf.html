@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
-    <title>statsmodels.tsa.vector_ar.irf &#8212; statsmodels 0.15.1 (+2120)</title>
+    <title>statsmodels.tsa.vector_ar.irf &#8212; statsmodels 0.15.1 (+2123)</title>
   <link rel="icon" type="image/png" sizes="32x32" href="../../../../_static/icons/favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="../../../../_static/icons/favicon-16x16.png">
   <link rel="manifest" href="../../../../_static/icons/site.webmanifest">
@@ -71,7 +71,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="color-scheme" content="light dark"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="0.15.1 (+2120)" />
+  <meta name="docsearch:version" content="0.15.1 (+2123)" />
     <meta name="docbuild:last-update" content="Nov 23, 2026"/>
   
     
@@ -563,6 +563,8 @@
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.compat.pandas</span><span class="w"> </span><span class="kn">import</span> <span class="n">deprecate_kwarg</span>
 
+<span class="kn">import</span><span class="w"> </span><span class="nn">warnings</span>
+
 <span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">numpy.linalg</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">la</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">scipy.linalg</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">L</span>
@@ -574,6 +576,26 @@
 <span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.tsa.vector_ar.hypothesis_test_results</span><span class="w"> </span><span class="kn">import</span> <span class="n">ErrorBand</span>
 
 <span class="n">mat</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_check_component</span><span class="p">(</span><span class="n">component</span><span class="p">,</span> <span class="n">n_components</span><span class="p">):</span>
+    <span class="c1"># The indices of the eigenvalues used by the Sims-Zha bands must be in</span>
+    <span class="c1"># [0, n_components); negative indices count from the end and are deprecated</span>
+    <span class="n">component</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">component</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">component</span> <span class="o">&gt;=</span> <span class="n">n_components</span><span class="p">)</span> <span class="ow">or</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">component</span> <span class="o">&lt;</span> <span class="o">-</span><span class="n">n_components</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="s2">"At least one of the components does not exist. Components must be "</span>
+            <span class="sa">f</span><span class="s2">"between 0 and </span><span class="si">{</span><span class="n">n_components</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="mi">1</span><span class="si">}</span><span class="s2">."</span>
+        <span class="p">)</span>
+    <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">component</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">):</span>
+        <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span>
+            <span class="s2">"Negative values in component select eigenvalues from the end. They "</span>
+            <span class="s2">"are deprecated and will raise a ValueError after statsmodels 0.17 "</span>
+            <span class="s2">"is released."</span><span class="p">,</span>
+            <span class="ne">FutureWarning</span><span class="p">,</span>
+            <span class="n">stacklevel</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span>
+        <span class="p">)</span>
+    <span class="k">return</span> <span class="n">component</span>
 
 
 <span class="k">class</span><span class="w"> </span><span class="nc">BaseIRAnalysis</span><span class="p">:</span>
@@ -1157,12 +1179,19 @@
 <span class="sd">               rng for passing a random number generator or seed.</span>
 <span class="sd">        burn : int, optional</span>
 <span class="sd">            Number of initial simulated obs to discard. The default is 100.</span>
-<span class="sd">        component : ndarray of int, optional</span>
+<span class="sd">        component : array_like of int, optional</span>
 <span class="sd">            Array of shape (neqs, neqs) giving the index of the</span>
 <span class="sd">            column of eigenvector/value to use for each error band. Note:</span>
 <span class="sd">            the period of impulse (t=0) is not included when computing the</span>
 <span class="sd">            principal component. If None, the column of the largest</span>
 <span class="sd">            eigenvalue is used for each element.</span>
+
+<span class="sd">            .. versionchanged:: 0.15.1</span>
+
+<span class="sd">               Each value must be between 0 and periods - 1. A valid</span>
+<span class="sd">               component could be rejected and a value of periods or more</span>
+<span class="sd">               could pass the check. Negative values select eigenvalues</span>
+<span class="sd">               from the end; they are deprecated and issue a FutureWarning.</span>
 
 <span class="sd">        Returns</span>
 <span class="sd">        -------</span>
@@ -1191,10 +1220,7 @@
                 <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
                     <span class="s2">"Component array must be "</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">neqs</span><span class="p">)</span> <span class="o">+</span> <span class="s2">" x "</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">neqs</span><span class="p">)</span>
                 <span class="p">)</span>
-            <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">argmax</span><span class="p">(</span><span class="n">component</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="n">neqs</span> <span class="o">*</span> <span class="n">periods</span><span class="p">:</span>
-                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"Atleast one of the components does not exist"</span><span class="p">)</span>
-            <span class="k">else</span><span class="p">:</span>
-                <span class="n">k</span> <span class="o">=</span> <span class="n">component</span>
+            <span class="n">k</span> <span class="o">=</span> <span class="n">_check_component</span><span class="p">(</span><span class="n">component</span><span class="p">,</span> <span class="n">periods</span><span class="p">)</span>
 
         <span class="c1"># here take the kth column of W, which we determine by finding the largest eigenvalue of the covaraince matrix</span>
         <span class="n">lower</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">copy</span><span class="p">(</span><span class="n">irfs</span><span class="p">)</span>
@@ -1256,12 +1282,19 @@
 <span class="sd">               rng for passing a random number generator or seed.</span>
 <span class="sd">        burn : int, optional</span>
 <span class="sd">            Number of initial simulated obs to discard. The default is 100.</span>
-<span class="sd">        component : ndarray of int, optional</span>
+<span class="sd">        component : array_like of int, optional</span>
 <span class="sd">            Array of shape (neqs, neqs) giving the index of the</span>
 <span class="sd">            column of eigenvector/value to use for each error band. Note:</span>
 <span class="sd">            the period of impulse (t=0) is not included when computing the</span>
 <span class="sd">            principal component. If None, the column of the largest</span>
 <span class="sd">            eigenvalue is used for each element.</span>
+
+<span class="sd">            .. versionchanged:: 0.15.1</span>
+
+<span class="sd">               Each value must be between 0 and periods - 1. A valid</span>
+<span class="sd">               component could be rejected and a value of periods or more</span>
+<span class="sd">               could pass the check. Negative values select eigenvalues</span>
+<span class="sd">               from the end; they are deprecated and issue a FutureWarning.</span>
 
 <span class="sd">        Returns</span>
 <span class="sd">        -------</span>
@@ -1288,10 +1321,7 @@
                 <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
                     <span class="s2">"Component array must be "</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">neqs</span><span class="p">)</span> <span class="o">+</span> <span class="s2">" x "</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">neqs</span><span class="p">)</span>
                 <span class="p">)</span>
-            <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">argmax</span><span class="p">(</span><span class="n">component</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="n">neqs</span> <span class="o">*</span> <span class="n">periods</span><span class="p">:</span>
-                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"Atleast one of the components does not exist"</span><span class="p">)</span>
-            <span class="k">else</span><span class="p">:</span>
-                <span class="n">k</span> <span class="o">=</span> <span class="n">component</span>
+            <span class="n">k</span> <span class="o">=</span> <span class="n">_check_component</span><span class="p">(</span><span class="n">component</span><span class="p">,</span> <span class="n">periods</span><span class="p">)</span>
 
         <span class="n">gamma</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">repl</span><span class="p">,</span> <span class="n">periods</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="n">neqs</span><span class="p">,</span> <span class="n">neqs</span><span class="p">))</span>
         <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">repl</span><span class="p">):</span>
@@ -1363,6 +1393,13 @@
 <span class="sd">            component. If None, the column of the largest eigenvalue is</span>
 <span class="sd">            used for each element.</span>
 
+<span class="sd">            .. versionchanged:: 0.15.1</span>
+
+<span class="sd">               Each value must be between 0 and neqs * periods - 1. Values</span>
+<span class="sd">               of neqs * periods or more were not checked. Negative values</span>
+<span class="sd">               select eigenvalues from the end; they are deprecated and</span>
+<span class="sd">               issue a FutureWarning.</span>
+
 <span class="sd">        Returns</span>
 <span class="sd">        -------</span>
 <span class="sd">        ErrorBand</span>
@@ -1397,10 +1434,7 @@
         <span class="k">if</span> <span class="n">component</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
             <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">size</span><span class="p">(</span><span class="n">component</span><span class="p">)</span> <span class="o">!=</span> <span class="p">(</span><span class="n">neqs</span><span class="p">):</span>
                 <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"Component array must be of length "</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">neqs</span><span class="p">))</span>
-            <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">argmax</span><span class="p">(</span><span class="n">component</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="n">neqs</span> <span class="o">*</span> <span class="n">periods</span><span class="p">:</span>
-                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"Atleast one of the components does not exist"</span><span class="p">)</span>
-            <span class="k">else</span><span class="p">:</span>
-                <span class="n">k</span> <span class="o">=</span> <span class="n">component</span>
+            <span class="n">k</span> <span class="o">=</span> <span class="n">_check_component</span><span class="p">(</span><span class="n">component</span><span class="p">,</span> <span class="n">neqs</span> <span class="o">*</span> <span class="n">periods</span><span class="p">)</span>
 
         <span class="c1"># compute for eigen decomp for each stack</span>
         <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">neqs</span><span class="p">):</span>
