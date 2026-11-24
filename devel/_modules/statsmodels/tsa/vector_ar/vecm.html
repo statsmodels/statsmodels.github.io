@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
-    <title>statsmodels.tsa.vector_ar.vecm &#8212; statsmodels 0.15.1 (+2277)</title>
+    <title>statsmodels.tsa.vector_ar.vecm &#8212; statsmodels 0.15.1 (+2287)</title>
   <link rel="icon" type="image/png" sizes="32x32" href="../../../../_static/icons/favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="../../../../_static/icons/favicon-16x16.png">
   <link rel="manifest" href="../../../../_static/icons/site.webmanifest">
@@ -71,7 +71,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="color-scheme" content="light dark"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="0.15.1 (+2277)" />
+  <meta name="docsearch:version" content="0.15.1 (+2287)" />
     <meta name="docbuild:last-update" content="Nov 24, 2026"/>
   
     
@@ -560,6 +560,8 @@
                   
   <h1>Source code for statsmodels.tsa.vector_ar.vecm</h1><div class="highlight"><pre>
 <span></span><span class="kn">from</span><span class="w"> </span><span class="nn">collections</span><span class="w"> </span><span class="kn">import</span> <span class="n">defaultdict</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numbers</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">warnings</span>
 
 <span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="kn">import</span> <span class="n">hstack</span><span class="p">,</span> <span class="n">vstack</span>
@@ -591,6 +593,11 @@
     <span class="n">ma_rep</span><span class="p">,</span>
     <span class="n">orth_ma_rep</span><span class="p">,</span>
     <span class="n">test_normality</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="c1"># The values of deterministic in VECM, "" and "nc" are aliases of "n"</span>
+<span class="n">_DETERMINISTIC_OPTIONS</span> <span class="o">=</span> <span class="p">(</span>
+    <span class="s2">""</span><span class="p">,</span> <span class="s2">"n"</span><span class="p">,</span> <span class="s2">"nc"</span><span class="p">,</span> <span class="s2">"co"</span><span class="p">,</span> <span class="s2">"ci"</span><span class="p">,</span> <span class="s2">"lo"</span><span class="p">,</span> <span class="s2">"li"</span><span class="p">,</span> <span class="s2">"coli"</span><span class="p">,</span> <span class="s2">"cili"</span><span class="p">,</span> <span class="s2">"colo"</span><span class="p">,</span> <span class="s2">"cilo"</span>
 <span class="p">)</span>
 
 
@@ -625,6 +632,13 @@
 <span class="sd">        Combinations of these are possible (e.g., ``"cili"`` or ``"colo"`` for</span>
 <span class="sd">        linear trend with intercept). See the docstring of the</span>
 <span class="sd">        :class:`VECM`-class for more information.</span>
+
+<span class="sd">        .. deprecated:: 0.15.1</span>
+
+<span class="sd">           Other values, which VECM does not accept, are deprecated and will</span>
+<span class="sd">           raise a ValueError after statsmodels 0.17 is released. They add a</span>
+<span class="sd">           constant if they contain "co" or "ci", and a linear trend if they</span>
+<span class="sd">           contain "lo" or "li".</span>
 <span class="sd">    seasons : int, optional</span>
 <span class="sd">        Number of periods in a seasonal cycle. 0 means no seasons.</span>
 <span class="sd">    exog : ndarray (nobs_tot x #det_terms), optional</span>
@@ -646,6 +660,16 @@
 <span class="sd">    """</span>
     <span class="n">ic</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="nb">list</span><span class="p">)</span>
     <span class="n">deterministic</span> <span class="o">=</span> <span class="n">string_like</span><span class="p">(</span><span class="n">deterministic</span><span class="p">,</span> <span class="s2">"deterministic"</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">deterministic</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">_DETERMINISTIC_OPTIONS</span><span class="p">:</span>
+        <span class="n">documented</span> <span class="o">=</span> <span class="p">[</span><span class="n">v</span> <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">_DETERMINISTIC_OPTIONS</span> <span class="k">if</span> <span class="n">v</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">""</span><span class="p">,</span> <span class="s2">"nc"</span><span class="p">)]</span>
+        <span class="n">options</span> <span class="o">=</span> <span class="s2">", "</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="sa">f</span><span class="s1">'"</span><span class="si">{</span><span class="n">v</span><span class="si">}</span><span class="s1">"'</span> <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">documented</span><span class="p">)</span>
+        <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">"deterministic must be one of </span><span class="si">{</span><span class="n">options</span><span class="si">}</span><span class="s2">, got </span><span class="si">{</span><span class="n">deterministic</span><span class="si">!r}</span><span class="s2">. "</span>
+            <span class="s2">"Other values are deprecated and will raise a ValueError after "</span>
+            <span class="s2">"statsmodels 0.17 is released."</span><span class="p">,</span>
+            <span class="ne">FutureWarning</span><span class="p">,</span>
+            <span class="n">stacklevel</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
+        <span class="p">)</span>
     <span class="n">maxlags</span> <span class="o">=</span> <span class="n">int_like</span><span class="p">(</span><span class="n">maxlags</span><span class="p">,</span> <span class="s2">"maxlags"</span><span class="p">,</span> <span class="n">optional</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">maxlags</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">:</span>
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"maxlags must be non-negative, got </span><span class="si">{</span><span class="n">maxlags</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
@@ -1594,6 +1618,14 @@
 <span class="sd">    V     :math:`\\neq 0`                   :math:`\\neq 0`                       ``"colo"``</span>
 <span class="sd">    ====  ===============================  ===================================  =============</span>
 
+<span class="sd">    .. deprecated:: 0.15.1</span>
+
+<span class="sd">       A `coint_rank` larger than the number of variables is deprecated and</span>
+<span class="sd">       will raise a ValueError after statsmodels 0.17 is released. Such a</span>
+<span class="sd">       model is estimated with the rank equal to the number of variables,</span>
+<span class="sd">       but the larger rank is kept in the results (for example in the</span>
+<span class="sd">       degrees of freedom of ``test_whiteness``).</span>
+
 <span class="sd">    References</span>
 <span class="sd">    ----------</span>
 <span class="sd">    .. [1] Lütkepohl, H. 2005. *New Introduction to Multiple Time Series Analysis*. Springer.</span>
@@ -1626,11 +1658,23 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">neqs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">endog</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">k_ar</span> <span class="o">=</span> <span class="n">k_ar_diff</span> <span class="o">+</span> <span class="mi">1</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">k_ar_diff</span> <span class="o">=</span> <span class="n">k_ar_diff</span>
+        <span class="k">if</span> <span class="n">coint_rank</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">"coint_rank must be between 0 and neqs (</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">neqs</span><span class="si">}</span><span class="s2">), got "</span>
+                <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">coint_rank</span><span class="si">}</span><span class="s2">."</span>
+            <span class="p">)</span>
+        <span class="k">if</span> <span class="n">coint_rank</span> <span class="o">&gt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">neqs</span><span class="p">:</span>
+            <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">"coint_rank must be between 0 and neqs (</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">neqs</span><span class="si">}</span><span class="s2">), got "</span>
+                <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">coint_rank</span><span class="si">}</span><span class="s2">. The model is estimated with rank </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">neqs</span><span class="si">}</span><span class="s2">. "</span>
+                <span class="s2">"A coint_rank larger than neqs is deprecated and will raise a "</span>
+                <span class="s2">"ValueError after statsmodels 0.17 is released."</span><span class="p">,</span>
+                <span class="ne">FutureWarning</span><span class="p">,</span>
+                <span class="n">stacklevel</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
+            <span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">coint_rank</span> <span class="o">=</span> <span class="n">coint_rank</span>
         <span class="n">deterministic</span> <span class="o">=</span> <span class="n">string_like</span><span class="p">(</span>
-            <span class="n">deterministic</span><span class="p">,</span>
-            <span class="s2">"deterministic"</span><span class="p">,</span>
-            <span class="n">options</span><span class="o">=</span><span class="p">(</span><span class="s2">""</span><span class="p">,</span> <span class="s2">"n"</span><span class="p">,</span> <span class="s2">"nc"</span><span class="p">,</span> <span class="s2">"co"</span><span class="p">,</span> <span class="s2">"ci"</span><span class="p">,</span> <span class="s2">"lo"</span><span class="p">,</span> <span class="s2">"li"</span><span class="p">,</span> <span class="s2">"coli"</span><span class="p">,</span> <span class="s2">"cili"</span><span class="p">,</span> <span class="s2">"colo"</span><span class="p">,</span> <span class="s2">"cilo"</span><span class="p">),</span>
+            <span class="n">deterministic</span><span class="p">,</span> <span class="s2">"deterministic"</span><span class="p">,</span> <span class="n">options</span><span class="o">=</span><span class="n">_DETERMINISTIC_OPTIONS</span>
         <span class="p">)</span>
         <span class="n">deterministic</span> <span class="o">=</span> <span class="s2">"n"</span> <span class="k">if</span> <span class="n">deterministic</span> <span class="o">==</span> <span class="s2">"nc"</span> <span class="k">else</span> <span class="n">deterministic</span>
 
@@ -2875,28 +2919,36 @@
         <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span><span class="mi">0</span> <span class="o">&lt;</span> <span class="n">signif</span> <span class="o">&lt;</span> <span class="mi">1</span><span class="p">):</span>
             <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"signif has to be between 0 and 1"</span><span class="p">)</span>
 
-        <span class="n">allowed_types</span> <span class="o">=</span> <span class="p">(</span><span class="nb">str</span><span class="p">,</span> <span class="nb">int</span><span class="p">)</span>
+        <span class="n">allowed_types</span> <span class="o">=</span> <span class="p">(</span><span class="nb">str</span><span class="p">,</span> <span class="n">numbers</span><span class="o">.</span><span class="n">Integral</span><span class="p">)</span>
 
         <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">caused</span><span class="p">,</span> <span class="n">allowed_types</span><span class="p">):</span>
             <span class="n">caused</span> <span class="o">=</span> <span class="p">[</span><span class="n">caused</span><span class="p">]</span>
-        <span class="k">if</span> <span class="ow">not</span> <span class="nb">all</span><span class="p">(</span><span class="nb">isinstance</span><span class="p">(</span><span class="n">c</span><span class="p">,</span> <span class="n">allowed_types</span><span class="p">)</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">caused</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">iterable</span><span class="p">(</span><span class="n">caused</span><span class="p">)</span> <span class="ow">or</span> <span class="ow">not</span> <span class="nb">all</span><span class="p">(</span>
+            <span class="nb">isinstance</span><span class="p">(</span><span class="n">c</span><span class="p">,</span> <span class="n">allowed_types</span><span class="p">)</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">caused</span>
+        <span class="p">):</span>
             <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span>
                 <span class="s2">"caused has to be of type string or int (or a "</span>
                 <span class="s2">"sequence of these types)."</span>
             <span class="p">)</span>
-        <span class="n">caused</span> <span class="o">=</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">names</span><span class="p">[</span><span class="n">c</span><span class="p">]</span> <span class="k">if</span> <span class="nb">type</span><span class="p">(</span><span class="n">c</span><span class="p">)</span> <span class="ow">is</span> <span class="nb">int</span> <span class="k">else</span> <span class="n">c</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">caused</span><span class="p">]</span>
+        <span class="n">caused</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">names</span><span class="p">[</span><span class="n">c</span><span class="p">]</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">c</span><span class="p">,</span> <span class="n">numbers</span><span class="o">.</span><span class="n">Integral</span><span class="p">)</span> <span class="k">else</span> <span class="n">c</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">caused</span>
+        <span class="p">]</span>
         <span class="n">caused_ind</span> <span class="o">=</span> <span class="p">[</span><span class="n">get_index</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">names</span><span class="p">,</span> <span class="n">c</span><span class="p">)</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">caused</span><span class="p">]</span>
 
         <span class="k">if</span> <span class="n">causing</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
 
             <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">causing</span><span class="p">,</span> <span class="n">allowed_types</span><span class="p">):</span>
                 <span class="n">causing</span> <span class="o">=</span> <span class="p">[</span><span class="n">causing</span><span class="p">]</span>
-            <span class="k">if</span> <span class="ow">not</span> <span class="nb">all</span><span class="p">(</span><span class="nb">isinstance</span><span class="p">(</span><span class="n">c</span><span class="p">,</span> <span class="n">allowed_types</span><span class="p">)</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">causing</span><span class="p">):</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">iterable</span><span class="p">(</span><span class="n">causing</span><span class="p">)</span> <span class="ow">or</span> <span class="ow">not</span> <span class="nb">all</span><span class="p">(</span>
+                <span class="nb">isinstance</span><span class="p">(</span><span class="n">c</span><span class="p">,</span> <span class="n">allowed_types</span><span class="p">)</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">causing</span>
+            <span class="p">):</span>
                 <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span>
                     <span class="s2">"causing has to be of type string or int (or "</span>
                     <span class="s2">"a sequence of these types) or None."</span>
                 <span class="p">)</span>
-            <span class="n">causing</span> <span class="o">=</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">names</span><span class="p">[</span><span class="n">c</span><span class="p">]</span> <span class="k">if</span> <span class="nb">type</span><span class="p">(</span><span class="n">c</span><span class="p">)</span> <span class="ow">is</span> <span class="nb">int</span> <span class="k">else</span> <span class="n">c</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">causing</span><span class="p">]</span>
+            <span class="n">causing</span> <span class="o">=</span> <span class="p">[</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">names</span><span class="p">[</span><span class="n">c</span><span class="p">]</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">c</span><span class="p">,</span> <span class="n">numbers</span><span class="o">.</span><span class="n">Integral</span><span class="p">)</span> <span class="k">else</span> <span class="n">c</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">causing</span>
+            <span class="p">]</span>
             <span class="n">causing_ind</span> <span class="o">=</span> <span class="p">[</span><span class="n">get_index</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">names</span><span class="p">,</span> <span class="n">c</span><span class="p">)</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">causing</span><span class="p">]</span>
 
         <span class="k">if</span> <span class="n">causing</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
@@ -3028,6 +3080,21 @@
 
 <span class="sd">        .. |H1| replace:: H\ :sub:`1`</span>
 <span class="sd">        """</span>
+        <span class="n">allowed_types</span> <span class="o">=</span> <span class="p">(</span><span class="nb">str</span><span class="p">,</span> <span class="n">numbers</span><span class="o">.</span><span class="n">Integral</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">causing</span><span class="p">,</span> <span class="n">allowed_types</span><span class="p">):</span>
+            <span class="n">causing</span> <span class="o">=</span> <span class="p">[</span><span class="n">causing</span><span class="p">]</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">iterable</span><span class="p">(</span><span class="n">causing</span><span class="p">)</span> <span class="ow">or</span> <span class="ow">not</span> <span class="nb">all</span><span class="p">(</span>
+            <span class="nb">isinstance</span><span class="p">(</span><span class="n">c</span><span class="p">,</span> <span class="n">allowed_types</span><span class="p">)</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">causing</span>
+        <span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span>
+                <span class="s2">"causing has to be of type string or int (or a sequence of "</span>
+                <span class="s2">"these types)."</span>
+            <span class="p">)</span>
+        <span class="c1"># pass the names, which also covers integer indices of numpy types</span>
+        <span class="n">causing</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">names</span><span class="p">[</span><span class="n">c</span><span class="p">]</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">c</span><span class="p">,</span> <span class="n">numbers</span><span class="o">.</span><span class="n">Integral</span><span class="p">)</span> <span class="k">else</span> <span class="n">c</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">causing</span>
+        <span class="p">]</span>
+
         <span class="n">exog</span> <span class="o">=</span> <span class="n">_deterministic_to_exog</span><span class="p">(</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">deterministic</span><span class="p">,</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">seasons</span><span class="p">,</span>
