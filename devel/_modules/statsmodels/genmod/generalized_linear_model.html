@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
-    <title>statsmodels.genmod.generalized_linear_model &#8212; statsmodels 0.15.1 (+2733)</title>
+    <title>statsmodels.genmod.generalized_linear_model &#8212; statsmodels 0.15.1 (+2737)</title>
   <link rel="icon" type="image/png" sizes="32x32" href="../../../_static/icons/favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="../../../_static/icons/favicon-16x16.png">
   <link rel="manifest" href="../../../_static/icons/site.webmanifest">
@@ -71,7 +71,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="color-scheme" content="light dark"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="0.15.1 (+2733)" />
+  <meta name="docsearch:version" content="0.15.1 (+2737)" />
     <meta name="docbuild:last-update" content="Nov 26, 2026"/>
   
     
@@ -839,6 +839,18 @@
 <span class="s2">    | Working       | ``n_trials``                     |</span>
 <span class="s2">    +---------------+----------------------------------+</span>
 
+<span class="s2">    A ``DomainWarning`` is issued if ``endog`` is outside of the support of the</span>
+<span class="s2">    distribution of the family: ``Binomial`` requires proportions in [0, 1]</span>
+<span class="s2">    (or successes and failures that give such proportions), ``Poisson`` and</span>
+<span class="s2">    ``NegativeBinomial`` require a nonnegative and ``Gamma`` and</span>
+<span class="s2">    ``InverseGaussian`` a positive ``endog``. The log-likelihood, the deviance</span>
+<span class="s2">    and the results based on them are not valid outside of the support.</span>
+
+<span class="s2">    .. versionchanged:: 0.15.1</span>
+
+<span class="s2">       The ``DomainWarning`` for ``endog`` outside of the support was added.</span>
+<span class="s2">       Before, such data were fit without a warning.</span>
+
 <span class="s2">    WARNING: Log-likelihood and deviance are not valid in models where</span>
 <span class="s2">    scale is equal to 1 (i.e., ``Binomial``, ``NegativeBinomial``, and</span>
 <span class="s2">    ``Poisson``). If variance weights are specified, then results such as</span>
@@ -967,6 +979,7 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">_init_keys</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">"family"</span><span class="p">)</span>
 
         <span class="bp">self</span><span class="o">.</span><span class="n">_setup_binomial</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_check_endog_domain</span><span class="p">()</span>
         <span class="c1"># internal usage for recreating a model</span>
         <span class="k">if</span> <span class="s2">"n_trials"</span> <span class="ow">in</span> <span class="n">kwargs</span><span class="p">:</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">n_trials</span> <span class="o">=</span> <span class="n">kwargs</span><span class="p">[</span><span class="s2">"n_trials"</span><span class="p">]</span>
@@ -1966,6 +1979,33 @@
         <span class="n">distr</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">family</span><span class="o">.</span><span class="n">get_distribution</span><span class="p">(</span><span class="n">mu</span><span class="p">,</span> <span class="n">scale</span><span class="p">,</span> <span class="n">var_weights</span><span class="o">=</span><span class="n">var_weights</span><span class="p">,</span> <span class="o">**</span><span class="n">kwds</span><span class="p">)</span>
         <span class="k">return</span> <span class="n">distr</span></div>
 
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_check_endog_domain</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c1"># warn if endog is outside of the support of the distribution of the</span>
+        <span class="c1"># family, the loglikelihood and the deviance are then not valid</span>
+        <span class="n">family</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">family</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">family</span><span class="p">,</span> <span class="n">families</span><span class="o">.</span><span class="n">Binomial</span><span class="p">):</span>
+            <span class="c1"># endog is the proportion of successes after _setup_binomial</span>
+            <span class="n">outside</span> <span class="o">=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">endog</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">)</span> <span class="o">|</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">endog</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">)</span>
+            <span class="n">support</span> <span class="o">=</span> <span class="s2">"in the interval [0, 1]"</span>
+        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">family</span><span class="p">,</span> <span class="p">(</span><span class="n">families</span><span class="o">.</span><span class="n">Poisson</span><span class="p">,</span> <span class="n">families</span><span class="o">.</span><span class="n">NegativeBinomial</span><span class="p">)):</span>
+            <span class="n">outside</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">endog</span> <span class="o">&lt;</span> <span class="mi">0</span>
+            <span class="n">support</span> <span class="o">=</span> <span class="s2">"nonnegative"</span>
+        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">family</span><span class="p">,</span> <span class="p">(</span><span class="n">families</span><span class="o">.</span><span class="n">Gamma</span><span class="p">,</span> <span class="n">families</span><span class="o">.</span><span class="n">InverseGaussian</span><span class="p">)):</span>
+            <span class="n">outside</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">endog</span> <span class="o">&lt;=</span> <span class="mi">0</span>
+            <span class="n">support</span> <span class="o">=</span> <span class="s2">"positive"</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span>
+        <span class="n">n_outside</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">count_nonzero</span><span class="p">(</span><span class="n">outside</span><span class="p">))</span>
+        <span class="k">if</span> <span class="n">n_outside</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">"endog has </span><span class="si">{</span><span class="n">n_outside</span><span class="si">}</span><span class="s2"> values outside of the support of the "</span>
+                <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">family</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2"> family, which requires endog to be "</span>
+                <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">support</span><span class="si">}</span><span class="s2">. The log-likelihood, the deviance and the "</span>
+                <span class="s2">"results based on them are not valid."</span><span class="p">,</span>
+                <span class="n">DomainWarning</span><span class="p">,</span>
+                <span class="n">stacklevel</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span>
+            <span class="p">)</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">_setup_binomial</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="c1"># this checks what kind of data is given for Binomial.</span>
