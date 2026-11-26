@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
-    <title>statsmodels.tsa.ardl.model &#8212; statsmodels 0.15.1 (+2693)</title>
+    <title>statsmodels.tsa.ardl.model &#8212; statsmodels 0.15.1 (+2696)</title>
   <link rel="icon" type="image/png" sizes="32x32" href="../../../../_static/icons/favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="../../../../_static/icons/favicon-16x16.png">
   <link rel="manifest" href="../../../../_static/icons/site.webmanifest">
@@ -71,7 +71,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="color-scheme" content="light dark"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="0.15.1 (+2693)" />
+  <meta name="docsearch:version" content="0.15.1 (+2696)" />
     <meta name="docbuild:last-update" content="Nov 26, 2026"/>
   
     
@@ -577,6 +577,7 @@
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.base.data</span><span class="w"> </span><span class="kn">import</span> <span class="n">PandasData</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">statsmodels.base.wrapper</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">wrap</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.formula.formulatools</span><span class="w"> </span><span class="kn">import</span> <span class="n">advance_eval_env</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.iolib.summary</span><span class="w"> </span><span class="kn">import</span> <span class="n">Summary</span><span class="p">,</span> <span class="n">summary_params</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.regression.linear_model</span><span class="w"> </span><span class="kn">import</span> <span class="n">OLS</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.tools._decorators</span><span class="w"> </span><span class="kn">import</span> <span class="n">cache_readonly</span>
@@ -1527,6 +1528,7 @@
         <span class="n">hold_back</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
         <span class="n">period</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
         <span class="n">missing</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">"none"</span><span class="p">,</span> <span class="s2">"raise"</span><span class="p">]</span> <span class="o">=</span> <span class="s2">"none"</span><span class="p">,</span>
+        <span class="n">eval_env</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="nb">dict</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
     <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ARDL</span> <span class="o">|</span> <span class="n">UECM</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">"""</span>
 <span class="sd">        Construct an ARDL from a formula</span>
@@ -1587,6 +1589,14 @@
 <span class="sd">            Available options are 'none', 'drop', and 'raise'. If 'none', no</span>
 <span class="sd">            NaN checking is done. If 'drop', any observations with NaNs are</span>
 <span class="sd">            dropped. If 'raise', an error is raised. Default is 'none'.</span>
+<span class="sd">        eval_env : int or dict, optional</span>
+<span class="sd">            The namespace in which variables of the formula that are not in</span>
+<span class="sd">            ``data`` are looked up. None (the default) or 1 is the namespace</span>
+<span class="sd">            that calls ``from_formula``, an integer k the namespace k stack</span>
+<span class="sd">            frames above it, -1 an empty namespace, and a dict maps names to</span>
+<span class="sd">            values.</span>
+
+<span class="sd">            .. versionadded:: 0.15.1</span>
 
 <span class="sd">        Returns</span>
 <span class="sd">        -------</span>
@@ -1611,7 +1621,10 @@
         <span class="k">if</span> <span class="s2">"|"</span> <span class="ow">in</span> <span class="n">formula</span><span class="p">:</span>
             <span class="n">formula</span><span class="p">,</span> <span class="n">fixed_formula</span> <span class="o">=</span> <span class="n">formula</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">"|"</span><span class="p">)</span>
             <span class="n">fixed_formula</span> <span class="o">=</span> <span class="n">fixed_formula</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
-        <span class="n">mod</span> <span class="o">=</span> <span class="n">OLS</span><span class="o">.</span><span class="n">from_formula</span><span class="p">(</span><span class="n">formula</span> <span class="o">+</span> <span class="s2">" -1"</span><span class="p">,</span> <span class="n">data</span><span class="p">)</span>
+        <span class="c1"># The formulas are evaluated by OLS.from_formula, one stack frame down</span>
+        <span class="n">ols_kwargs</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"eval_env"</span><span class="p">:</span> <span class="n">eval_env</span><span class="p">}</span>
+        <span class="n">advance_eval_env</span><span class="p">(</span><span class="n">ols_kwargs</span><span class="p">)</span>
+        <span class="n">mod</span> <span class="o">=</span> <span class="n">OLS</span><span class="o">.</span><span class="n">from_formula</span><span class="p">(</span><span class="n">formula</span> <span class="o">+</span> <span class="s2">" -1"</span><span class="p">,</span> <span class="n">data</span><span class="p">,</span> <span class="o">**</span><span class="n">ols_kwargs</span><span class="p">)</span>
         <span class="n">exog</span> <span class="o">=</span> <span class="n">mod</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">orig_exog</span>
         <span class="n">exog</span><span class="o">.</span><span class="n">index</span> <span class="o">=</span> <span class="n">index</span>
         <span class="n">endog</span> <span class="o">=</span> <span class="n">mod</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">orig_endog</span>
@@ -1619,7 +1632,7 @@
         <span class="k">if</span> <span class="n">fixed_formula</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
             <span class="n">endog_name</span> <span class="o">=</span> <span class="n">formula</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">"~"</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
             <span class="n">fixed_formula</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">endog_name</span><span class="si">}</span><span class="s2"> ~ </span><span class="si">{</span><span class="n">fixed_formula</span><span class="si">}</span><span class="s2"> - 1"</span>
-            <span class="n">mod</span> <span class="o">=</span> <span class="n">OLS</span><span class="o">.</span><span class="n">from_formula</span><span class="p">(</span><span class="n">fixed_formula</span><span class="p">,</span> <span class="n">data</span><span class="p">)</span>
+            <span class="n">mod</span> <span class="o">=</span> <span class="n">OLS</span><span class="o">.</span><span class="n">from_formula</span><span class="p">(</span><span class="n">fixed_formula</span><span class="p">,</span> <span class="n">data</span><span class="p">,</span> <span class="o">**</span><span class="n">ols_kwargs</span><span class="p">)</span>
             <span class="n">fixed</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="n">mod</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">orig_exog</span>
             <span class="n">fixed</span><span class="o">.</span><span class="n">index</span> <span class="o">=</span> <span class="n">index</span>
         <span class="k">else</span><span class="p">:</span>
@@ -3276,7 +3289,11 @@
         <span class="n">hold_back</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
         <span class="n">period</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
         <span class="n">missing</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">"none"</span><span class="p">,</span> <span class="s2">"raise"</span><span class="p">]</span> <span class="o">=</span> <span class="s2">"none"</span><span class="p">,</span>
+        <span class="n">eval_env</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="nb">dict</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
     <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">UECM</span><span class="p">:</span>
+        <span class="c1"># ARDL.from_formula is one stack frame further down</span>
+        <span class="n">kwargs</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"eval_env"</span><span class="p">:</span> <span class="n">eval_env</span><span class="p">}</span>
+        <span class="n">advance_eval_env</span><span class="p">(</span><span class="n">kwargs</span><span class="p">)</span>
         <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">from_formula</span><span class="p">(</span>
             <span class="n">formula</span><span class="p">,</span>
             <span class="n">data</span><span class="p">,</span>
@@ -3289,6 +3306,7 @@
             <span class="n">hold_back</span><span class="o">=</span><span class="n">hold_back</span><span class="p">,</span>
             <span class="n">period</span><span class="o">=</span><span class="n">period</span><span class="p">,</span>
             <span class="n">missing</span><span class="o">=</span><span class="n">missing</span><span class="p">,</span>
+            <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
         <span class="p">)</span></div>
 </div>
 
