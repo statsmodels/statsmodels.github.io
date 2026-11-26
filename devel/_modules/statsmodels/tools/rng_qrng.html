@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
-    <title>statsmodels.tools.rng_qrng &#8212; statsmodels 0.15.1 (+2761)</title>
+    <title>statsmodels.tools.rng_qrng &#8212; statsmodels 0.15.1 (+2766)</title>
   <link rel="icon" type="image/png" sizes="32x32" href="../../../_static/icons/favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="../../../_static/icons/favicon-16x16.png">
   <link rel="manifest" href="../../../_static/icons/site.webmanifest">
@@ -71,7 +71,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="color-scheme" content="light dark"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="0.15.1 (+2761)" />
+  <meta name="docsearch:version" content="0.15.1 (+2766)" />
     <meta name="docbuild:last-update" content="Nov 26, 2026"/>
   
     
@@ -561,8 +561,12 @@
   <h1>Source code for statsmodels.tools.rng_qrng</h1><div class="highlight"><pre>
 <span></span><span class="sd">"""Random number generator helpers"""</span>
 
+<span class="kn">import</span><span class="w"> </span><span class="nn">warnings</span>
+
 <span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">scipy</span><span class="w"> </span><span class="kn">import</span> <span class="n">stats</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.tools.validation</span><span class="w"> </span><span class="kn">import</span> <span class="n">is_int_like</span>
 
 
 <div class="viewcode-block" id="check_random_state">
@@ -596,25 +600,47 @@
 <span class="sd">    -----</span>
 <span class="sd">    `scipy.stats.qmc.QMCEngine` requires SciPy &gt;=1.7. It also means that the</span>
 <span class="sd">    generator only has the method ``random``.</span>
+
+<span class="sd">    .. versionchanged:: 0.15.1</span>
+
+<span class="sd">       An integer seed is checked with</span>
+<span class="sd">       :func:`~statsmodels.tools.validation.is_int_like` (``strict=True``).</span>
+<span class="sd">       Any other scalar that ``int`` converts, such as a float (``2.5`` was</span>
+<span class="sd">       the seed 2), a string such as ``"3"`` or a bool, is deprecated: it</span>
+<span class="sd">       gives the same generator as before with a ``FutureWarning`` and will</span>
+<span class="sd">       raise a ``TypeError`` in statsmodels 0.17.</span>
 <span class="sd">    """</span>
     <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">stats</span><span class="p">,</span> <span class="s2">"qmc"</span><span class="p">)</span> <span class="ow">and</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">seed</span><span class="p">,</span> <span class="n">stats</span><span class="o">.</span><span class="n">qmc</span><span class="o">.</span><span class="n">QMCEngine</span><span class="p">):</span>
         <span class="k">return</span> <span class="n">seed</span>
     <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">seed</span><span class="p">,</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">RandomState</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">Generator</span><span class="p">)):</span>
         <span class="k">return</span> <span class="n">seed</span>
     <span class="k">elif</span> <span class="n">seed</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-        <span class="k">try</span><span class="p">:</span>
+        <span class="n">msg</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="s2">"When creating a random number generator from a value, the "</span>
+            <span class="s2">"seed must either be an integer or array-like of ints"</span>
+        <span class="p">)</span>
+        <span class="k">if</span> <span class="n">is_int_like</span><span class="p">(</span><span class="n">seed</span><span class="p">,</span> <span class="n">strict</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
             <span class="n">seed</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">seed</span><span class="p">)</span>
-        <span class="k">except</span> <span class="p">(</span><span class="ne">TypeError</span><span class="p">,</span> <span class="ne">ValueError</span><span class="p">):</span>
+        <span class="k">elif</span> <span class="n">np</span><span class="o">.</span><span class="n">ndim</span><span class="p">(</span><span class="n">seed</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="c1"># a scalar that is not an integer: int() used to convert it</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">legacy</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">seed</span><span class="p">)</span>
+            <span class="k">except</span> <span class="p">(</span><span class="ne">TypeError</span><span class="p">,</span> <span class="ne">ValueError</span><span class="p">):</span>
+                <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="kc">None</span>
+            <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">"Passing seed of type </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">seed</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2"> is deprecated and "</span>
+                <span class="sa">f</span><span class="s2">"will raise a TypeError in statsmodels 0.17. Pass seed=</span><span class="si">{</span><span class="n">legacy</span><span class="si">}</span><span class="s2"> "</span>
+                <span class="s2">"as an int instead."</span><span class="p">,</span>
+                <span class="ne">FutureWarning</span><span class="p">,</span>
+                <span class="n">stacklevel</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="n">seed</span> <span class="o">=</span> <span class="n">legacy</span>
+        <span class="k">else</span><span class="p">:</span>
             <span class="n">seed</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">seed</span><span class="p">)</span>
             <span class="k">if</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">issubdtype</span><span class="p">(</span><span class="n">seed</span><span class="o">.</span><span class="n">dtype</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">integer</span><span class="p">):</span>
-                <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span>
-                    <span class="s2">"When creating a random number generator from a value, the "</span>
-                    <span class="s2">"seed must either be an integer or array-like of ints"</span>
-                <span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="kc">None</span>
+                <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
         <span class="k">if</span> <span class="n">deprecated</span><span class="p">:</span>
             <span class="k">if</span> <span class="n">warn</span><span class="p">:</span>
-                <span class="kn">import</span><span class="w"> </span><span class="nn">warnings</span>
-
                 <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span>
                     <span class="s2">"After statsmodels 0.15 is released, passing an integer when "</span>
                     <span class="s2">"creating a random number generator will pass the value to "</span>
