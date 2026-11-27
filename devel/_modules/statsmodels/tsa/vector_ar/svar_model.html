@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
-    <title>statsmodels.tsa.vector_ar.svar_model &#8212; statsmodels 0.15.1 (+2905)</title>
+    <title>statsmodels.tsa.vector_ar.svar_model &#8212; statsmodels 0.15.1 (+2899)</title>
   <link rel="icon" type="image/png" sizes="32x32" href="../../../../_static/icons/favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="../../../../_static/icons/favicon-16x16.png">
   <link rel="manifest" href="../../../../_static/icons/site.webmanifest">
@@ -71,7 +71,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="color-scheme" content="light dark"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="0.15.1 (+2905)" />
+  <meta name="docsearch:version" content="0.15.1 (+2899)" />
     <meta name="docbuild:last-update" content="Nov 27, 2026"/>
   
     
@@ -575,7 +575,7 @@
 <span class="kn">import</span><span class="w"> </span><span class="nn">numpy.linalg</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">npl</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">numpy.linalg</span><span class="w"> </span><span class="kn">import</span> <span class="n">slogdet</span>
 
-<span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.tools.numdiff</span><span class="w"> </span><span class="kn">import</span> <span class="n">approx_hess</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.tools.numdiff</span><span class="w"> </span><span class="kn">import</span> <span class="n">approx_fprime</span><span class="p">,</span> <span class="n">approx_hess</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.tools.rng_qrng</span><span class="w"> </span><span class="kn">import</span> <span class="n">check_random_state</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.tools.sm_exceptions</span><span class="w"> </span><span class="kn">import</span> <span class="n">ConvergenceWarning</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">statsmodels.tools.validation</span><span class="w"> </span><span class="kn">import</span> <span class="n">string_like</span>
@@ -783,15 +783,6 @@
 <span class="sd">        override : bool, optional</span>
 <span class="sd">            If True, returns estimates of A and B without checking</span>
 <span class="sd">            order or rank condition</span>
-
-<span class="sd">            .. versionchanged:: 0.15.1</span>
-
-<span class="sd">               The rank condition uses the derivatives of the covariance of</span>
-<span class="sd">               the model, A^-1 B B' A^-1', at the starting values. The</span>
-<span class="sd">               derivatives with respect to B and the covariance were wrong,</span>
-<span class="sd">               so some identified models raised and some models that are</span>
-<span class="sd">               not identified, with free entries at the same position in A</span>
-<span class="sd">               and B, were estimated.</span>
 <span class="sd">        maxiter : int, optional</span>
 <span class="sd">            Number of iterations to perform in solution method</span>
 <span class="sd">        maxfun : int, optional</span>
@@ -1015,13 +1006,6 @@
 <span class="sd">        first estimated, then likelihood with structural parameters</span>
 <span class="sd">        is estimated. It uses the residual covariance and the number of</span>
 <span class="sd">        observations of the last call to `fit`.</span>
-
-<span class="sd">        .. versionchanged:: 0.15.1</span>
-
-<span class="sd">           The term of B is log(det(B) ** 2). It was the log of the</span>
-<span class="sd">           determinant of the elementwise square of B, which differs when B</span>
-<span class="sd">           is not triangular, so the log-likelihood and the estimates of</span>
-<span class="sd">           such models were wrong.</span>
 <span class="sd">        """</span>
 
         <span class="c1"># TODO: this does not look robust if A or B is None</span>
@@ -1041,14 +1025,18 @@
 
         <span class="n">W</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">npl</span><span class="o">.</span><span class="n">inv</span><span class="p">(</span><span class="n">B</span><span class="p">),</span> <span class="n">A</span><span class="p">)</span>
         <span class="n">trc_in</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">W</span><span class="o">.</span><span class="n">T</span><span class="p">,</span> <span class="n">W</span><span class="p">),</span> <span class="n">sigma_u</span><span class="p">)</span>
-        <span class="c1"># log(det(A) ** 2) and log(det(B) ** 2)</span>
-        <span class="n">a_logdet</span> <span class="o">=</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">slogdet</span><span class="p">(</span><span class="n">A</span><span class="p">)[</span><span class="mi">1</span><span class="p">]</span>
-        <span class="n">b_logdet</span> <span class="o">=</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">slogdet</span><span class="p">(</span><span class="n">B</span><span class="p">)[</span><span class="mi">1</span><span class="p">]</span>
+        <span class="n">sign</span><span class="p">,</span> <span class="n">b_logdet</span> <span class="o">=</span> <span class="n">slogdet</span><span class="p">(</span><span class="n">B</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span>  <span class="c1"># numpy 1.4 compat</span>
+        <span class="n">b_slogdet</span> <span class="o">=</span> <span class="n">sign</span> <span class="o">*</span> <span class="n">b_logdet</span>
 
         <span class="n">likl</span> <span class="o">=</span> <span class="p">(</span>
             <span class="o">-</span><span class="n">nobs</span>
             <span class="o">/</span> <span class="mf">2.0</span>
-            <span class="o">*</span> <span class="p">(</span><span class="n">neqs</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">pi</span><span class="p">)</span> <span class="o">-</span> <span class="n">a_logdet</span> <span class="o">+</span> <span class="n">b_logdet</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">trace</span><span class="p">(</span><span class="n">trc_in</span><span class="p">))</span>
+            <span class="o">*</span> <span class="p">(</span>
+                <span class="n">neqs</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">pi</span><span class="p">)</span>
+                <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">npl</span><span class="o">.</span><span class="n">det</span><span class="p">(</span><span class="n">A</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span><span class="p">)</span>
+                <span class="o">+</span> <span class="n">b_slogdet</span>
+                <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">trace</span><span class="p">(</span><span class="n">trc_in</span><span class="p">)</span>
+            <span class="p">)</span>
         <span class="p">)</span>
 
         <span class="k">return</span> <span class="n">likl</span></div>
@@ -1057,7 +1045,7 @@
 <div class="viewcode-block" id="SVAR.score">
 <a class="viewcode-back" href="../../../../generated/statsmodels.tsa.vector_ar.svar_model.SVAR.score.html#statsmodels.tsa.vector_ar.svar_model.SVAR.score">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">score</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">AB_mask</span><span class="p">):</span>
-<span class="w">        </span><span class="sa">r</span><span class="sd">"""</span>
+<span class="w">        </span><span class="sd">"""</span>
 <span class="sd">        Return the gradient of the loglike at AB_mask</span>
 
 <span class="sd">        Parameters</span>
@@ -1073,40 +1061,17 @@
 
 <span class="sd">        Notes</span>
 <span class="sd">        -----</span>
-<span class="sd">        The gradient of the log-likelihood with respect to A and B is</span>
-
-<span class="sd">        .. math::</span>
-
-<span class="sd">           n (A^{-T} - B^{-T} W \Sigma_u), \quad</span>
-<span class="sd">           n B^{-T} (W \Sigma_u W^T - I), \quad W = B^{-1} A,</span>
-
-<span class="sd">        of which the entries of the unknown values are returned.</span>
-
-<span class="sd">        .. versionchanged:: 0.15.1</span>
-
-<span class="sd">           The gradient is computed analytically. It was computed with</span>
-<span class="sd">           forward differences with a step of 1e-8, whose error (about 1e-5</span>
-<span class="sd">           relative for the entries of a B of order 0.01) exceeded the</span>
-<span class="sd">           tolerance of the solvers of `fit` at the maximum: the default</span>
-<span class="sd">           "bfgs" solver could warn that the optimization did not converge,</span>
-<span class="sd">           depending on rounding, and "newton" stopped about 3e-5 (relative)</span>
-<span class="sd">           from the maximum. The estimates of `fit` change accordingly.</span>
+<span class="sd">        Return numerical gradient</span>
 <span class="sd">        """</span>
-        <span class="n">params</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">AB_mask</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span><span class="o">.</span><span class="n">ravel</span><span class="p">()</span>
-        <span class="n">A</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">A</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
-        <span class="n">B</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">B</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
-        <span class="n">A_len</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">A_mask</span><span class="o">.</span><span class="n">sum</span><span class="p">())</span>
-        <span class="n">A</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">A_mask</span><span class="p">]</span> <span class="o">=</span> <span class="n">params</span><span class="p">[:</span><span class="n">A_len</span><span class="p">]</span>
-        <span class="n">B</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">B_mask</span><span class="p">]</span> <span class="o">=</span> <span class="n">params</span><span class="p">[</span><span class="n">A_len</span><span class="p">:]</span>
+        <span class="n">loglike</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">loglike</span>
+        <span class="k">if</span> <span class="n">AB_mask</span><span class="o">.</span><span class="n">ndim</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="n">AB_mask</span> <span class="o">=</span> <span class="n">AB_mask</span><span class="o">.</span><span class="n">ravel</span><span class="p">()</span>
+        <span class="n">grad</span> <span class="o">=</span> <span class="n">approx_fprime</span><span class="p">(</span><span class="n">AB_mask</span><span class="p">,</span> <span class="n">loglike</span><span class="p">,</span> <span class="n">epsilon</span><span class="o">=</span><span class="mf">1e-8</span><span class="p">)</span>
 
-        <span class="n">inv_A</span> <span class="o">=</span> <span class="n">npl</span><span class="o">.</span><span class="n">inv</span><span class="p">(</span><span class="n">A</span><span class="p">)</span>
-        <span class="n">inv_B</span> <span class="o">=</span> <span class="n">npl</span><span class="o">.</span><span class="n">inv</span><span class="p">(</span><span class="n">B</span><span class="p">)</span>
-        <span class="n">W</span> <span class="o">=</span> <span class="n">inv_B</span> <span class="o">@</span> <span class="n">A</span>
-        <span class="n">sigma_u</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">sigma_u</span>
-        <span class="n">nobs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span>
-        <span class="n">grad_A</span> <span class="o">=</span> <span class="n">nobs</span> <span class="o">*</span> <span class="p">(</span><span class="n">inv_A</span><span class="o">.</span><span class="n">T</span> <span class="o">-</span> <span class="n">inv_B</span><span class="o">.</span><span class="n">T</span> <span class="o">@</span> <span class="n">W</span> <span class="o">@</span> <span class="n">sigma_u</span><span class="p">)</span>
-        <span class="n">grad_B</span> <span class="o">=</span> <span class="n">nobs</span> <span class="o">*</span> <span class="n">inv_B</span><span class="o">.</span><span class="n">T</span> <span class="o">@</span> <span class="p">(</span><span class="n">W</span> <span class="o">@</span> <span class="n">sigma_u</span> <span class="o">@</span> <span class="n">W</span><span class="o">.</span><span class="n">T</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">neqs</span><span class="p">))</span>
-        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">r_</span><span class="p">[</span><span class="n">grad_A</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">A_mask</span><span class="p">],</span> <span class="n">grad_B</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">B_mask</span><span class="p">]]</span></div>
+        <span class="c1"># workaround shape of grad if only one parameter #9302</span>
+        <span class="k">if</span> <span class="n">AB_mask</span><span class="o">.</span><span class="n">size</span> <span class="o">==</span> <span class="mi">1</span> <span class="ow">and</span> <span class="n">grad</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
+            <span class="n">grad</span> <span class="o">=</span> <span class="n">grad</span><span class="o">.</span><span class="n">ravel</span><span class="p">()</span>
+        <span class="k">return</span> <span class="n">grad</span></div>
 
 
 <div class="viewcode-block" id="SVAR.hessian">
@@ -1197,6 +1162,7 @@
         <span class="c1"># while the rest follows Hamilton (1994)</span>
 
         <span class="n">neqs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">neqs</span>
+        <span class="n">sigma_u</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">sigma_u</span>
         <span class="n">A_mask</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">A_mask</span>
         <span class="n">B_mask</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">B_mask</span>
 
@@ -1237,15 +1203,11 @@
                     <span class="n">S_D</span><span class="p">[</span><span class="n">k</span><span class="p">,</span> <span class="n">j_d</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span>
                     <span class="n">j_d</span> <span class="o">+=</span> <span class="mi">1</span>
 
-        <span class="c1"># now compute J, the derivative of vech(sigma) with respect to the</span>
-        <span class="c1"># free entries of A and B, at the covariance of the model,</span>
-        <span class="c1"># sigma = A^-1 B B' A^-1'</span>
+        <span class="c1"># now compute J</span>
         <span class="n">invA</span> <span class="o">=</span> <span class="n">npl</span><span class="o">.</span><span class="n">inv</span><span class="p">(</span><span class="n">A_solve</span><span class="p">)</span>
-        <span class="n">invA_B</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">invA</span><span class="p">,</span> <span class="n">B_solve</span><span class="p">)</span>
-        <span class="n">sigma</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">invA_B</span><span class="p">,</span> <span class="n">invA_B</span><span class="o">.</span><span class="n">T</span><span class="p">)</span>
-        <span class="n">J_p1i</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">D_pl</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">kron</span><span class="p">(</span><span class="n">sigma</span><span class="p">,</span> <span class="n">invA</span><span class="p">)),</span> <span class="n">S_B</span><span class="p">)</span>
+        <span class="n">J_p1i</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">D_pl</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">kron</span><span class="p">(</span><span class="n">sigma_u</span><span class="p">,</span> <span class="n">invA</span><span class="p">)),</span> <span class="n">S_B</span><span class="p">)</span>
         <span class="n">J_p1</span> <span class="o">=</span> <span class="o">-</span><span class="mf">2.0</span> <span class="o">*</span> <span class="n">J_p1i</span>
-        <span class="n">J_p2</span> <span class="o">=</span> <span class="mf">2.0</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">D_pl</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">kron</span><span class="p">(</span><span class="n">invA_B</span><span class="p">,</span> <span class="n">invA</span><span class="p">)),</span> <span class="n">S_D</span><span class="p">)</span>
+        <span class="n">J_p2</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">D_pl</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">kron</span><span class="p">(</span><span class="n">invA</span><span class="p">,</span> <span class="n">invA</span><span class="p">)),</span> <span class="n">S_D</span><span class="p">)</span>
 
         <span class="n">J</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">J_p1</span><span class="p">,</span> <span class="n">J_p2</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
 
