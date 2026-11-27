@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
-    <title>statsmodels.tsa.vector_ar.var_model &#8212; statsmodels 0.15.1 (+2891)</title>
+    <title>statsmodels.tsa.vector_ar.var_model &#8212; statsmodels 0.15.1 (+2909)</title>
   <link rel="icon" type="image/png" sizes="32x32" href="../../../../_static/icons/favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="../../../../_static/icons/favicon-16x16.png">
   <link rel="manifest" href="../../../../_static/icons/site.webmanifest">
@@ -71,7 +71,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="color-scheme" content="light dark"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="0.15.1 (+2891)" />
+  <meta name="docsearch:version" content="0.15.1 (+2909)" />
     <meta name="docbuild:last-update" content="Nov 27, 2026"/>
   
     
@@ -1319,6 +1319,8 @@
         <span class="c1"># Set by fit()/_estimate_var(), once the lag order is known</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span> <span class="o">=</span> <span class="kc">None</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">k_trend</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="c1"># fit replaces exog_names with the names of all regressors</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_orig_exog_names</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">exog_names</span>
 
 <div class="viewcode-block" id="VAR.predict">
 <a class="viewcode-back" href="../../../../generated/statsmodels.tsa.vector_ar.var_model.VAR.predict.html#statsmodels.tsa.vector_ar.svar_model.VAR.predict">[docs]</a>
@@ -1347,6 +1349,24 @@
 <span class="sd">        ndarray</span>
 <span class="sd">            Array of in-sample predicted values and/or out-of-sample</span>
 <span class="sd">            forecasts.</span>
+
+<span class="sd">        Notes</span>
+<span class="sd">        -----</span>
+<span class="sd">        The deterministic terms are those of ``fit``: the time trend of the</span>
+<span class="sd">        zero-indexed observation t is t + 1. Out-of-sample forecasts are not</span>
+<span class="sd">        available for a model with exog, since predict has no future values</span>
+<span class="sd">        of exog; use ``VARResults.forecast`` instead.</span>
+
+<span class="sd">        .. versionchanged:: 0.15.1</span>
+
+<span class="sd">           Out-of-sample forecasts work with every trend and with a start</span>
+<span class="sd">           after the sample, and in-sample predictions work with exog;</span>
+<span class="sd">           these raised errors. Some ranges that end out of sample returned</span>
+<span class="sd">           an empty array (``end - start`` twice the number of out-of-sample</span>
+<span class="sd">           observations), in-sample predictions with trend "ct" or "ctt"</span>
+<span class="sd">           could use a wrong time trend, and a start below lags could</span>
+<span class="sd">           return copies of one prediction. Such a start raises a</span>
+<span class="sd">           ValueError.</span>
 <span class="sd">        """</span>
         <span class="n">params</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">params</span><span class="p">)</span>
 
@@ -1361,37 +1381,45 @@
             <span class="n">prediction_index</span><span class="p">,</span>
         <span class="p">)</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_prediction_index</span><span class="p">(</span><span class="n">start</span><span class="p">,</span> <span class="n">end</span><span class="p">)</span>
 
-        <span class="k">if</span> <span class="n">end</span> <span class="o">&lt;</span> <span class="n">start</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"end is before start"</span><span class="p">)</span>
-        <span class="k">if</span> <span class="n">end</span> <span class="o">==</span> <span class="n">start</span> <span class="o">+</span> <span class="n">out_of_sample</span><span class="p">:</span>
-            <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([])</span>
+        <span class="k">if</span> <span class="n">start</span> <span class="o">&lt;</span> <span class="n">lags</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">"start must be at least lags (</span><span class="si">{</span><span class="n">lags</span><span class="si">}</span><span class="s2">), the first observation "</span>
+                <span class="sa">f</span><span class="s2">"that has a prediction, got </span><span class="si">{</span><span class="n">start</span><span class="si">}</span><span class="s2">"</span>
+            <span class="p">)</span>
 
         <span class="n">k_trend</span> <span class="o">=</span> <span class="n">util</span><span class="o">.</span><span class="n">get_trendorder</span><span class="p">(</span><span class="n">trend</span><span class="p">)</span>
         <span class="n">k</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">neqs</span>
         <span class="n">k_ar</span> <span class="o">=</span> <span class="n">lags</span>
-
-        <span class="n">predictedvalues</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">end</span> <span class="o">+</span> <span class="mi">1</span> <span class="o">-</span> <span class="n">start</span> <span class="o">+</span> <span class="n">out_of_sample</span><span class="p">,</span> <span class="n">k</span><span class="p">))</span>
-        <span class="k">if</span> <span class="n">k_trend</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">:</span>
-            <span class="n">intercept</span> <span class="o">=</span> <span class="n">params</span><span class="p">[:</span><span class="n">k_trend</span><span class="p">]</span>
-            <span class="n">predictedvalues</span> <span class="o">+=</span> <span class="n">intercept</span>
-
         <span class="n">y</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">endog</span>
-        <span class="n">x</span> <span class="o">=</span> <span class="n">util</span><span class="o">.</span><span class="n">get_var_endog</span><span class="p">(</span><span class="n">y</span><span class="p">,</span> <span class="n">lags</span><span class="p">,</span> <span class="n">trend</span><span class="o">=</span><span class="n">trend</span><span class="p">,</span> <span class="n">has_constant</span><span class="o">=</span><span class="s2">"raise"</span><span class="p">)</span>
-        <span class="n">fittedvalues</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">params</span><span class="p">)</span>
+        <span class="n">n_totobs</span> <span class="o">=</span> <span class="n">y</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
 
-        <span class="n">fv_start</span> <span class="o">=</span> <span class="n">start</span> <span class="o">-</span> <span class="n">k_ar</span>
-        <span class="n">pv_end</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">predictedvalues</span><span class="p">),</span> <span class="nb">len</span><span class="p">(</span><span class="n">fittedvalues</span><span class="p">)</span> <span class="o">-</span> <span class="n">fv_start</span><span class="p">)</span>
-        <span class="n">fv_end</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">fittedvalues</span><span class="p">),</span> <span class="n">end</span> <span class="o">-</span> <span class="n">k_ar</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span>
-        <span class="n">predictedvalues</span><span class="p">[:</span><span class="n">pv_end</span><span class="p">]</span> <span class="o">=</span> <span class="n">fittedvalues</span><span class="p">[</span><span class="n">fv_start</span><span class="p">:</span><span class="n">fv_end</span><span class="p">]</span>
+        <span class="c1"># The regressors of fit for the observations k_ar, ..., n_totobs - 1:</span>
+        <span class="c1"># the trend terms (1, t + 1, (t + 1) ** 2), exog and the lags</span>
+        <span class="n">time</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">k_ar</span> <span class="o">+</span> <span class="mf">1.0</span><span class="p">,</span> <span class="n">n_totobs</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vander</span><span class="p">(</span><span class="n">time</span><span class="p">,</span> <span class="n">k_trend</span><span class="p">,</span> <span class="n">increasing</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">exog</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">column_stack</span><span class="p">((</span><span class="n">x</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">exog</span><span class="p">[</span><span class="n">k_ar</span><span class="p">:]))</span>
+        <span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">column_stack</span><span class="p">((</span><span class="n">x</span><span class="p">,</span> <span class="n">util</span><span class="o">.</span><span class="n">get_var_endog</span><span class="p">(</span><span class="n">y</span><span class="p">,</span> <span class="n">k_ar</span><span class="p">,</span> <span class="n">trend</span><span class="o">=</span><span class="s2">"n"</span><span class="p">)))</span>
+        <span class="n">predictedvalues</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">params</span><span class="p">)[</span><span class="n">start</span> <span class="o">-</span> <span class="n">k_ar</span> <span class="p">:</span> <span class="n">end</span> <span class="o">-</span> <span class="n">k_ar</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span>
 
         <span class="k">if</span> <span class="ow">not</span> <span class="n">out_of_sample</span><span class="p">:</span>
             <span class="k">return</span> <span class="n">predictedvalues</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">exog</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="s2">"predict cannot forecast out of sample with exog. Use the "</span>
+                <span class="s2">"forecast method of the results with exog_future."</span>
+            <span class="p">)</span>
 
-        <span class="c1"># fit out of sample</span>
-        <span class="n">y</span> <span class="o">=</span> <span class="n">y</span><span class="p">[</span><span class="o">-</span><span class="n">k_ar</span><span class="p">:]</span>
+        <span class="c1"># Forecasts of the observations n_totobs, ..., end + out_of_sample, with</span>
+        <span class="c1"># the trend terms built as in VARProcess.forecast</span>
+        <span class="n">time</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">n_totobs</span> <span class="o">+</span> <span class="mf">1.0</span><span class="p">,</span> <span class="n">n_totobs</span> <span class="o">+</span> <span class="mi">1</span> <span class="o">+</span> <span class="n">out_of_sample</span><span class="p">)</span>
+        <span class="n">exog_future</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vander</span><span class="p">(</span><span class="n">time</span><span class="p">,</span> <span class="n">k_trend</span><span class="p">,</span> <span class="n">increasing</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
         <span class="n">coefs</span> <span class="o">=</span> <span class="n">params</span><span class="p">[</span><span class="n">k_trend</span><span class="p">:]</span><span class="o">.</span><span class="n">reshape</span><span class="p">((</span><span class="n">k_ar</span><span class="p">,</span> <span class="n">k</span><span class="p">,</span> <span class="n">k</span><span class="p">))</span><span class="o">.</span><span class="n">swapaxes</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span>
-        <span class="n">predictedvalues</span><span class="p">[</span><span class="n">pv_end</span><span class="p">:]</span> <span class="o">=</span> <span class="n">forecast</span><span class="p">(</span><span class="n">y</span><span class="p">,</span> <span class="n">coefs</span><span class="p">,</span> <span class="n">intercept</span><span class="p">,</span> <span class="n">out_of_sample</span><span class="p">)</span>
-        <span class="k">return</span> <span class="n">predictedvalues</span></div>
+        <span class="n">forecasts</span> <span class="o">=</span> <span class="n">forecast</span><span class="p">(</span>
+            <span class="n">y</span><span class="p">[</span><span class="o">-</span><span class="n">k_ar</span><span class="p">:],</span> <span class="n">coefs</span><span class="p">,</span> <span class="n">params</span><span class="p">[:</span><span class="n">k_trend</span><span class="p">],</span> <span class="n">out_of_sample</span><span class="p">,</span> <span class="n">exog_future</span>
+        <span class="p">)</span>
+        <span class="c1"># A start after the sample skips the first forecasts</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">((</span><span class="n">predictedvalues</span><span class="p">,</span> <span class="n">forecasts</span><span class="p">[</span><span class="nb">max</span><span class="p">(</span><span class="n">start</span> <span class="o">-</span> <span class="n">n_totobs</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span> <span class="p">:]))</span></div>
 
 
 <div class="viewcode-block" id="VAR.fit">
@@ -1462,6 +1490,13 @@
 <span class="sd">        Notes</span>
 <span class="sd">        -----</span>
 <span class="sd">        See Lütkepohl pp. 146-153 for implementation details.</span>
+
+<span class="sd">        .. versionchanged:: 0.15.1</span>
+
+<span class="sd">           Fitting a model with exog more than once gives the names of the</span>
+<span class="sd">           first fit. Each fit added the regressor names again, which made</span>
+<span class="sd">           the model's ``exog_names`` wrong and pandas results raise an</span>
+<span class="sd">           error.</span>
 <span class="sd">        """</span>
         <span class="n">lags</span> <span class="o">=</span> <span class="n">maxlags</span>
         <span class="n">trend</span> <span class="o">=</span> <span class="n">string_like</span><span class="p">(</span>
@@ -1507,7 +1542,7 @@
             <span class="n">lags</span> <span class="o">=</span> <span class="mi">1</span>
 
         <span class="n">k_trend</span> <span class="o">=</span> <span class="n">util</span><span class="o">.</span><span class="n">get_trendorder</span><span class="p">(</span><span class="n">trend</span><span class="p">)</span>
-        <span class="n">orig_exog_names</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">exog_names</span>
+        <span class="n">orig_exog_names</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_orig_exog_names</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">exog_names</span> <span class="o">=</span> <span class="n">util</span><span class="o">.</span><span class="n">make_lag_names</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">endog_names</span><span class="p">,</span> <span class="n">lags</span><span class="p">,</span> <span class="n">k_trend</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_totobs</span> <span class="o">-</span> <span class="n">lags</span>
 
@@ -3698,7 +3733,13 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">neqs</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">neqs</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">names</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">endog_names</span>
 
-        <span class="bp">self</span><span class="o">.</span><span class="n">irfobj</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">irf</span><span class="p">(</span><span class="n">var_decomp</span><span class="o">=</span><span class="n">P</span><span class="p">,</span> <span class="n">periods</span><span class="o">=</span><span class="n">periods</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">decomp</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_decompose</span><span class="p">(</span><span class="n">P</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_decompose</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">P</span><span class="p">):</span>
+        <span class="c1"># The decomposition by the orthogonalized shocks, which sets irfobj.</span>
+        <span class="c1"># The FEVD of the structural shocks of an SVAR overrides it.</span>
+        <span class="n">periods</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">periods</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">irfobj</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">irf</span><span class="p">(</span><span class="n">var_decomp</span><span class="o">=</span><span class="n">P</span><span class="p">,</span> <span class="n">periods</span><span class="o">=</span><span class="n">periods</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">orth_irfs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">irfobj</span><span class="o">.</span><span class="n">orth_irfs</span>
 
         <span class="c1"># cumulative impulse responses</span>
@@ -3714,7 +3755,7 @@
             <span class="n">fevd</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">irfs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">T</span> <span class="o">/</span> <span class="n">mse</span><span class="p">[</span><span class="n">i</span><span class="p">])</span><span class="o">.</span><span class="n">T</span>
 
         <span class="c1"># switch to equation x lag x component</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">decomp</span> <span class="o">=</span> <span class="n">fevd</span><span class="o">.</span><span class="n">swapaxes</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">fevd</span><span class="o">.</span><span class="n">swapaxes</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
 
 <div class="viewcode-block" id="FEVD.summary">
 <a class="viewcode-back" href="../../../../generated/statsmodels.tsa.vector_ar.var_model.FEVD.summary.html#statsmodels.tsa.vector_ar.svar_model.FEVD.summary">[docs]</a>
