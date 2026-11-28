@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
-    <title>statsmodels.base.model &#8212; statsmodels 0.15.1 (+3024)</title>
+    <title>statsmodels.base.model &#8212; statsmodels 0.15.1 (+3027)</title>
   <link rel="icon" type="image/png" sizes="32x32" href="../../../_static/icons/favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="../../../_static/icons/favicon-16x16.png">
   <link rel="manifest" href="../../../_static/icons/site.webmanifest">
@@ -71,7 +71,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="color-scheme" content="light dark"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="0.15.1 (+3024)" />
+  <meta name="docsearch:version" content="0.15.1 (+3027)" />
     <meta name="docbuild:last-update" content="Nov 28, 2026"/>
   
     
@@ -2887,7 +2887,18 @@
 
 <span class="sd">        This computes joined Wald tests for the hypothesis that all</span>
 <span class="sd">        coefficients corresponding to a `term` are zero.</span>
-<span class="sd">        `Terms` are defined by the underlying formula or by string matching.</span>
+<span class="sd">        `Terms` are defined by the underlying formula. Without a formula,</span>
+<span class="sd">        every parameter is a term of its own, named by the model's</span>
+<span class="sd">        ``param_names`` if the model has them (for example, state space</span>
+<span class="sd">        models) and otherwise by the names of the exog columns.</span>
+
+<span class="sd">        .. versionchanged:: 0.15.1</span>
+
+<span class="sd">           Without a formula, the terms of models that have ``param_names``</span>
+<span class="sd">           are their parameters. Before, the names of the exog columns were</span>
+<span class="sd">           used as the names of the first parameters, which mislabelled the</span>
+<span class="sd">           tests if the coefficients of exog were not the first parameters,</span>
+<span class="sd">           and models without exog raised.</span>
 
 <span class="sd">        Parameters</span>
 <span class="sd">        ----------</span>
@@ -2895,7 +2906,7 @@
 <span class="sd">            If true, then terms that consist only of a single column and,</span>
 <span class="sd">            therefore, refers only to a single parameter is skipped.</span>
 <span class="sd">            If false, then all terms are included.</span>
-<span class="sd">        extra_constraints : list[tuple], optional</span>
+<span class="sd">        extra_constraints : list of tuple, optional</span>
 <span class="sd">            Additional constraints to test, given as a list of (name,</span>
 <span class="sd">            constraint_matrix) tuples in the same form as the automatically</span>
 <span class="sd">            generated term constraints. Note that this input has not been</span>
@@ -2949,9 +2960,6 @@
             <span class="n">combine_terms</span> <span class="o">=</span> <span class="p">[]</span>
         <span class="n">model_spec</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">data</span><span class="p">,</span> <span class="s2">"model_spec"</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
 
-        <span class="k">if</span> <span class="n">model_spec</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">extra_constraints</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"no constraints, nothing to do"</span><span class="p">)</span>
-
         <span class="n">identity</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">params</span><span class="p">))</span>
         <span class="n">constraints</span> <span class="o">=</span> <span class="p">[]</span>
         <span class="n">combined</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="nb">list</span><span class="p">)</span>
@@ -2977,8 +2985,13 @@
             <span class="k">for</span> <span class="n">cname</span> <span class="ow">in</span> <span class="n">combine_terms</span><span class="p">:</span>
                 <span class="n">combined_constraints</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">cname</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">(</span><span class="n">combined</span><span class="p">[</span><span class="n">cname</span><span class="p">])))</span>
         <span class="k">else</span><span class="p">:</span>
-            <span class="c1"># check by exog/params names if there is no formula info</span>
-            <span class="k">for</span> <span class="n">col</span><span class="p">,</span> <span class="n">name</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">exog_names</span><span class="p">):</span>
+            <span class="c1"># Without formula info, every parameter is a term. Models whose</span>
+            <span class="c1"># parameters are not only the coefficients of exog (state space</span>
+            <span class="c1"># models, for example) name them in param_names.</span>
+            <span class="n">param_names</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">model</span><span class="p">,</span> <span class="s2">"param_names"</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">param_names</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">param_names</span> <span class="o">=</span> <span class="n">result</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">exog_names</span>
+            <span class="k">for</span> <span class="n">col</span><span class="p">,</span> <span class="n">name</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">param_names</span><span class="p">):</span>
                 <span class="n">constraint_matrix</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">atleast_2d</span><span class="p">(</span><span class="n">identity</span><span class="p">[</span><span class="n">col</span><span class="p">])</span>
 
                 <span class="c1"># check if in combined</span>
