@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
-    <title>statsmodels.tsa.filters.filtertools &#8212; statsmodels 0.15.1 (+3003)</title>
+    <title>statsmodels.tsa.filters.filtertools &#8212; statsmodels 0.15.1 (+3007)</title>
   <link rel="icon" type="image/png" sizes="32x32" href="../../../../_static/icons/favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="../../../../_static/icons/favicon-16x16.png">
   <link rel="manifest" href="../../../../_static/icons/site.webmanifest">
@@ -71,7 +71,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="color-scheme" content="light dark"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="0.15.1 (+3003)" />
+  <meta name="docsearch:version" content="0.15.1 (+3007)" />
     <meta name="docbuild:last-update" content="Nov 28, 2026"/>
   
     
@@ -935,6 +935,24 @@
 <span class="sd">        Linear filter coefficients in reverse time-order. Should have the</span>
 <span class="sd">        same number of dimensions as x though if 1d and ``x`` is 2d will be</span>
 <span class="sd">        coerced to 2d.</span>
+
+<span class="sd">        .. versionchanged:: 0.15.1</span>
+
+<span class="sd">           A filt with one row and one column per column of ``x``, shape</span>
+<span class="sd">           (1, nvars), filters each column of ``x`` with its own coefficient,</span>
+<span class="sd">           as any 2d filt with one column per column of ``x`` does.</span>
+<span class="sd">           Previously its coefficients were convolved across the columns of</span>
+<span class="sd">           ``x``, which returned one column of different values. A filt with</span>
+<span class="sd">           more than one row, and more than one but fewer columns than</span>
+<span class="sd">           ``x``, raises a ValueError instead of an IndexError.</span>
+
+<span class="sd">        .. deprecated:: 0.15.1</span>
+
+<span class="sd">           A filt with more than one column, but not one column per column of</span>
+<span class="sd">           ``x``, warns and returns the same result as before: the first</span>
+<span class="sd">           nvars columns of filt if it has more than one row, and a</span>
+<span class="sd">           convolution across the columns of ``x`` if it has one row. This</span>
+<span class="sd">           will raise a ValueError in statsmodels 0.17.0.</span>
 <span class="sd">    nsides : int, optional</span>
 <span class="sd">        If 2, a centered moving average is computed using the filter</span>
 <span class="sd">        coefficients. If 1, the filter coefficients are for past values only.</span>
@@ -953,6 +971,24 @@
 <span class="sd">        The values that the filter cannot compute at the ends are NaN. A</span>
 <span class="sd">        Series or DataFrame ``x`` returns a Series or DataFrame with the</span>
 <span class="sd">        index and the name or columns of ``x``.</span>
+
+<span class="sd">    Raises</span>
+<span class="sd">    ------</span>
+<span class="sd">    ValueError</span>
+<span class="sd">        If filt has more than one column, but not one column per column of</span>
+<span class="sd">        ``x``, and either has more than one row and fewer columns than</span>
+<span class="sd">        ``x``, or has one row and more columns than ``x`` while ``x`` has</span>
+<span class="sd">        more than one row.</span>
+
+<span class="sd">    Warns</span>
+<span class="sd">    -----</span>
+<span class="sd">    FutureWarning</span>
+<span class="sd">        If filt has more than one column, but not one column per column of</span>
+<span class="sd">        ``x``, and either has more than one row and more columns than ``x``,</span>
+<span class="sd">        or has one row and fewer columns than ``x`` (or ``x`` has one row).</span>
+<span class="sd">        The result does not filter each column of ``x`` with its own column</span>
+<span class="sd">        of filt. This is deprecated and will raise a ValueError in</span>
+<span class="sd">        statsmodels 0.17.0.</span>
 
 <span class="sd">    Notes</span>
 <span class="sd">    -----</span>
@@ -998,9 +1034,33 @@
     <span class="n">x</span> <span class="o">=</span> <span class="n">array_like</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="s2">"x"</span><span class="p">,</span> <span class="n">maxdim</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
     <span class="n">filt</span> <span class="o">=</span> <span class="n">array_like</span><span class="p">(</span><span class="n">filt</span><span class="p">,</span> <span class="s2">"filt"</span><span class="p">,</span> <span class="n">ndim</span><span class="o">=</span><span class="n">x</span><span class="o">.</span><span class="n">ndim</span><span class="p">)</span>
 
-    <span class="k">if</span> <span class="n">filt</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">1</span> <span class="ow">or</span> <span class="nb">min</span><span class="p">(</span><span class="n">filt</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+    <span class="c1"># a 2d filt with more than one column has a lag polynomial per column</span>
+    <span class="n">by_column</span> <span class="o">=</span> <span class="n">filt</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">2</span> <span class="ow">and</span> <span class="n">filt</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mi">1</span>
+    <span class="k">if</span> <span class="n">by_column</span> <span class="ow">and</span> <span class="n">filt</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">!=</span> <span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]:</span>
+        <span class="n">nobs</span><span class="p">,</span> <span class="n">nvar</span> <span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">shape</span>
+        <span class="n">nlags</span><span class="p">,</span> <span class="n">ncols</span> <span class="o">=</span> <span class="n">filt</span><span class="o">.</span><span class="n">shape</span>
+        <span class="n">msg</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="s2">"filt must have one column, or one column per column of x, but "</span>
+            <span class="sa">f</span><span class="s2">"filt has </span><span class="si">{</span><span class="n">ncols</span><span class="si">}</span><span class="s2"> columns and x has </span><span class="si">{</span><span class="n">nvar</span><span class="si">}</span><span class="s2">"</span>
+        <span class="p">)</span>
+        <span class="k">if</span> <span class="n">nlags</span> <span class="o">==</span> <span class="mi">1</span> <span class="ow">and</span> <span class="p">(</span><span class="n">ncols</span> <span class="o">&lt;</span> <span class="n">nvar</span> <span class="ow">or</span> <span class="n">nobs</span> <span class="o">==</span> <span class="mi">1</span><span class="p">):</span>
+            <span class="c1"># a filt with one row was convolved across the columns of x</span>
+            <span class="n">by_column</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="k">elif</span> <span class="n">nlags</span> <span class="o">==</span> <span class="mi">1</span> <span class="ow">or</span> <span class="n">ncols</span> <span class="o">&lt;</span> <span class="n">nvar</span><span class="p">:</span>
+            <span class="c1"># these raised a ValueError from scipy or an IndexError</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+        <span class="c1"># the loop below ignores the extra columns of a filt with more rows</span>
+        <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">msg</span><span class="si">}</span><span class="s2">. The result does not filter each column of x with its "</span>
+            <span class="s2">"own column of filt. This is deprecated and will raise a "</span>
+            <span class="s2">"ValueError in statsmodels 0.17.0."</span><span class="p">,</span>
+            <span class="ne">FutureWarning</span><span class="p">,</span>
+            <span class="n">stacklevel</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
+        <span class="p">)</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">by_column</span><span class="p">:</span>
         <span class="n">result</span> <span class="o">=</span> <span class="n">signal</span><span class="o">.</span><span class="n">convolve</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">filt</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s2">"valid"</span><span class="p">)</span>
-    <span class="k">else</span><span class="p">:</span>  <span class="c1"># filt.ndim == 2</span>
+    <span class="k">else</span><span class="p">:</span>
         <span class="n">nlags</span> <span class="o">=</span> <span class="n">filt</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
         <span class="n">nvar</span> <span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
         <span class="n">result</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">-</span> <span class="n">nlags</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="n">nvar</span><span class="p">))</span>
