@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
-    <title>statsmodels.tsa.vector_ar.var_model &#8212; statsmodels 0.15.1 (+3045)</title>
+    <title>statsmodels.tsa.vector_ar.var_model &#8212; statsmodels 0.15.1 (+3054)</title>
   <link rel="icon" type="image/png" sizes="32x32" href="../../../../_static/icons/favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="../../../../_static/icons/favicon-16x16.png">
   <link rel="manifest" href="../../../../_static/icons/site.webmanifest">
@@ -71,7 +71,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="color-scheme" content="light dark"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="0.15.1 (+3045)" />
+  <meta name="docsearch:version" content="0.15.1 (+3054)" />
     <meta name="docbuild:last-update" content="Nov 28, 2026"/>
   
     
@@ -2835,6 +2835,19 @@
 <span class="sd">            is currently only supported if there is no exogenous data and the</span>
 <span class="sd">            trend is one of "n" or "c".</span>
 
+<span class="sd">            .. versionchanged:: 0.15.1</span>
+
+<span class="sd">               "auto" adds the parameter uncertainty for trend "n". It</span>
+<span class="sd">               returned the MSE. With trend "n" and one exog variable that</span>
+<span class="sd">               is not constant, "auto" raises a ValueError. It treated the</span>
+<span class="sd">               variable as a constant.</span>
+
+<span class="sd">            .. deprecated:: 0.15.1</span>
+
+<span class="sd">               "auto" with another trend or with exog returns the MSE and</span>
+<span class="sd">               issues a FutureWarning. It will raise a ValueError after</span>
+<span class="sd">               statsmodels 0.17 is released.</span>
+
 <span class="sd">        Returns</span>
 <span class="sd">        -------</span>
 <span class="sd">        covs : ndarray (steps x k x k)</span>
@@ -2849,14 +2862,32 @@
         <span class="k">if</span> <span class="n">method</span> <span class="o">==</span> <span class="s2">"mse"</span><span class="p">:</span>
             <span class="k">pass</span>
         <span class="k">elif</span> <span class="n">method</span> <span class="o">==</span> <span class="s2">"auto"</span><span class="p">:</span>
-            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_exog</span> <span class="o">==</span> <span class="mi">1</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_trend</span> <span class="o">&lt;</span> <span class="mi">2</span><span class="p">:</span>
-                <span class="c1"># currently only supported if no exog and trend in ['n', 'c']</span>
+            <span class="c1"># Supported: trend "n" or "c" without exog, and trend "n" with a</span>
+            <span class="c1"># constant exog column, which is the same model as trend "c"</span>
+            <span class="n">const_exog</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">k_trend</span> <span class="o">==</span> <span class="mi">0</span>
+                <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_exog_user</span> <span class="o">==</span> <span class="mi">1</span>
+                <span class="ow">and</span> <span class="n">np</span><span class="o">.</span><span class="n">ptp</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">endog_lagged</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">])</span> <span class="o">==</span> <span class="mi">0</span>
+            <span class="p">)</span>
+            <span class="k">if</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">k_exog_user</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_trend</span> <span class="o">&lt;</span> <span class="mi">2</span><span class="p">)</span> <span class="ow">or</span> <span class="n">const_exog</span><span class="p">:</span>
                 <span class="n">fc_cov</span> <span class="o">+=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_omega_forc_cov</span><span class="p">(</span><span class="n">steps</span><span class="p">)</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">nobs</span>
-                <span class="kn">import</span><span class="w"> </span><span class="nn">warnings</span>
-
                 <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span>
                     <span class="s2">"forecast cov takes parameter uncertainty into account"</span><span class="p">,</span>
                     <span class="n">OutputWarning</span><span class="p">,</span>
+                    <span class="n">stacklevel</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
+                <span class="p">)</span>
+            <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_trend</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_exog_user</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                    <span class="s1">'method="auto" does not support exog. With trend="n" and '</span>
+                    <span class="s2">"one exog variable, it was treated as a constant."</span>
+                <span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span>
+                    <span class="s1">'method="auto" supports only trend "n" or "c" without exog '</span>
+                    <span class="s2">"and returns the forecast MSE in other cases. This is "</span>
+                    <span class="s2">"deprecated and will raise a ValueError after statsmodels "</span>
+                    <span class="s1">'0.17 is released. Use method="mse" instead.'</span><span class="p">,</span>
+                    <span class="ne">FutureWarning</span><span class="p">,</span>
                     <span class="n">stacklevel</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
                 <span class="p">)</span>
         <span class="k">else</span><span class="p">:</span>
